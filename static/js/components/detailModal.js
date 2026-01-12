@@ -464,6 +464,7 @@ export default function detailModal() {
                 is_bundle_update: isBundleUpdate,
                 keep_ui_data: {
                     ui_summary: this.editingData.ui_summary,
+                    source_link: this.editingData.source_link,
                     resource_folder: this.editingData.resource_folder,
                     tags: this.editingData.tags
                 }
