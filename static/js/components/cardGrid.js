@@ -32,6 +32,7 @@ export default function cardGrid() {
         _suppressAutoFetch: false, // 用于 locateCard 期间暂停自动刷新
 
         dragOverMain: false,
+        dragCounter: 0,
 
         get selectedIds() { return this.$store.global.viewState.selectedIds; },
         set selectedIds(val) { this.$store.global.viewState.selectedIds = val; return true;},
@@ -434,13 +435,19 @@ export default function cardGrid() {
         },
 
         handleMainDragEnter(e) {
+            this.dragCounter++;
             this.dragOverMain = true;
         },
         handleMainDragLeave(e) {
-            this.dragOverMain = false;
+            this.dragCounter--;
+            if (this.dragCounter <= 0) {
+                this.dragCounter = 0;
+                this.dragOverMain = false;
+            }
         },
 
         dropCards(targetCat) {
+            this.dragCounter = 0;
             this.dragOverMain = false;
             if (this.draggedCards.length === 0) return;
             
@@ -479,6 +486,8 @@ export default function cardGrid() {
 
         // === 文件上传 (外部拖拽) ===
         handleFilesDrop(e, targetCategory) {
+            this.dragCounter = 0;
+            this.dragOverMain = false;
             if (e.dataTransfer.types.includes('application/x-st-card')) return;
 
             const files = e.dataTransfer.files;
