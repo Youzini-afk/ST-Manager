@@ -20,14 +20,14 @@
         <div x-show="!isLoading" class="card-grid">
             <template x-for="card in paginatedCards" :key="card.id" @click="selectedIds = []">
                 <!-- ... (角色卡模板内容保持不变) ... -->
-                <div class="st-card group" :class="{'selected': selectedIds.includes(card.id)}"
+                <div class="st-card group"
+                    :class="{'selected': selectedIds.includes(card.id), 'is-favorite': card.is_favorite}"
                     @click.stop="handleCardClick($event, card)" draggable="true" @dragstart="dragStart($event, card)">
 
                     <button @click.stop="toggleCardFav(card)"
-                        class="absolute top-2 right-2 z-30 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 shadow-sm backdrop-blur-md border"
-                        :class="card.is_favorite ? 'bg-yellow-400/30 border-yellow-400 text-yellow-400 opacity-100 scale-110' : 'bg-black/30 border-white/20 text-white/50 opacity-0 group-hover:opacity-100 hover:bg-black/50 hover:text-yellow-200 scale-100'">
-                        <span class="text-lg transform transition-transform active:scale-125"
-                            x-text="card.is_favorite ? '★' : '☆'"></span>
+                        class="absolute top-2 right-2 z-30 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 shadow-sm backdrop-blur-md border opacity-0 group-hover:opacity-100 transform scale-90 group-hover:scale-100"
+                        :class="card.is_favorite ? 'bg-yellow-400 text-black border-yellow-200 shadow-[0_0_10px_rgba(251,191,36,0.5)]' : 'bg-black/40 border-white/20 text-white/50 hover:bg-black/60 hover:text-white'">
+                        <span class="text-lg font-bold" x-text="card.is_favorite ? '★' : '☆'"></span>
                     </button>
                     <!-- 选择勾选框 -->
                     <div class="absolute top-2 left-2 z-30 cursor-pointer group-hover:opacity-100 transition-opacity"
@@ -38,7 +38,10 @@
                             <span x-show="selectedIds.includes(card.id)" class="text-xs font-bold">✓</span>
                         </div>
                     </div>
-
+                    <div x-show="card.is_favorite"
+                        class="absolute top-0 left-0 z-20 w-0 h-0 border-t-[32px] border-r-[32px] border-t-yellow-500 border-r-transparent opacity-90 pointer-events-none drop-shadow-md">
+                        <span class="absolute -top-[30px] left-[2px] text-[10px]">★</span>
+                    </div>
                     <div class="card-image-container">
                         <img :src="card.thumb_url" loading="lazy"
                             onerror="this.onerror=null; this.src='/static/images/default_card.png';">
