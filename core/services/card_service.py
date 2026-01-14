@@ -81,23 +81,24 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
     target_block = get_data_ref(final_info)
     source_block = get_data_ref(new_info_raw)
     
-    # 允许更新的核心字段白名单
-    core_fields = [
-        'name', 'description', 'first_mes', 'mes_example', 'alternate_greetings',
-        'character_book', 'creator', 'character_version', 'creator_notes',
-        'personality', 'scenario', 'system_prompt', 'post_history_instructions',
-        'tags', 'spec', 'spec_version'
-    ]
+    # # 允许更新的核心字段白名单
+    # core_fields = [
+    #     'name', 'description', 'first_mes', 'mes_example', 'alternate_greetings',
+    #     'character_book', 'creator', 'character_version', 'creator_notes',
+    #     'personality', 'scenario', 'system_prompt', 'post_history_instructions',
+    #     'tags', 'spec', 'spec_version'
+    # ]
     
-    for key in core_fields:
-        if key in source_block:
-             target_block[key] = source_block[key]
+    # for key in core_fields:
+    #     if key in source_block:
+    #          target_block[key] = source_block[key]
+
+    target_block.update(source_block)
     
     # 特殊处理顶层 name
     if 'name' in source_block:
         if 'name' in final_info: 
             final_info['name'] = source_block['name']
-        target_block['name'] = source_block['name']
             
     # 应用前端传递的 Tags (优先级最高)
     if 'tags' in keep_ui_data:
