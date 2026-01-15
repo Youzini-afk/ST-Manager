@@ -821,15 +821,22 @@ export default function detailModal() {
         },
 
         addTag() {
-            // 假设 HTML 中有 x-model="newTagInput"
-            // 由于这里是模块化，建议通过 arguments 传参或使用 $refs
-            const input = this.$refs.tagInput; 
-            if (!input) return;
-            const val = input.value.trim();
-            if (val && !this.editingData.tags.includes(val)) {
-                this.editingData.tags.push(val);
-                input.value = '';
+            const val = (this.newTagInput || "").trim();
+            
+            if (!val) return;
+
+            // 确保 tags 数组初始化
+            if (!this.editingData.tags) {
+                this.editingData.tags = [];
             }
+
+            // 查重并添加
+            if (!this.editingData.tags.includes(val)) {
+                this.editingData.tags.push(val);
+            }
+            
+            // 清空输入框
+            this.newTagInput = '';
         },
 
         prevAlt() {
