@@ -371,6 +371,15 @@ def api_update_card():
         # 更新 DB (Hash / Time)
         update_card_cache(final_rel_path_id, current_full_path, parsed_info=info, mtime=current_mtime)
 
+        if raw_id != final_rel_path_id:
+            try:
+                # 获取数据库连接 (复用本次请求的连接)
+                conn = get_db()
+                conn.execute("DELETE FROM card_metadata WHERE id = ?", (raw_id,))
+                conn.commit()
+                # print(f"Db Cleaned: Deleted old index {raw_id}")
+            except Exception as e:
+                logger.error(f"Failed to delete old DB record for {raw_id}: {e}")
         
         data_block = info.get('data', info) if info else {}
         
