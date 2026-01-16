@@ -128,7 +128,8 @@ export default function detailModal() {
                 id: this.activeCard.id,
                 category: this.activeCard.category,
                 is_bundle: this.activeCard.is_bundle,
-                bundle_dir: this.activeCard.bundle_dir
+                bundle_dir: this.activeCard.bundle_dir,
+                shouldOpenDetail: false
             };
             // 派发事件，由 cardGrid.js 监听处理
             window.dispatchEvent(new CustomEvent('locate-card', { detail: locateTarget }));

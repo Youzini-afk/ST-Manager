@@ -37,6 +37,32 @@
     z-index: 10;
 }
 
+@keyframes highlightPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); /* accent color */
+        transform: scale(1);
+        border-color: var(--accent-main);
+    }
+    50% {
+        box-shadow: 0 0 20px 10px rgba(37, 99, 235, 0);
+        transform: scale(1.05);
+        border-color: #fff;
+        z-index: 50;
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+        transform: scale(1);
+        border-color: var(--border-light);
+    }
+}
+
+.card-highlight-anim {
+    animation: highlightPulse 1.5s ease-in-out infinite;
+    border: 2px solid var(--accent-main) !important;
+    position: relative;
+    z-index: 40;
+}
+
 .st-card.selected {
     border-color: var(--accent-main);
     box-shadow: 0 0 0 2px var(--accent-faint);

@@ -1309,48 +1309,106 @@ def api_change_image():
 def api_find_card_page():
     try:
         target_id = request.json.get('card_id')
-        category = request.json.get('category', '')
+        # 允许前端不传 category，由后端自动推导
+        category = request.json.get('category', None) 
         sort_mode = request.json.get('sort', 'date_desc')
         page_size = int(request.json.get('page_size', 20))
         
         if not target_id: return jsonify({"success": False})
 
-        # 1. 获取基础列表
+        # 1. 确保缓存加载
         if not ctx.cache.initialized:
             ctx.cache.reload_from_db()
             
-        filtered_cards = ctx.cache.cards
+        # --- 智能推导逻辑 ---
+        # 如果没有提供分类，或者提供的 ID 是一个 Bundle 内的子文件，我们需要找到正确的“显示对象”
+        target_obj = None
+        
+        # A. 尝试直接在 ID 映射中查找
+        if target_id in ctx.cache.id_map:
+            target_obj = ctx.cache.id_map[target_id]
+        
+        # B. 如果找不到 (可能是 Bundle 的子文件 ID，但不在顶层索引中?)
+        # 或者即使找到了，我们也需要确定它在列表中显示的形态 (是它自己，还是它的 Bundle 主体)
+        
+        # 查找该 ID 归属的主显示 ID (Main ID)
+        effective_target_id = target_id
+        effective_category = category
 
-        # 2. 应用分类过滤 (与 list_cards 逻辑一致)
-        if category and category != "根目录":
-            target_cat_lower = category.lower()
+        # 如果我们在缓存中找到了对象，直接用它的分类
+        if target_obj:
+            # 如果前端没传分类，或者传的是错的，我们用真实的分类
+            if effective_category is None:
+                effective_category = target_obj.get('category', '')
+            
+            # 如果这个对象是 Bundle，那么我们要找的就是它自己，没问题。
+        else:
+            # 如果 ID Map 里没这个 ID，可能是 Bundle 的旧版本或子文件?
+            # 尝试通过 Bundle Map 反查
+            # 假设 target_id 是 "Char/Bundle/v2.png" -> dir is "Char/Bundle"
+            parent_dir = os.path.dirname(target_id).replace('\\', '/')
+            if parent_dir in ctx.cache.bundle_map:
+                # 这是一个 Bundle 的子文件
+                main_bundle_id = ctx.cache.bundle_map[parent_dir]
+                effective_target_id = main_bundle_id
+                # 获取主 Bundle 对象来确定分类
+                if main_bundle_id in ctx.cache.id_map:
+                    effective_category = ctx.cache.id_map[main_bundle_id].get('category', '')
+
+        # 如果到这里还没确定分类，回退到根目录
+        if effective_category is None: 
+            effective_category = ""
+
+        # --- 开始列表过滤 ---
+        filtered_cards = ctx.cache.cards # 全量列表
+
+        # 2. 应用分类过滤
+        if effective_category != "根目录": # 空字符串表示根目录
+            target_cat_lower = effective_category.lower()
             target_cat_prefix = target_cat_lower + '/'
             
+            # 这里必须包含 Bundle 自身
             filtered_cards = [
                 c for c in filtered_cards 
                 if c['category'].lower() == target_cat_lower or c['category'].lower().startswith(target_cat_prefix)
             ]
-            
-        # 注意：定位功能通常是在清空搜索和标签的情况下使用的，所以这里不应用搜索和标签过滤
+        else:
+            # 根目录
+            filtered_cards = [c for c in filtered_cards if c['category'] == ""]
 
-        # 3. 排序
+        # 3. 排序 (必须与前端一致)
         reverse = 'desc' in sort_mode
         if 'date' in sort_mode:
             filtered_cards.sort(key=lambda x: x['last_modified'], reverse=reverse)
         elif 'name' in sort_mode:
             filtered_cards.sort(key=lambda x: x['char_name'].lower(), reverse=reverse)
+        elif 'token' in sort_mode:
+            filtered_cards.sort(key=lambda x: x.get('token_count', 0), reverse=reverse)
             
         # 4. 查找索引
         index = -1
         for i, card in enumerate(filtered_cards):
-            if card['id'] == target_id:
+            # 匹配目标：要么 ID 完全一致，要么目标是 Bundle 的一个版本
+            if card['id'] == effective_target_id:
                 index = i
                 break
+            # 如果当前卡是 Bundle，检查 target_id 是否在其版本中
+            if card.get('is_bundle') and 'versions' in card:
+                for v in card['versions']:
+                    if v['id'] == target_id:
+                        index = i
+                        break
+            if index != -1: break
         
         if index != -1:
             # 计算页码 (从1开始)
             page = (index // page_size) + 1
-            return jsonify({"success": True, "page": page})
+            return jsonify({
+                "success": True, 
+                "page": page,
+                "category": effective_category, # 返回后端确定的真实分类
+                "found_id": filtered_cards[index]['id'] # 返回列表中的实际 ID (如果是 Bundle，则是主 ID)
+            })
         else:
             return jsonify({"success": False, "msg": "在目标分类中未找到该卡片"})
 
