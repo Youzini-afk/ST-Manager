@@ -103,15 +103,6 @@ export async function importCardFromUrl(payload) {
     return res.json();
 }
 
-// 批量上传卡片 (FormData)
-export async function uploadCards(formData) {
-    const res = await fetch('/api/upload_cards', {
-        method: 'POST',
-        body: formData
-    });
-    return res.json();
-}
-
 // 更换头像 (FormData)
 export async function changeCardImage(formData) {
     const res = await fetch('/api/change_image', {
