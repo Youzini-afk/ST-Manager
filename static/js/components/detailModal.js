@@ -41,6 +41,9 @@ export default function detailModal() {
         showDetail: false,
         activeCard: {}, // 当前查看的卡片对象 (原始引用或副本)
         newTagInput: '',
+        tab: 'basic', 
+        lastTab: 'basic',
+        showFirstPreview: false,
         
         // 编辑器状态 (V3 规范扁平化数据)
         editingData: {
@@ -90,6 +93,17 @@ export default function detailModal() {
         formatWiKeys,
         updateWiKeys,
         ...wiHelpers,
+
+        get hasPersonaFields() {
+            const d = this.editingData;
+            return !!(
+                (d.personality && d.personality.trim()) || 
+                (d.scenario && d.scenario.trim()) || 
+                (d.creator_notes && d.creator_notes.trim()) || 
+                (d.system_prompt && d.system_prompt.trim()) || 
+                (d.post_history_instructions && d.post_history_instructions.trim())
+            );
+        },
 
         // === 初始化 ===
         init() {
@@ -194,6 +208,9 @@ export default function detailModal() {
             this.skinImages = [];
             this.currentSkinIndex = -1;
             this.isCardFlipped = false;
+            this.showFirstPreview = false;
+            this.lastTab = this.tab; 
+            this.tab = 'basic';
 
             // 深拷贝并清洗数据 (Flatten & Sanitize)
             let rawData = JSON.parse(JSON.stringify(c));
@@ -297,6 +314,10 @@ export default function detailModal() {
                     }
 
                     if (res.card.image_url) this.activeCard.image_url = res.card.image_url;
+
+                    if (this.lastTab === 'persona' && this.hasPersonaFields) {
+                        this.tab = 'persona';
+                    }
 
                     // 启动自动保存
                     this.$nextTick(() => {

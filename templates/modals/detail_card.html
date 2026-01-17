@@ -136,7 +136,7 @@
             </section>
 
             <!-- 右侧：信息 + Tab -->
-            <section class="detail-right" x-data="{ tab: 'basic', showFirstPreview: false }">
+            <section class="detail-right">
 
                 <!-- 顶部栏：标题 / token / 快捷操作 -->
                 <header class="detail-topbar">
@@ -225,6 +225,8 @@
                 <nav class="detail-tabs">
                     <button class="detail-tab" :class="tab==='basic' ? 'active' : ''" @click="tab='basic'">📝
                         基础</button>
+                    <button x-show="hasPersonaFields" class="detail-tab" :class="tab==='persona' ? 'active' : ''" @click="tab='persona'">🧠
+                        设定</button>
                     <button class="detail-tab" :class="tab==='dialog' ? 'active' : ''" @click="tab='dialog'">💬
                         对话</button>
                     <button class="detail-tab" :class="tab==='tags' ? 'active' : ''" @click="tab='tags'">🏷️
@@ -262,68 +264,79 @@
                                 <textarea x-model="editingData.description" class="form-textarea"
                                     style="height: 10rem; resize:none;"></textarea>
                             </div>
+                        </div>
+                    </section>
 
-                            <template x-if="editingData.creator_notes || editingData.personality || editingData.scenario || editingData.system_prompt || editingData.post_history_instructions">
-                                <div class="mt-6 pt-4 border-t border-[var(--border-light)]">
-                                    <div class="flex items-center gap-2 mb-3 px-1">
-                                        <span class="text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">
-                                            🔐 技术参数 (只读)
-                                        </span>
+                    <section x-show="tab==='persona'" x-transition.opacity class="detail-section detail-section-fill">
+                        <div class="detail-tab-scroll custom-scrollbar">
+                            
+                            <!-- 1. 人格设定 (Personality) -->
+                            <template x-if="editingData.personality">
+                                <div class="detail-card" style="background: rgba(0,0,0,0.15); border-color: transparent;">
+                                    <div class="detail-card-head py-1 min-h-[2rem]">
+                                        <div class="detail-card-title text-xs text-gray-500 uppercase tracking-wider">人格设定 (Personality)</div>
+                                        <button class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity" 
+                                            @click="openLargeEditor('personality','人格设定')">⤢</button>
                                     </div>
+                                    <textarea readonly x-model="editingData.personality" 
+                                        class="form-textarea text-xs bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 8rem; resize:none; border:none; box-shadow: none;"></textarea>
+                                </div>
+                            </template>
 
-                                    <div class="flex flex-col gap-3">
-                                        
-                                        <!-- 1. 作者注释 (Creator Notes) -->
-                                        <div x-show="editingData.creator_notes" class="detail-card" style="border-color: var(--border-light); background: rgba(0,0,0,0.1);">
-                                            <div class="detail-card-head py-1 min-h-[2rem]">
-                                                <div class="detail-card-title text-xs text-gray-500">作者注释 (Creator Notes)</div>
-                                                <button class="expand-btn scale-90 opacity-60 hover:opacity-100" @click="openLargeEditor('creator_notes','作者注释')">⤢</button>
-                                            </div>
-                                            <textarea readonly x-model="editingData.creator_notes" class="form-textarea text-xs bg-transparent text-gray-400"
-                                                style="height: 6rem; resize:none; border:none; focus:ring-0;"></textarea>
-                                        </div>
-
-                                        <!-- 2. 人格设定 (Personality) -->
-                                        <div x-show="editingData.personality" class="detail-card" style="border-color: var(--border-light); background: rgba(0,0,0,0.1);">
-                                            <div class="detail-card-head py-1 min-h-[2rem]">
-                                                <div class="detail-card-title text-xs text-gray-500">人格设定 (Personality)</div>
-                                                <button class="expand-btn scale-90 opacity-60 hover:opacity-100" @click="openLargeEditor('personality','人格设定')">⤢</button>
-                                            </div>
-                                            <textarea readonly x-model="editingData.personality" class="form-textarea text-xs bg-transparent text-gray-400"
-                                                style="height: 6rem; resize:none; border:none; focus:ring-0;"></textarea>
-                                        </div>
-
-                                        <!-- 3. 场景设定 (Scenario) -->
-                                        <div x-show="editingData.scenario" class="detail-card" style="border-color: var(--border-light); background: rgba(0,0,0,0.1);">
-                                            <div class="detail-card-head py-1 min-h-[2rem]">
-                                                <div class="detail-card-title text-xs text-gray-500">场景设定 (Scenario)</div>
-                                                <button class="expand-btn scale-90 opacity-60 hover:opacity-100" @click="openLargeEditor('scenario','场景设定')">⤢</button>
-                                            </div>
-                                            <textarea readonly x-model="editingData.scenario" class="form-textarea text-xs bg-transparent text-gray-400"
-                                                style="height: 5rem; resize:none; border:none; focus:ring-0;"></textarea>
-                                        </div>
-
-                                        <!-- 4. 系统提示词 (System Prompt) -->
-                                        <div x-show="editingData.system_prompt" class="detail-card" style="border-color: var(--border-light); background: rgba(0,0,0,0.1);">
-                                            <div class="detail-card-head py-1 min-h-[2rem]">
-                                                <div class="detail-card-title text-xs text-gray-500">系统提示词 (System Prompt)</div>
-                                                <button class="expand-btn scale-90 opacity-60 hover:opacity-100" @click="openLargeEditor('system_prompt','系统提示词')">⤢</button>
-                                            </div>
-                                            <textarea readonly x-model="editingData.system_prompt" class="form-textarea text-xs font-mono bg-transparent text-gray-400"
-                                                style="height: 5rem; resize:none; border:none; focus:ring-0;"></textarea>
-                                        </div>
-
-                                        <!-- 5. 历史指令 (Post History Instructions) -->
-                                        <div x-show="editingData.post_history_instructions" class="detail-card" style="border-color: var(--border-light); background: rgba(0,0,0,0.1);">
-                                            <div class="detail-card-head py-1 min-h-[2rem]">
-                                                <div class="detail-card-title text-xs text-gray-500">历史指令 (Post History Instructions)</div>
-                                                <button class="expand-btn scale-90 opacity-60 hover:opacity-100" @click="openLargeEditor('post_history_instructions','历史指令')">⤢</button>
-                                            </div>
-                                            <textarea readonly x-model="editingData.post_history_instructions" class="form-textarea text-xs font-mono bg-transparent text-gray-400"
-                                                style="height: 5rem; resize:none; border:none; focus:ring-0;"></textarea>
-                                        </div>
-
+                            <!-- 2. 场景设定 (Scenario) -->
+                            <template x-if="editingData.scenario">
+                                <div class="detail-card" style="background: rgba(0,0,0,0.15); border-color: transparent;">
+                                    <div class="detail-card-head py-1 min-h-[2rem]">
+                                        <div class="detail-card-title text-xs text-gray-500 uppercase tracking-wider">场景设定 (Scenario)</div>
+                                        <button class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity" 
+                                            @click="openLargeEditor('scenario','场景设定')">⤢</button>
                                     </div>
+                                    <textarea readonly x-model="editingData.scenario" 
+                                        class="form-textarea text-xs bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 6rem; resize:none; border:none; box-shadow: none;"></textarea>
+                                </div>
+                            </template>
+
+                            <!-- 3. 作者注释 (Creator Notes) -->
+                            <template x-if="editingData.creator_notes">
+                                <div class="detail-card" style="background: rgba(0,0,0,0.15); border-color: transparent;">
+                                    <div class="detail-card-head py-1 min-h-[2rem]">
+                                        <div class="detail-card-title text-xs text-gray-500 uppercase tracking-wider">作者注释 (Creator Notes)</div>
+                                        <button class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity" 
+                                            @click="openLargeEditor('creator_notes','作者注释')">⤢</button>
+                                    </div>
+                                    <textarea readonly x-model="editingData.creator_notes" 
+                                        class="form-textarea text-xs bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 6rem; resize:none; border:none; box-shadow: none;"></textarea>
+                                </div>
+                            </template>
+
+                            <!-- 4. 系统提示词 (System Prompt) -->
+                            <template x-if="editingData.system_prompt">
+                                <div class="detail-card" style="background: rgba(40, 20, 60, 0.15); border-color: transparent;">
+                                    <div class="detail-card-head py-1 min-h-[2rem]">
+                                        <div class="detail-card-title text-xs text-purple-400/70 uppercase tracking-wider">系统提示词 (System Prompt)</div>
+                                        <button class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity" 
+                                            @click="openLargeEditor('system_prompt','系统提示词')">⤢</button>
+                                    </div>
+                                    <textarea readonly x-model="editingData.system_prompt" 
+                                        class="form-textarea text-xs font-mono bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 6rem; resize:none; border:none; box-shadow: none;"></textarea>
+                                </div>
+                            </template>
+
+                            <!-- 5. 历史指令 (Post History) -->
+                            <template x-if="editingData.post_history_instructions">
+                                <div class="detail-card" style="background: rgba(40, 20, 60, 0.15); border-color: transparent;">
+                                    <div class="detail-card-head py-1 min-h-[2rem]">
+                                        <div class="detail-card-title text-xs text-purple-400/70 uppercase tracking-wider">历史指令 (Post History)</div>
+                                        <button class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity" 
+                                            @click="openLargeEditor('post_history_instructions','历史指令')">⤢</button>
+                                    </div>
+                                    <textarea readonly x-model="editingData.post_history_instructions" 
+                                        class="form-textarea text-xs font-mono bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 6rem; resize:none; border:none; box-shadow: none;"></textarea>
                                 </div>
                             </template>
                         </div>
