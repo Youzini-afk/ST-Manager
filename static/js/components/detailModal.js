@@ -236,6 +236,12 @@ export default function detailModal() {
             rawData.source_link = rawData.source_link || c.source_link || "";
             rawData.resource_folder = rawData.resource_folder || c.resource_folder || "";
             
+            // === 版本号字段映射 (DB: char_version -> V3: character_version) ===
+            // 如果传入的对象只有 char_version (列表数据)，则赋值给 character_version
+            if (!rawData.character_version && rawData.char_version) {
+                rawData.character_version = rawData.char_version;
+            }
+
             // 5. 确保文本字段不为 null
             ['description', 'first_mes', 'mes_example', 'creator_notes'].forEach(k => {
                 if (rawData[k] === null || rawData[k] === undefined) rawData[k] = "";
@@ -295,6 +301,8 @@ export default function detailModal() {
                     this.editingData.scenario = safeCard.scenario || "";
                     this.editingData.system_prompt = safeCard.system_prompt || "";
                     this.editingData.post_history_instructions = safeCard.post_history_instructions || "";
+
+                    this.editingData.character_version = safeCard.char_version || safeCard.character_version || "";
                     
                     this.editingData.alternate_greetings = safeCard.alternate_greetings || [];
                     if (this.editingData.alternate_greetings.length === 0) this.editingData.alternate_greetings = [""];
