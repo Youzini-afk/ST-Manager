@@ -963,12 +963,23 @@ def api_import_from_url():
         final_filename = os.path.basename(temp_path) # fallback
         if char_name:
             safe_name = sanitize_filename(char_name)
-            final_filename = f"{safe_name}.png"
+            # 动态获取后缀，而不是硬编码 .png，兼容 .json 导入
+            _, ext = os.path.splitext(temp_path)
+            if not ext: ext = '.png'
+            final_filename = f"{safe_name}{ext}"
             
         target_save_path = os.path.join(target_dir, final_filename)
         
-        # === 4. 冲突检测与处理 ===
-        conflict = os.path.exists(target_save_path)
+        # === 4. 冲突检测与处理, 加入伴生文件检测，以决定是否返回 conflict 状态 ===
+        base_target = os.path.splitext(target_save_path)[0]
+        conflict = False
+        
+        if os.path.exists(target_save_path):
+            conflict = True
+        elif os.path.exists(base_target + ".json"):
+            conflict = True
+        elif final_filename.lower().endswith('.json') and os.path.exists(base_target + ".png"):
+            conflict = True
         
         if conflict:
             if resolution == 'check':
@@ -2756,39 +2767,65 @@ def api_upload_commit():
             if action == 'skip':
                 continue
 
-            # 确定最终路径
-            final_filename = filename
-            dst_path = os.path.join(target_base_dir, filename)
+            # === 尝试使用角色名重命名 ===
+            # 默认使用原文件名
+            target_filename = filename
+            
+            # 读取元数据
+            info = extract_card_info(src_path)
+            if info:
+                data_block = info.get('data', {}) if 'data' in info else info
+                c_name = info.get('name') or data_block.get('name')
+                
+                if c_name:
+                    # 获取原始后缀 (保留 .png 或 .json)
+                    _, ext = os.path.splitext(filename)
+                    safe_c_name = sanitize_filename(c_name)
+                    target_filename = f"{safe_c_name}{ext}"
 
-            if action == 'rename':
-                name, ext = os.path.splitext(filename)
-                counter = 1
-                while True:
-                    final_filename = f"{name}_{counter}{ext}"
-                    dst_path = os.path.join(target_base_dir, final_filename)
-                    
-                    # 1. 主文件冲突
-                    if os.path.exists(dst_path):
-                        counter += 1
-                        continue
-                    
-                    # 2. 伴生文件冲突检测
-                    base_dst = os.path.splitext(dst_path)[0]
-                    
-                    # 检查 .json (防止图片关联到错误的旧文本)
-                    if os.path.exists(base_dst + ".json"):
-                        counter += 1
-                        continue
+            # === 冲突检测与最终路径确定 ===
+            final_filename = target_filename
+            dst_path = os.path.join(target_base_dir, final_filename)
+            
+            # 检查是否存在冲突 (主文件 OR 伴生文件)
+            # 注意：如果文件名变了(target_filename != filename)，则忽略前端的 'overwrite' 指令，
+            # 转而进行安全检查，防止因为自动重命名而误覆盖了其他同名角色。
+            base_dst = os.path.splitext(dst_path)[0]
+            has_conflict = False
+            
+            if os.path.exists(dst_path):
+                has_conflict = True
+            elif os.path.exists(base_dst + ".json"):
+                has_conflict = True
+            elif filename.lower().endswith('.json') and os.path.exists(base_dst + ".png"):
+                has_conflict = True
+
+            # 如果有冲突，或者是明确的 rename 操作
+            if has_conflict or action == 'rename':
+                # 如果是明确的覆盖操作，且文件名没有发生变更(就是用户想覆盖的那个文件)，则允许覆盖
+                if action == 'overwrite' and filename == target_filename and has_conflict:
+                    # 允许覆盖，不做处理，后续逻辑会删除旧文件
+                    pass 
+                else:
+                    # 否则进入自动重命名逻辑 (Auto Increment)
+                    name_part, ext_part = os.path.splitext(target_filename)
+                    counter = 1
+                    while True:
+                        final_filename = f"{name_part}_{counter}{ext_part}"
+                        dst_path = os.path.join(target_base_dir, final_filename)
                         
-                    # 如果上传的是 json，检查 .png (防止文本关联到错误的旧图片)
-                    if ext.lower() == '.json':
-                        # 检查常见图片格式
-                        if os.path.exists(base_dst + ".png"):
-                            counter += 1
-                            continue
-                    
-                    # 通过检查
-                    break
+                        # 联合检测：主文件 + 伴生文件
+                        base_chk = os.path.splitext(dst_path)[0]
+                        
+                        c1 = os.path.exists(dst_path)
+                        c2 = os.path.exists(base_chk + ".json")
+                        c3 = False
+                        if ext_part.lower() == '.json':
+                            c3 = os.path.exists(base_chk + ".png")
+                            
+                        if not c1 and not c2 and not c3:
+                            break
+                        counter += 1
             
             # 执行文件移动 (覆盖模式先删旧)
             if action == 'overwrite' and os.path.exists(dst_path):
