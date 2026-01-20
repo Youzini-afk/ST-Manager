@@ -86,3 +86,12 @@ export async function deleteResourceFile(payload) {
     });
     return res.json();
 }
+
+// 上传角色资源文件 (智能分流)
+export async function uploadCardResource(formData) {
+    const res = await fetch('/api/upload_card_resource', {
+        method: 'POST',
+        body: formData
+    });
+    return res.json();
+}

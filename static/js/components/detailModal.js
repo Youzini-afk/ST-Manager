@@ -25,6 +25,7 @@ import {
     listSkins,
     setSkinAsCover,
     deleteResourceFile,
+    uploadCardResource,
     setResourceFolder as apiSetResourceFolder, 
     openResourceFolder as apiOpenResourceFolder, 
     createResourceFolder as apiCreateResourceFolder 
@@ -49,6 +50,7 @@ export default function detailModal() {
         updateImagePolicy: 'overwrite', // 默认策略
         saveOldCoverOnSwap: false,      // 皮肤换封时是否保留旧图
         dragOverUpdate: false,
+        dragOverResource: false,
         
         // 编辑器状态 (V3 规范扁平化数据)
         editingData: {
@@ -128,6 +130,53 @@ export default function detailModal() {
                     this.updateImagePolicy = 'overwrite';
                     this.saveOldCoverOnSwap = false;
                 }
+            });
+        },
+
+        // === 新增：处理资源 Tab 的文件拖拽 ===
+        handleResourceDrop(e) {
+            this.dragOverResource = false;
+            const files = e.dataTransfer.files;
+            if (!files || files.length === 0) return;
+
+            // 检查是否已设置资源目录
+            if (!this.editingData.resource_folder) {
+                alert("请先在'管理'页签或顶部栏创建/设置资源目录，才能上传资源文件。");
+                return;
+            }
+
+            // 逐个上传
+            Array.from(files).forEach(file => {
+                this.uploadSingleResource(file);
+            });
+        },
+
+        uploadSingleResource(file) {
+            const formData = new FormData();
+            formData.append('card_id', this.editingData.id);
+            formData.append('file', file);
+
+            // 显示简单的 Loading 状态
+            this.$store.global.showToast(`⏳ 正在上传: ${file.name}...`, 2000);
+
+            uploadCardResource(formData).then(res => {
+                if (res.success) {
+                    this.$store.global.showToast(`✅ ${file.name} 上传成功 (${res.msg})`);
+                    
+                    // 如果是图片，刷新皮肤列表
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
+                        this.fetchSkins(this.editingData.resource_folder);
+                    }
+                    
+                    if (res.is_lorebook) {
+                        window.dispatchEvent(new CustomEvent('refresh-wi-list'));
+                    }
+                } else {
+                    alert(`上传 ${file.name} 失败: ${res.msg}`);
+                }
+            }).catch(e => {
+                alert(`网络错误: ${e}`);
             });
         },
 

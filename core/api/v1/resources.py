@@ -2,6 +2,8 @@ import os
 import hashlib
 import logging
 from PIL import Image
+import json
+from werkzeug.utils import secure_filename
 from flask import Blueprint, request, jsonify, send_from_directory
 
 # === 基础设施 ===
@@ -201,4 +203,92 @@ def api_delete_resource_file():
 
     except Exception as e:
         logger.error(f"Delete resource file error: {e}")
+        return jsonify({"success": False, "msg": str(e)})
+
+@bp.route('/api/upload_card_resource', methods=['POST'])
+def api_upload_card_resource():
+    """
+    智能上传资源文件到角色对应的资源目录。
+    - 图片 -> 资源根目录
+    - 世界书 JSON -> /lorebooks 子目录
+    - 其他 -> 资源根目录
+    """
+    try:
+        card_id = request.form.get('card_id')
+        file = request.files.get('file')
+        
+        if not card_id or not file:
+            return jsonify({"success": False, "msg": "参数缺失"})
+
+        # 1. 获取资源目录路径
+        ui_data = load_ui_data()
+        ui_key = resolve_ui_key(card_id)
+        res_folder_name = ui_data.get(ui_key, {}).get('resource_folder')
+        
+        # 如果未设置资源目录，尝试自动创建（可选，这里为了安全先报错，或者你可以调用 create logic）
+        if not res_folder_name:
+            return jsonify({"success": False, "msg": "该卡片尚未设置资源目录，请先在'管理'页创建。"})
+
+        cfg = load_config()
+        res_root = os.path.join(BASE_DIR, cfg.get('resources_dir', 'data/assets/card_assets'))
+        
+        # 处理绝对路径/相对路径
+        if os.path.isabs(res_folder_name):
+            target_base_dir = res_folder_name
+        else:
+            target_base_dir = os.path.join(res_root, res_folder_name)
+            
+        if not os.path.exists(target_base_dir):
+            os.makedirs(target_base_dir)
+
+        # 2. 分析文件类型并确定子目录
+        filename = secure_filename(file.filename)
+        ext = os.path.splitext(filename)[1].lower()
+        sub_dir = "" # 默认根目录
+        
+        is_lorebook = False
+        
+        # 检测 JSON 是否为世界书
+        if ext == '.json':
+            try:
+                content = file.read()
+                file.seek(0) # 重置指针
+                data = json.loads(content)
+                # 简单的特征检测
+                if isinstance(data, dict) and ('entries' in data or 'keys' in data):
+                    is_lorebook = True
+                elif isinstance(data, list) and len(data) > 0 and 'keys' in data[0]:
+                    is_lorebook = True
+            except:
+                pass # 解析失败则视为普通文件
+
+        if is_lorebook:
+            sub_dir = "lorebooks"
+        
+        # 3. 构建最终路径
+        final_dir = os.path.join(target_base_dir, sub_dir)
+        if not os.path.exists(final_dir):
+            os.makedirs(final_dir)
+            
+        save_path = os.path.join(final_dir, filename)
+        
+        # 防重名 (Auto Increment)
+        name_part, ext_part = os.path.splitext(filename)
+        counter = 1
+        while os.path.exists(save_path):
+            save_path = os.path.join(final_dir, f"{name_part}_{counter}{ext_part}")
+            counter += 1
+            
+        # 4. 保存
+        file.save(save_path)
+        
+        return jsonify({
+            "success": True, 
+            "msg": f"已上传至 {sub_dir if sub_dir else '根目录'}",
+            "filename": os.path.basename(save_path),
+            "is_lorebook": is_lorebook
+        })
+
+    except Exception as e:
+        logger.error(f"Resource upload error: {e}")
         return jsonify({"success": False, "msg": str(e)})
