@@ -28,6 +28,7 @@ import wiDetailPopup from './components/wiDetailPopup.js';
 import batchImportModal from './components/batchImportModal.js';
 import automationModal from './components/automationModal.js';
 import moveCardsModal from './components/moveCardsModal.js';
+import executeRulesMobileModal from './components/executeRulesMobileModal.js';
 
 // 3. 监听 Alpine 初始化事件
 const registerComponents = () => {
@@ -57,6 +58,7 @@ const registerComponents = () => {
     Alpine.data('batchImportModal', batchImportModal);
     Alpine.data('automationModal', automationModal);
     Alpine.data('moveCardsModal', moveCardsModal);
+    Alpine.data('executeRulesMobileModal', executeRulesMobileModal);
 
     console.log("✅ ST Manager Frontend: Modules Loaded & Alpine Initialized");
 };

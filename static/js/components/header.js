@@ -400,6 +400,15 @@ export default function header() {
             window.dispatchEvent(new CustomEvent('open-move-cards-modal', {
                 detail: { ids: [...this.selectedIds] }
             }));
+        },
+
+        // 打开移动端执行规则弹窗（触发事件）
+        openExecuteRulesMobile() {
+            if (this.selectedIds.length === 0) return;
+            // 派发事件，将选中的卡片ID传给执行规则弹窗
+            window.dispatchEvent(new CustomEvent('open-execute-rules-mobile-modal', {
+                detail: { ids: [...this.selectedIds] }
+            }));
         }
     }
 }
