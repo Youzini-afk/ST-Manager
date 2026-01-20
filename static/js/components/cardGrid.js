@@ -583,7 +583,6 @@ export default function cardGrid() {
             })
                 .then(res => res.json())
                 .then(res => {
-                    this.$store.global.isLoading = false;
                     if (res.success) {
                         // 分离有效项和错误项
                         const errors = res.report.filter(item => item.status === 'error');
@@ -597,7 +596,55 @@ export default function cardGrid() {
                         if (validReport.length === 0) {
                             return; // 不打开确认框
                         }
-                        // 打开批量导入确认弹窗
+                        // === 单文件无冲突静默导入逻辑 ===
+                        // 条件：只有 1 个有效文件，没有报错，且该文件状态不是 conflict
+                        if (validReport.length === 1 && errors.length === 0 && validReport[0].status === 'ok') {
+                            const item = validReport[0];
+                            // 直接构造 commit 请求
+                            const decisions = [{
+                                filename: item.filename,
+                                action: 'import'
+                            }];
+
+                            fetch('/api/upload/commit', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    batch_id: res.batch_id,
+                                    category: targetCategory,
+                                    decisions: decisions
+                                })
+                            })
+                            .then(cRes => cRes.json())
+                            .then(cRes => {
+                                this.$store.global.isLoading = false;
+                                if (cRes.success) {
+                                    // 成功提示
+                                    const cardName = cRes.new_cards[0] ? cRes.new_cards[0].char_name : item.filename;
+                                    this.$store.global.showToast(`✅ 已导入: ${cardName}`);
+                                    
+                                    // 触发事件以更新 UI (复用 batchImportModal 的事件逻辑)
+                                    window.dispatchEvent(new CustomEvent('batch-cards-imported', { 
+                                        detail: { cards: cRes.new_cards }
+                                    }));
+                                    
+                                    if (cRes.category_counts) {
+                                        this.$store.global.categoryCounts = cRes.category_counts;
+                                    }
+                                } else {
+                                    alert("导入失败: " + cRes.msg);
+                                }
+                            })
+                            .catch(err => {
+                                this.$store.global.isLoading = false;
+                                alert("提交失败: " + err);
+                            });
+                            
+                            return;
+                        }
+
+                        this.$store.global.isLoading = false;
+                        // 打开批量导入确认弹窗 (多文件或有冲突时)
                         window.dispatchEvent(new CustomEvent('open-batch-import-modal', {
                             detail: {
                                 batchId: res.batch_id,
