@@ -134,7 +134,7 @@ export default function cardGrid() {
                 // 逐张卡片判断可见性，因为自动化规则可能把它们分散到了不同目录
                 cards.forEach(card => {
                     let shouldShow = false;
-                    
+
                     // 1. 如果当前在根目录视图
                     if (currentViewCat === '') {
                         if (isRecursive) {
@@ -142,7 +142,7 @@ export default function cardGrid() {
                         } else {
                             shouldShow = (card.category === ''); // 非递归，只显示根目录卡片
                         }
-                    } 
+                    }
                     // 2. 如果当前在子目录视图
                     else {
                         if (card.category === currentViewCat) {
@@ -189,6 +189,12 @@ export default function cardGrid() {
                 const tagsToRemove = e.detail.tags;
                 this.handleBatchRemoveTagsFromView(tagsToRemove);
             });
+
+            // 提供给外部（例如侧边栏导入按钮）复用的全局上传入口
+            window.stUploadCardFiles = (files, targetCategory = null) => {
+                // 使用当前 cardGrid 实例来处理上传，保证行为与拖拽一致
+                this._uploadFilesInternal(files, targetCategory);
+            };
         },
 
         // 统一处理增量更新 (插入/排序/去重)
@@ -510,6 +516,73 @@ export default function cardGrid() {
             }
         },
 
+        // 核心文件上传逻辑封装，供拖拽和按钮导入复用
+        _uploadFilesInternal(files, targetCategory) {
+            if (!files || files.length === 0) return;
+
+            const formData = new FormData();
+            let hasFiles = false;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const name = file.name.toLowerCase();
+                if (file.type.startsWith('image/') || name.endsWith('.png') || name.endsWith('.json')) {
+                    formData.append('files', file);
+                    hasFiles = true;
+                }
+            }
+
+            if (!hasFiles) return;
+
+            const store = this.$store.global;
+
+            // 如果未显式传入分类，则使用当前视图分类
+            if (targetCategory === null || targetCategory === undefined) {
+                const currentCat = store.viewState.filterCategory || '';
+                targetCategory = (currentCat === '' || currentCat === '根目录') ? '' : currentCat;
+            }
+            if (targetCategory === '根目录') targetCategory = '';
+
+            formData.append('category', targetCategory);
+            store.isLoading = true;
+
+            fetch('/api/upload/stage', {
+                method: 'POST',
+                body: formData
+            })
+                .then(res => res.json())
+                .then(res => {
+                    store.isLoading = false;
+                    if (res.success) {
+                        // 分离有效项和错误项
+                        const errors = res.report.filter(item => item.status === 'error');
+                        const validReport = res.report.filter(item => item.status !== 'error');
+                        // 如果有错误，弹窗提醒
+                        if (errors.length > 0) {
+                            const errorMsg = errors.map(e => `❌ ${e.filename}: ${e.msg || '格式无效'}`).join('\n');
+                            alert(`部分文件导入失败：\n\n${errorMsg}\n\n这些文件将被跳过。`);
+                        }
+                        // 如果没有有效文件了，终止流程
+                        if (validReport.length === 0) {
+                            return; // 不打开确认框
+                        }
+                        // 打开批量导入确认弹窗
+                        window.dispatchEvent(new CustomEvent('open-batch-import-modal', {
+                            detail: {
+                                batchId: res.batch_id,
+                                report: validReport,
+                                category: targetCategory
+                            }
+                        }));
+                    } else {
+                        alert("准备导入失败: " + res.msg);
+                    }
+                })
+                .catch(err => {
+                    store.isLoading = false;
+                    alert("上传网络错误: " + err);
+                });
+        },
+
         dropCards(targetCat) {
             this.dragCounter = 0;
             this.dragOverMain = false;
@@ -555,64 +628,7 @@ export default function cardGrid() {
             if (e.dataTransfer.types.includes('application/x-st-card')) return;
 
             const files = e.dataTransfer.files;
-            if (!files || files.length === 0) return;
-
-            const formData = new FormData();
-            let hasFiles = false;
-            for (let i = 0; i < files.length; i++) {
-                const name = files[i].name.toLowerCase();
-                if (files[i].type.startsWith('image/') || name.endsWith('.png') || name.endsWith('.json')) {
-                    formData.append('files', files[i]);
-                    hasFiles = true;
-                }
-            }
-
-            if (!hasFiles) return;
-
-            if (targetCategory === null || targetCategory === undefined) {
-                targetCategory = (this.filterCategory === '' || this.filterCategory === '根目录') ? '' : this.filterCategory;
-            }
-            if (targetCategory === '根目录') targetCategory = '';
-
-            formData.append('category', targetCategory);
-            this.$store.global.isLoading = true;
-
-            fetch('/api/upload/stage', {
-                method: 'POST',
-                body: formData
-            })
-                .then(res => res.json())
-                .then(res => {
-                    this.$store.global.isLoading = false;
-                    if (res.success) {
-                        // 分离有效项和错误项
-                        const errors = res.report.filter(item => item.status === 'error');
-                        const validReport = res.report.filter(item => item.status !== 'error');
-                        // 如果有错误，弹窗提醒
-                        if (errors.length > 0) {
-                            const errorMsg = errors.map(e => `❌ ${e.filename}: ${e.msg || '格式无效'}`).join('\n');
-                            alert(`部分文件导入失败：\n\n${errorMsg}\n\n这些文件将被跳过。`);
-                        }
-                        // 如果没有有效文件了，终止流程
-                        if (validReport.length === 0) {
-                            return; // 不打开确认框
-                        }
-                        // 打开批量导入确认弹窗
-                        window.dispatchEvent(new CustomEvent('open-batch-import-modal', {
-                            detail: {
-                                batchId: res.batch_id,
-                                report: validReport,
-                                category: targetCategory
-                            }
-                        }));
-                    } else {
-                        alert("准备导入失败: " + res.msg);
-                    }
-                })
-                .catch(err => {
-                    this.$store.global.isLoading = false;
-                    alert("上传网络错误: " + err);
-                });
+            this._uploadFilesInternal(files, targetCategory);
         },
 
         insertCardSorted(newCard) {
