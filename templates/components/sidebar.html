@@ -61,7 +61,13 @@
                     <span class="mr-2">📂</span>
                     <span style="flex: 1;">全部卡片</span>
                     <span class="text-xs opacity-60" x-text="libraryTotal"></span>
-                    <!-- 移动端：三个点操作按钮（根目录不显示） -->
+                    <!-- 移动端：三个点操作按钮 -->
+                    <button x-show="$store.global.deviceType === 'mobile'"
+                        @click.stop="showFolderContextMenuFromButton($event, {path: '', name: '根目录'})"
+                        class="ml-2 w-6 h-6 flex items-center justify-center opacity-60 hover:opacity-100 transition-opacity"
+                        style="background:none; border:none; color:inherit; cursor:pointer; flex-shrink: 0;">
+                        <span style="font-size: 14px; font-weight: bold;">⋯</span>
+                    </button>
                 </div>
                 <template x-for="folder in folderTree" :key="folder.path">
                     <div x-show="folder.visible">
