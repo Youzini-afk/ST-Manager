@@ -86,35 +86,12 @@
                         </div>
                     </div>
 
-                    <!-- 移动端：直接展开规则集列表 -->
-                    <div x-show="isMobile" x-data="{ showSub: false }"
-                        @click="showSub = !showSub; if (!showSub) $dispatch('load-rulesets-for-menu')">
-                        <button
-                            class="w-full text-left px-4 py-3 text-base hover:bg-[var(--bg-hover)] transition-colors flex items-center justify-between"
-                            style="color: var(--text-main);">
-                            <span class="flex items-center gap-2"><span>⚡</span> 运行自动化</span>
-                            <span class="text-xs" x-text="showSub ? '▼' : '▶'"></span>
-                        </button>
-
-                        <!-- 规则集列表：移动端直接展开 -->
-                        <div x-show="showSub" class="border-t border-[var(--border-light)] bg-[var(--bg-sub)]">
-                            <div class="px-4 py-2 text-xs text-[var(--text-dim)] border-b border-[var(--border-light)]">
-                                选择规则集:
-                            </div>
-                            <div class="max-h-60 overflow-y-auto custom-scrollbar">
-                                <template x-for="rs in $store.global.availableRuleSets" :key="rs.id">
-                                    <button @click.stop="handleRunAuto(rs.id)"
-                                        class="w-full text-left px-4 py-3 text-sm hover:bg-[var(--bg-hover)] text-[var(--text-main)]">
-                                        <span x-text="rs.meta.name"></span>
-                                    </button>
-                                </template>
-                                <div x-show="!$store.global.availableRuleSets || $store.global.availableRuleSets.length===0"
-                                    class="px-4 py-3 text-sm text-[var(--text-dim)] text-center">
-                                    (无规则集)
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- 移动端：直接打开执行规则弹窗 -->
+                    <button x-show="isMobile" @click="handleOpenExecuteRulesMobile()"
+                        class="w-full text-left px-4 py-3 text-base hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2"
+                        style="color: var(--text-main);">
+                        <span>⚡</span> 运行自动化
+                    </button>
                 </div>
             </template>
         </div>

@@ -10,20 +10,38 @@ export default function executeRulesMobileModal() {
         showExecuteRulesModal: false,
         cardIds: [],
         availableRuleSets: [],
+        // 执行模式：'cards' 或 'folder'
+        executeMode: 'cards',
+        // 文件夹模式参数
+        folderCategory: '',
+        folderRecursive: true,
 
         init() {
             // 监听打开执行规则弹窗事件
             window.addEventListener('open-execute-rules-mobile-modal', (e) => {
-                this.cardIds = e.detail && e.detail.ids ? [...e.detail.ids] : [];
+                const detail = e.detail || {};
                 
-                if (this.cardIds.length === 0) {
-                    // 如果事件没传，尝试直接读 Store (容错)
-                    this.cardIds = this.$store.global.viewState.selectedIds || [];
-                }
+                // 判断模式
+                if (detail.mode === 'folder') {
+                    // 文件夹模式
+                    this.executeMode = 'folder';
+                    this.folderCategory = detail.category || '';
+                    this.folderRecursive = detail.recursive !== undefined ? detail.recursive : true;
+                    this.cardIds = [];
+                } else {
+                    // 卡片模式（默认）
+                    this.executeMode = 'cards';
+                    this.cardIds = detail.ids ? [...detail.ids] : [];
+                    
+                    if (this.cardIds.length === 0) {
+                        // 如果事件没传，尝试直接读 Store (容错)
+                        this.cardIds = this.$store.global.viewState.selectedIds || [];
+                    }
 
-                if (this.cardIds.length === 0) {
-                    alert("未选择任何卡片");
-                    return;
+                    if (this.cardIds.length === 0) {
+                        alert("未选择任何卡片");
+                        return;
+                    }
                 }
 
                 // 加载规则集列表
@@ -47,18 +65,34 @@ export default function executeRulesMobileModal() {
             });
         },
 
-        // 执行规则集（参考 header.js 的 executeRuleSet）
+        // 执行规则集
         executeRuleSet(rulesetId) {
-            if (this.cardIds.length === 0) return;
+            let confirmMsg = '';
+            let payload = { ruleset_id: rulesetId };
 
-            const count = this.cardIds.length;
-            if (!confirm(`确定对选中的 ${count} 张卡片执行此规则集吗？`)) return;
+            if (this.executeMode === 'folder') {
+                // 文件夹模式
+                const folderName = this.folderCategory === '' ? '根目录' : this.folderCategory;
+                confirmMsg = `确定对 "${folderName}" 下的所有卡片${this.folderRecursive ? ' (包括子文件夹)' : ''} 执行此自动化规则吗？\n\n注意：这可能会移动大量文件。`;
+                
+                payload.category = this.folderCategory;
+                payload.recursive = this.folderRecursive;
+            } else {
+                // 卡片模式
+                if (this.cardIds.length === 0) {
+                    alert("未选择任何卡片");
+                    return;
+                }
+                const count = this.cardIds.length;
+                confirmMsg = `确定对选中的 ${count} 张卡片执行此规则集吗？`;
+                
+                payload.card_ids = this.cardIds;
+            }
+
+            if (!confirm(confirmMsg)) return;
 
             this.$store.global.isLoading = true;
-            executeRules({
-                card_ids: this.cardIds,
-                ruleset_id: rulesetId
-            }).then(res => {
+            executeRules(payload).then(res => {
                 this.$store.global.isLoading = false;
                 if (res.success) {
                     let msg = `✅ 执行完成！\n已处理: ${res.processed}`;
@@ -77,10 +111,17 @@ export default function executeRulesMobileModal() {
                     alert(msg);
                     // 关闭弹窗
                     this.showExecuteRulesModal = false;
-                    // 清空选中
-                    this.$store.global.viewState.selectedIds = [];
+                    
+                    // 卡片模式：清空选中
+                    if (this.executeMode === 'cards') {
+                        this.$store.global.viewState.selectedIds = [];
+                    }
+                    
                     // 刷新列表
                     window.dispatchEvent(new CustomEvent('refresh-card-list'));
+                    if (this.executeMode === 'folder') {
+                        window.dispatchEvent(new CustomEvent('refresh-folder-list'));
+                    }
                 } else {
                     alert("执行失败: " + res.msg);
                 }

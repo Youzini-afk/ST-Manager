@@ -83,7 +83,7 @@ export default function contextMenu() {
             }
         },
 
-        // 运行自动化
+        // 运行自动化（桌面端）
         handleRunAuto(rulesetId) {
             if (this.target === null || this.target === undefined) return;
 
@@ -114,6 +114,23 @@ export default function contextMenu() {
                 this.$store.global.isLoading = false;
                 alert("Error: " + e);
             });
+        },
+
+        // 打开移动端执行规则弹窗（文件夹模式）
+        handleOpenExecuteRulesMobile() {
+            if (this.type !== 'folder' || this.target === null || this.target === undefined) return;
+            
+            // 关闭菜单
+            this.visible = false;
+            
+            // 触发打开移动端执行规则弹窗事件，传递文件夹信息
+            window.dispatchEvent(new CustomEvent('open-execute-rules-mobile-modal', {
+                detail: {
+                    mode: 'folder',
+                    category: this.target,
+                    recursive: true
+                }
+            }));
         },
 
         // 重命名
