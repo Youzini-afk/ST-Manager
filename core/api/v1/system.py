@@ -104,7 +104,12 @@ def api_system_action():
             elif platform.system() == "Darwin":
                 subprocess.Popen(["open", path])
             else:
-                subprocess.Popen(["xdg-open", path])
+                # === Termux 适配 ===
+                if "ANDROID_ROOT" in os.environ:
+                    # 使用 termux-open 调用安卓系统选择器
+                    subprocess.Popen(["termux-open", "--choose", path])
+                else:
+                    subprocess.Popen(["xdg-open", path])
             return jsonify({"success": True})
         # === 打开 Notes 目录 ===
         elif action == 'open_notes':

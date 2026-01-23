@@ -4,13 +4,14 @@
 .detail-modal{
     width: min(1680px, calc(100vw - 240px));
     height: 92vh;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-light);
-    border-radius: 16px;
-    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
-    overflow: visible;
+    background: transparent;
+    border: none;
+    box-shadow: none;
     display: block; /* grid 交给 inner 容器 */
     position: relative;
+    margin: 0 auto;
+    transform: translateX(56px);
+    min-width: 320px; 
 }
 /* 负责布局与裁剪的 inner 容器 */
 .detail-modal-inner{
@@ -18,6 +19,7 @@
     height: 100%;
     display: grid;
     grid-template-columns: 520px 1fr;
+    overflow-x: auto; 
     overflow: hidden;
     border-radius: 16px; /* 把圆角挪到这里，确保内部仍被裁剪 */
     background: var(--bg-panel);
@@ -675,19 +677,6 @@ html.light-mode .toolbox-btn.purple{
     color: #6d28d9;
 }
 /* === 详情页响应式布局 === */
-/* 1. 调整模态框宽度逻辑，小屏下占据更多空间 */
-.detail-modal {
-    /* 默认: 也就是大屏下，保持原有关边距设计 */
-    width: min(1680px, calc(100vw - 120px)); 
-    /* 增加最小宽度，防止过度挤压 */
-    min-width: 320px; 
-}
-
-/* 2. 优化内部 Grid 布局 */
-.detail-modal-inner {
-    /* 确保内容不会溢出容器，而是出现滚动条 */
-    overflow-x: auto; 
-}
 
 /* 3. 顶部工具栏防截断 */
 .detail-topbar {
@@ -701,6 +690,16 @@ html.light-mode .toolbox-btn.purple{
 .detail-top-actions {
     /* 防止操作按钮被挤没 */
     flex-shrink: 0; 
+}
+
+/* 当屏幕宽度在 980px 到 1440px 之间时，左侧留白可能不足 112px */
+@media (max-width: 1440px) and (min-width: 981px) {
+    .detail-modal {
+        margin: 0 auto !important;
+        width: calc(100vw - 260px) !important;
+        height: 94vh;
+        transform: translateX(56px);
+    }
 }
 
 /* 4. 针对不同分辨率的断点优化 */
