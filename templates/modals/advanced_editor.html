@@ -1,27 +1,45 @@
 <!-- 高级功能编辑器 (Regex & Scripts) -->
 <div x-show="showAdvancedModal" x-data="advancedEditor" x-cloak class="modal-overlay z-modal-popover" @click.self="showAdvancedModal=false">
-    <div class="modal-container" x-data="{ activeTab: 'regex' }"
+    <div class="modal-container advanced-editor-container" x-data="{ activeTab: 'regex' }"
         style="width: 1200px; height: 90vh; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border-light);">
 
+        <!-- 移动端：侧边栏切换按钮 -->
+        <button x-show="$store.global.deviceType === 'mobile' && !showMobileSidebar && activeTab === 'regex'" 
+            @click="showMobileSidebar = true"
+            class="fixed bottom-20 left-2 z-50 w-10 h-10 bg-[var(--bg-panel)] border border-[var(--border-light)] rounded-lg flex items-center justify-center text-[var(--text-main)] shadow-lg md:hidden">
+            <span>📋</span>
+        </button>
+
+        <!-- 移动端：侧边栏遮罩 -->
+        <div x-show="$store.global.deviceType === 'mobile' && showMobileSidebar"
+            @click="showMobileSidebar = false"
+            class="fixed inset-0 bg-black/50 z-40"
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"></div>
+
         <!-- 1. 顶部 Header -->
-        <div class="p-4 border-b flex justify-between items-center"
+        <div class="p-4 border-b flex justify-between items-center advanced-editor-header"
             style="background: var(--bg-sub); border-color: var(--border-light);">
             <div class="flex items-center gap-3">
-                <h3 class="font-bold text-lg" style="color: var(--text-main);">🛠️ 高级扩展</h3>
-                <span class="text-xs px-2 py-0.5 rounded border border-gray-600 text-gray-400">Regex &
+                <h3 class="font-bold text-lg advanced-editor-title" style="color: var(--text-main);">🛠️ 高级扩展</h3>
+                <span class="text-xs px-2 py-0.5 rounded border border-gray-600 text-gray-400 hidden md:inline">Regex &
                     Scripts</span>
             </div>
             <button @click="showAdvancedModal=false"
-                class="text-gray-400 hover:text-red-500 transition text-xl">✕</button>
+                class="text-gray-400 hover:text-red-500 transition text-xl advanced-editor-close-btn">✕</button>
         </div>
 
         <!-- 2. 顶部 Tabs (已移除 x-data，使用父级状态) -->
         <div class="adv-tab-bar">
             <div @click="activeTab='regex'" class="adv-tab" :class="activeTab==='regex'?'active':''">
-                <span>🧩</span> 正则脚本 (Regex)
+                <span class="tab-icon">🧩</span> <span class="tab-text">正则脚本 (Regex)</span>
             </div>
             <div @click="activeTab='scripts'" class="adv-tab" :class="activeTab==='scripts'?'active':''">
-                <span>📜</span> ST 脚本 (Helper)
+                <span class="tab-icon">📜</span> <span class="tab-text">ST 脚本 (Helper)</span>
             </div>
         </div>
 
@@ -32,21 +50,39 @@
             <div x-show="activeTab==='regex'" class="adv-split-view">
 
                 <!-- 左侧：正则列表 -->
-                <div class="adv-list-pane custom-scrollbar overflow-y-auto">
+                <div class="adv-list-pane custom-scrollbar overflow-y-auto"
+                    :class="{
+                        'hidden md:flex': $store.global.deviceType !== 'mobile',
+                        'fixed top-14 left-0 bottom-0 z-50 w-[280px] max-w-[85vw] shadow-2xl flex flex-col': $store.global.deviceType === 'mobile' && showMobileSidebar,
+                        'hidden': $store.global.deviceType === 'mobile' && !showMobileSidebar
+                    }"
+                    x-transition:enter="transition ease-out duration-300"
+                    x-transition:enter-start="transform -translate-x-full"
+                    x-transition:enter-end="transform translate-x-0"
+                    x-transition:leave="transition ease-in duration-200"
+                    x-transition:leave-start="transform translate-x-0"
+                    x-transition:leave-end="transform -translate-x-full">
                     <div
                         class="p-3 border-b border-[var(--border-light)] flex justify-between items-center bg-[var(--bg-sub)] sticky top-0 z-10">
                         <span class="text-xs font-bold text-[var(--text-sub)] uppercase">Script List</span>
-                        <button @click="addRegexScript()"
-                            class="text-xs bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded transition">
-                            + 新建
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button @click="addRegexScript()"
+                                class="text-xs bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded transition">
+                                + 新建
+                            </button>
+                            <!-- 移动端：关闭按钮 -->
+                            <button x-show="$store.global.deviceType === 'mobile'" 
+                                @click="showMobileSidebar = false"
+                                class="text-xs bg-gray-600 hover:bg-gray-500 text-white px-2 py-1 rounded transition">✕</button>
+                        </div>
                     </div>
 
                     <div class="flex flex-col">
                         <template x-for="(script, idx) in editingData.extensions.regex_scripts" :key="script.id || idx">
                             <!-- 使用 flex 布局，移除 pr-8 和 relative，改为 items-center -->
                             <div class="adv-list-item group flex items-center justify-between gap-2"
-                                :class="activeRegexIndex === idx ? 'active' : ''" @click="activeRegexIndex = idx">
+                                :class="activeRegexIndex === idx ? 'active' : ''" 
+                                @click="activeRegexIndex = idx; if($store.global.deviceType === 'mobile') showMobileSidebar = false">
 
                                 <!-- 左侧：文本信息 (占据剩余空间) -->
                                 <div class="flex-1 min-w-0 overflow-hidden">
@@ -161,7 +197,7 @@
                             </div>
 
                             <!-- C. 替换与剔除 (Replace & Trim) -->
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <!-- 替换 -->
                                 <div class="adv-section flex flex-col h-48">
                                     <div class="adv-section-title text-green-500">✨ 替换内容 (Replace With)</div>
@@ -186,7 +222,7 @@
                             <!-- D. 高级设置 (Placement & Depth) -->
                             <div class="adv-section">
                                 <div class="adv-section-title">⚙️ 作用范围与限制 (Settings)</div>
-                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                                     <!-- 作用范围 Placement -->
                                     <div>
@@ -343,15 +379,15 @@
 
             <!-- === Tab 2: Scripts (Placeholder / Simple List) === -->
             <div x-show="activeTab==='scripts'" class="p-6 h-full overflow-y-auto custom-scrollbar">
-                <div class="flex justify-between items-center mb-4">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4">
                     <div>
                         <h4 class="text-lg font-bold text-green-500">ST 脚本 (Tavern Script)</h4>
                         <p class="text-xs text-[var(--text-dim)]">用于 酒馆助手插件 加载的 JS 脚本片段</p>
                     </div>
-                    <button @click="addTavernScript()" class="btn-secondary text-xs px-3 py-1.5">+ 新增脚本</button>
+                    <button @click="addTavernScript()" class="btn-secondary text-xs px-3 py-1.5 w-full md:w-auto">+ 新增脚本</button>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 gap-4">
                     <template x-for="script in getTavernScripts()" :key="script.id">
                         <div
                             class="border rounded p-3 bg-[var(--bg-sub)] border-[var(--border-light)] flex flex-col gap-2">
@@ -391,11 +427,11 @@
         </div>
 
         <!-- 4. 底部 Action Bar -->
-        <div class="p-4 border-t flex justify-between items-center bg-[var(--bg-sub)] border-[var(--border-light)]">
+        <div class="p-4 border-t flex flex-col md:flex-row justify-between items-start md:items-center gap-3 advanced-editor-footer bg-[var(--bg-sub)] border-[var(--border-light)]">
             <div class="text-xs text-[var(--text-dim)]">
                 提示: 修改会自动暂存，需点击主界面的 <span class="font-bold text-accent-main">保存</span> 按钮才会写入文件。
             </div>
-            <button @click="showAdvancedModal=false" class="btn-primary px-6 py-2 rounded shadow-lg font-bold">
+            <button @click="showAdvancedModal=false" class="btn-primary px-6 py-2 rounded shadow-lg font-bold w-full md:w-auto">
                 完成 (Done)
             </button>
         </div>

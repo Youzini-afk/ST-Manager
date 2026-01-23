@@ -12,6 +12,15 @@ export default function sidebar() {
         // 本地展开状态
         expandedFolders: {},
         dragOverFolder: null,
+        // 标签索引展开状态（从本地存储读取，默认展开）
+        tagsSectionExpanded: (() => {
+            try {
+                const saved = localStorage.getItem('st_manager_tags_section_expanded');
+                return saved !== null ? saved === 'true' : true;
+            } catch (e) {
+                return true;
+            }
+        })(),
 
         // 设备类型和模式
         get deviceType() {
@@ -82,6 +91,15 @@ export default function sidebar() {
         },
 
         init() {
+            // 监听标签索引展开状态变化，保存到本地存储
+            this.$watch('tagsSectionExpanded', (value) => {
+                try {
+                    localStorage.setItem('st_manager_tags_section_expanded', value.toString());
+                } catch (e) {
+                    console.warn('Failed to save tags section expanded state:', e);
+                }
+            });
+
             window.addEventListener('refresh-folder-list', () => {
                 window.dispatchEvent(new CustomEvent('refresh-card-list'));
             });
@@ -181,6 +199,26 @@ export default function sidebar() {
                     targetFolder: folder
                 }
             }));
+        },
+
+        // 移动端：从三个点按钮触发右键菜单
+        showFolderContextMenuFromButton(e, folder) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // 获取按钮的位置
+            const buttonRect = e.target.closest('button').getBoundingClientRect();
+
+            // 创建模拟事件对象，使用按钮右下角位置（稍微偏移，避免遮挡按钮）
+            const mockEvent = {
+                clientX: buttonRect.right - 10,
+                clientY: buttonRect.bottom + 5,
+                preventDefault: () => { },
+                stopPropagation: () => { }
+            };
+
+            // 调用原有的右键菜单方法
+            this.showFolderContextMenu(mockEvent, folder);
         },
 
         hideContextMenu() {

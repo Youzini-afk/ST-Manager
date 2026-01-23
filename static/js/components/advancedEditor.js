@@ -10,6 +10,7 @@ export default function advancedEditor() {
         // === 本地状态 ===
         showAdvancedModal: false,
         activeRegexIndex: -1,
+        showMobileSidebar: false, // 移动端侧边栏显示状态
         
         regexPreviewMode: 'text', // text | html
         showLargePreview: false,
@@ -38,6 +39,10 @@ export default function advancedEditor() {
                 this.regexTestInput = "";
                 this.regexTestResult = "";
                 this.regexPreviewMode = 'text';
+                // 移动端默认关闭侧边栏
+                if (this.$store.global.deviceType === 'mobile') {
+                    this.showMobileSidebar = false;
+                }
             });
         },
 
