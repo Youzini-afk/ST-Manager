@@ -214,12 +214,16 @@
                     <div class="detail-top-actions">
                         <div class="detail-actions-row">
                             <button @click="createSnapshot('card')" @contextmenu.prevent="createKeySnapshot('card')"
-                                class="btn-secondary detail-action-btn detail-snapshot-btn" title="左键: 快照 | 右键: 关键快照">📸
-                                快照</button>
+                                class="btn-secondary detail-action-btn detail-snapshot-btn" title="左键: 快照 | 右键: 关键快照">
+                                <span>📸</span> <span class="btn-text">快照</span>
+                            </button>
 
                             <button @click="saveChanges()" :disabled="isSaving"
-                                class="btn-primary detail-action-btn detail-save-btn">
-                                <span x-text="isSaving ? '保存中...' : '💾 保存'"></span>
+                                class="btn-primary detail-action-btn detail-save-btn" title="保存更改">
+                                <span x-show="!isSaving">💾</span>
+                                <span x-show="isSaving" class="animate-spin">⏳</span>
+
+                                <span class="btn-text ml-1" x-text="isSaving ? '保存中...' : '保存'"></span>
                             </button>
                         </div>
                     </div>
@@ -519,8 +523,7 @@
 
                                     <div class="detail-inline-input">
                                         <input type="text" x-model="newTagInput" @keydown.enter.prevent="addTag()"
-                                            placeholder="自定义 (支持批量,逗号分隔)..." 
-                                            title="支持输入多个标签，使用逗号(,)或管道符(|)分隔"
+                                            placeholder="自定义 (支持批量,逗号分隔)..." title="支持输入多个标签，使用逗号(,)或管道符(|)分隔"
                                             class="detail-inline-text">
                                         <button @click="addTag()" class="detail-inline-add">+</button>
                                     </div>
