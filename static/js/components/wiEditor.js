@@ -3,18 +3,18 @@
  * 全屏世界书编辑器组件
  */
 
-import { 
-    getWorldInfoDetail, 
-    saveWorldInfo, 
-    clipboardList, 
-    clipboardAdd, 
-    clipboardDelete, 
-    clipboardClear, 
-    clipboardReorder 
+import {
+    getWorldInfoDetail,
+    saveWorldInfo,
+    clipboardList,
+    clipboardAdd,
+    clipboardDelete,
+    clipboardClear,
+    clipboardReorder
 } from '../api/wi.js';
-import { getCardDetail, updateCard  } from '../api/card.js';
+import { getCardDetail, updateCard } from '../api/card.js';
 import { normalizeWiBook, toStV3Worldbook, getCleanedV3Data, updateWiKeys } from '../utils/data.js';
-import { createAutoSaver } from '../utils/autoSave.js'; 
+import { createAutoSaver } from '../utils/autoSave.js';
 import { wiHelpers } from '../utils/wiHelpers.js';
 import { formatWiKeys, estimateTokens, getTotalWiTokens } from '../utils/format.js';
 
@@ -23,11 +23,11 @@ export default function wiEditor() {
     return {
         // === 本地状态 ===
         showFullScreenWI: false,
-        showWiList: true, 
+        showWiList: true,
         showWiSettings: true,
         isLoading: false,
-        isSaving: false, 
-        
+        isSaving: false,
+
         // 编辑器核心数据
         editingData: {
             id: null,
@@ -35,13 +35,13 @@ export default function wiEditor() {
             character_book: { name: "", entries: [] },
             extensions: { regex_scripts: [], tavern_helper: [] }
         },
-        
+
         // 当前编辑的文件元数据 (用于保存路径)
-        editingWiFile: null, 
-        
+        editingWiFile: null,
+
         // 索引与视图控制
         currentWiIndex: 0,
-        
+
         // === 剪切板状态 ===
         showWiClipboard: false,
         wiClipboardItems: [],
@@ -49,7 +49,7 @@ export default function wiEditor() {
         clipboardPendingEntry: null, // 等待覆写的条目
         isEditingClipboard: false,   // 是否正在编辑剪切板内容
         currentClipboardIndex: -1,
-        
+
         // 拖拽状态
         wiDraggingIndex: null,
 
@@ -68,7 +68,7 @@ export default function wiEditor() {
             window.addEventListener('open-wi-editor', (e) => {
                 this.openWorldInfoEditor(e.detail);
             });
-            
+
             // 监听打开文件事件 (通常用于独立文件)
             window.addEventListener('open-wi-file', (e) => {
                 this.openWorldInfoFile(e.detail);
@@ -78,9 +78,8 @@ export default function wiEditor() {
             this.$watch('showFullScreenWI', (val) => {
                 if (!val) {
                     autoSaver.stop();
-                    this.editingWiFile = null;
                     this.isEditingClipboard = false;
-                    // 如果有自动保存定时器，应在此清理（本组件暂不包含自动保存逻辑，沿用detailModal或全局）
+                    this.currentWiIndex = 0;
                 }
             });
 
@@ -107,13 +106,13 @@ export default function wiEditor() {
             }
 
             this.isSaving = true;
-            
+
             // 1. 深拷贝当前编辑数据
             const cardData = JSON.parse(JSON.stringify(this.editingData));
-            
+
             // 2. 使用工具函数清洗 V3 数据结构 (构建标准角色卡 Payload)
             const cleanData = getCleanedV3Data(cardData);
-            
+
             // 3. 构造发送给 update_card 的完整数据
             const payload = {
                 id: this.editingData.id, // 角色卡 ID
@@ -126,12 +125,12 @@ export default function wiEditor() {
                 this.isSaving = false;
                 if (res.success) {
                     this.$store.global.showToast("💾 角色内嵌世界书已保存", 2000);
-                    
+
                     // 通知外部 (如卡片列表或详情页) 刷新数据
                     window.dispatchEvent(new CustomEvent('card-updated', { detail: res.updated_card }));
-                    
+
                     // 更新自动保存的基准
-                    if(autoSaver && typeof autoSaver.initBaseline === 'function') { 
+                    if (autoSaver && typeof autoSaver.initBaseline === 'function') {
                         autoSaver.initBaseline(this.editingData);
                     }
                 } else {
@@ -156,11 +155,11 @@ export default function wiEditor() {
                     file_path: ""
                 };
             }
-            
+
             // 场景 B: 独立世界书文件
             const name = this.editingData.character_book?.name || "World Info";
             const contentToSave = toStV3Worldbook(this.editingData.character_book, name);
-            
+
             return {
                 id: this.editingWiFile ? this.editingWiFile.id : 'unknown',
                 type: 'lorebook',
@@ -174,14 +173,6 @@ export default function wiEditor() {
         // 打开编辑器 (适配三种来源: global, resource, embedded)
         openWorldInfoEditor(item) {
             this.isLoading = true;
-            
-            // 重置数据
-            this.editingData = { 
-                id: null, 
-                char_name: "", 
-                character_book: { name: "Loading...", entries: [] },
-                extensions: { regex_scripts: [], tavern_helper: [] }
-            };
 
             const handleSuccess = (dataObj, source) => {
                 // === 强制执行归一化 ===
@@ -190,16 +181,23 @@ export default function wiEditor() {
                     dataObj.character_book = normalizeWiBook(dataObj.character_book, dataObj.char_name || "WI");
                 }
 
+                if (dataObj.character_book && Array.isArray(dataObj.character_book.entries)) {
+                    const sessionTs = Date.now();
+                    dataObj.character_book.entries.forEach((entry, idx) => {
+                        entry.id = `edit-${sessionTs}-${idx}`;
+                    });
+                }
+
                 // 赋值给响应式对象
                 this.editingData = dataObj;
-                this.editingWiFile = item; 
+                this.editingWiFile = item;
                 let targetIndex = 0;
                 if (typeof item.jumpToIndex === 'number' && item.jumpToIndex >= 0) {
                     targetIndex = item.jumpToIndex;
                 }
                 this.currentWiIndex = targetIndex;
                 this.isLoading = false;
-                
+
                 this.openFullScreenWI();
 
                 // 滚动到选中项
@@ -207,9 +205,9 @@ export default function wiEditor() {
                     this.$nextTick(() => {
                         // 稍微延迟以等待列表渲染
                         setTimeout(() => {
-                            // 再次强制设置一次 index，防止 openFullScreenWI 里有重置逻辑干扰
+                            // 再次强制设置一次 index
                             this.currentWiIndex = targetIndex;
-                            
+
                             const elId = `wi-item-${targetIndex}`;
                             const el = document.getElementById(elId);
                             if (el) {
@@ -228,23 +226,23 @@ export default function wiEditor() {
                     if (res.success && res.card) {
                         // 这是一个角色卡对象，character_book 在其中
                         this.editingData = res.card;
-                        
+
                         // 确保 character_book 存在
                         if (!this.editingData.character_book) {
                             this.editingData.character_book = { name: item.name || "World Info", entries: [] };
                         } else if (Array.isArray(this.editingData.character_book)) {
                             // 兼容 V2 数组
-                            this.editingData.character_book = { 
-                                name: item.name || "World Info", 
-                                entries: this.editingData.character_book 
+                            this.editingData.character_book = {
+                                name: item.name || "World Info",
+                                entries: this.editingData.character_book
                             };
                         }
 
-                        this.editingWiFile = item; 
+                        this.editingWiFile = item;
                         this.currentWiIndex = 0;
                         this.isEditingClipboard = false;
                         this.currentClipboardIndex = -1;
-                        
+
                         handleSuccess(res.card, "Embedded");
                     } else {
                         alert("无法加载关联的角色卡数据");
@@ -265,7 +263,7 @@ export default function wiEditor() {
                         // 归一化数据
                         const bookData = normalizeWiBook(res.data, "");
                         this.editingData.character_book = bookData;
-                        
+
                         this.editingWiFile = item;
                         this.currentWiIndex = 0;
                         this.isEditingClipboard = false;
@@ -295,7 +293,16 @@ export default function wiEditor() {
             }).then(res => {
                 this.isLoading = false;
                 if (res.success) {
-                    this.editingData.character_book = normalizeWiBook(res.data, item.name || "World Info");
+                    const book = normalizeWiBook(res.data, item.name || "World Info");
+                    
+                    if (Array.isArray(book.entries)) {
+                        const sessionTs = Date.now();
+                        book.entries.forEach((entry, idx) => {
+                            entry.id = `edit-${sessionTs}-${idx}`;
+                        });
+                    }
+                    
+                    this.editingData.character_book = book;
                     this.editingWiFile = item;
                     this.openFullScreenWI();
                     this.$nextTick(() => {
@@ -348,12 +355,6 @@ export default function wiEditor() {
 
             // 如果是内嵌模式，实际上应该调用 UpdateCard
             if (this.editingWiFile.type === 'embedded') {
-                // 这里我们复用 detailModal 的保存逻辑，或者触发一个事件
-                // 由于数据结构复杂，建议通过 updateCard API 保存
-                // 为了简化，这里仅提示用户保存
-                // "内嵌世界书请通过【保存角色卡】按钮进行保存"
-                // 实际上，如果是在全屏编辑器，通常会有一个“保存”按钮
-                // 我们可以构造 updateCard payload
                 alert("内嵌世界书将随角色卡自动保存 (Auto-save) 或请关闭后点击角色保存。");
                 return;
             }
@@ -382,7 +383,7 @@ export default function wiEditor() {
         saveAsGlobalWi() {
             const name = prompt("请输入新世界书名称:", this.editingData.character_book.name || "New World Book");
             if (!name) return;
-            
+
             const contentToSave = toStV3Worldbook(this.editingData.character_book, name);
             contentToSave.name = name; // 确保内部名一致
 
@@ -410,14 +411,14 @@ export default function wiEditor() {
 
         loadWiClipboard() {
             clipboardList().then(res => {
-                if (res.success) {      
+                if (res.success) {
                     // 1. 先清空，给 Alpine 一个明确的信号
                     this.wiClipboardItems = [];
-                    
+
                     // 2. 在 nextTick 中赋值，确保 DOM 准备好重绘
                     this.$nextTick(() => {
                         this.wiClipboardItems = res.items;
-                        
+
                         // 3. 强制确保侧边栏是展开的，否则用户看不到
                         if (this.wiClipboardItems.length > 0) {
                             this.showWiClipboard = true;
@@ -440,7 +441,7 @@ export default function wiEditor() {
         copyWiToClipboard(entry) {
             // 1. 确定目标数据：优先使用传入参数，否则使用当前编辑器内容
             let targetData = entry;
-            
+
             // 如果传入的是 Event 对象（点击事件），或者为空，则使用当前编辑器数据
             if (!targetData || targetData instanceof Event || (targetData.target && targetData.type)) {
                 targetData = this.activeEditorEntry;
@@ -465,7 +466,7 @@ export default function wiEditor() {
             // 注意：必须显式设置为 undefined 或 delete，防止后端复用 ID
             delete copy.id;
             delete copy.uid;
-            
+
             // 4. 确保 content 字段存在
             if (copy.content === undefined || copy.content === null) copy.content = "";
 
@@ -476,9 +477,9 @@ export default function wiEditor() {
         _addWiClipboardRequest(entry, overwriteId = null) {
             // 获取当前焦点元素
             const activeEl = document.activeElement;
-            const isSafeButton = activeEl && 
-                                 activeEl.tagName === 'BUTTON' && 
-                                 !activeEl.classList.contains('wi-list-item');
+            const isSafeButton = activeEl &&
+                activeEl.tagName === 'BUTTON' &&
+                !activeEl.classList.contains('wi-list-item');
             const originalHtml = isSafeButton ? activeEl.innerHTML : '';
             if (isSafeButton && !overwriteId) activeEl.innerHTML = '⏳...';
 
@@ -491,7 +492,7 @@ export default function wiEditor() {
                     this.wiClipboardOverwriteMode = false;
                     this.clipboardPendingEntry = null;
                     if (!this.showWiClipboard) this.showWiClipboard = true;
-                    
+
                     this.$store.global.showToast("📋 已复制到全局剪切板");
                 } else if (res.code === 'FULL') {
                     this.wiClipboardOverwriteMode = true;
@@ -509,14 +510,14 @@ export default function wiEditor() {
             const arr = this.getWIArrayRef();
             const newEntry = JSON.parse(JSON.stringify(content));
             newEntry.id = Math.floor(Math.random() * 1000000);
-            
+
             let insertPos = this.currentWiIndex + 1;
             if (insertPos > arr.length) insertPos = arr.length;
-            
+
             arr.splice(insertPos, 0, newEntry);
             this.currentWiIndex = insertPos;
             this.isEditingClipboard = false;
-            
+
             this.$nextTick(() => {
                 const item = document.querySelectorAll('.wi-list-item')[insertPos];
                 if (item) item.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -550,7 +551,7 @@ export default function wiEditor() {
             }
             this.isEditingClipboard = true;
             this.currentClipboardIndex = index;
-            this.currentWiIndex = -1; 
+            this.currentWiIndex = -1;
         },
 
         exitClipboardEdit() {
@@ -573,7 +574,7 @@ export default function wiEditor() {
 
             const arr = this.getWIArrayRef();
             const item = arr[index];
-            
+
             if (item) {
                 const exportItem = JSON.parse(JSON.stringify(item));
                 e.dataTransfer.setData('text/plain', JSON.stringify(exportItem, null, 2));
@@ -586,22 +587,22 @@ export default function wiEditor() {
             };
             target.addEventListener('dragend', cleanup, { once: true });
         },
-        
+
         wiDragOver(e, index) {
             e.preventDefault();
             const target = e.currentTarget;
             const rect = target.getBoundingClientRect();
             const midY = rect.top + rect.height / 2;
-            
+
             target.classList.remove('drag-over-top', 'drag-over-bottom');
             if (e.clientY < midY) target.classList.add('drag-over-top');
             else target.classList.add('drag-over-bottom');
         },
-        
+
         wiDragLeave(e) {
             e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
         },
-        
+
         wiDrop(e, targetIndex) {
             e.preventDefault();
             e.stopPropagation();
@@ -616,7 +617,7 @@ export default function wiEditor() {
                     const arr = this.getWIArrayRef();
                     const newEntry = JSON.parse(JSON.stringify(content));
                     newEntry.id = Math.floor(Math.random() * 1000000);
-                    
+
                     arr.splice(targetIndex, 0, newEntry);
                     this.currentWiIndex = targetIndex;
                     this.isEditingClipboard = false;
@@ -715,7 +716,7 @@ export default function wiEditor() {
 
             // 剪切板内部排序
             const isClipboardInternal = e.dataTransfer.types.includes('application/x-wi-clipboard-index');
-            
+
             if (isClipboardInternal) {
                 const sourceIdxStr = e.dataTransfer.getData('application/x-wi-clipboard-index');
                 if (sourceIdxStr) {
@@ -724,8 +725,8 @@ export default function wiEditor() {
 
                     const items = [...this.wiClipboardItems];
                     const [moved] = items.splice(sourceIdx, 1);
-                    items.push(moved); 
-                    
+                    items.push(moved);
+
                     this.wiClipboardItems = items;
                     const orderMap = items.map(i => i.db_id);
                     clipboardReorder(orderMap);
@@ -735,13 +736,13 @@ export default function wiEditor() {
                 if (this.wiDraggingIndex !== null && this.wiDraggingIndex !== undefined) {
                     const arr = this.getWIArrayRef();
                     const rawEntry = arr[this.wiDraggingIndex];
-                    
+
                     if (rawEntry) {
                         // 深拷贝
                         let entryCopy = null;
                         try {
                             entryCopy = JSON.parse(JSON.stringify(rawEntry));
-                        } catch(err) { return; }
+                        } catch (err) { return; }
                         this.copyWiToClipboard(entryCopy);
                     }
                 }
