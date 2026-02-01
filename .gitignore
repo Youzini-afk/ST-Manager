@@ -17,4 +17,6 @@ build/
 gui.log
 app.log
 
+st-external-bridge/
+
 cards_metadata.db*
