@@ -23,6 +23,10 @@
 - [功能详解](#nav-features)
   - [角色卡管理](#nav-feature-cards)
   - [世界书管理](#nav-feature-wi)
+  - [预设管理](#nav-feature-presets)
+  - [正则脚本管理](#nav-feature-regex)
+  - [ST脚本管理](#nav-feature-scripts)
+  - [快速回复管理](#nav-feature-quickreplies)
   - [自动化规则引擎](#nav-feature-automation)
 
 <a id="nav-intro"></a>
@@ -35,15 +39,17 @@ ST-Manager 是一款专为 SillyTavern AI 聊天程序设计的资源可视化�
 
 - 🎴 **角色卡管理** - 支持 PNG/JSON 格式角色卡的浏览、编辑、导入导出
 - 📚 **世界书管理** - 统一管理全局世界书、资源目录世界书和内嵌世界书
+- 📝 **预设管理** - 完整的生成参数预设管理，支持拖拽上传、三栏详情阅读器、Prompts 筛选
+- 🧩 **正则脚本管理** - 汇总展示全局正则和预设绑定正则，支持编辑和批量操作
+- 📜 **ST脚本管理** - 管理 Tavern Helper 脚本库，支持脚本解析和分类展示
+- ⚡ **快速回复管理** - 快速回复模板管理，支持分类、搜索和批量操作
 - 🤖 **自动化引擎** - 基于规则的自动化任务执行，支持复杂的条件判断
 - 🔄 **实时同步** - 文件系统自动监听，实时同步变更到数据库
 - 🎨 **可视化界面** - 现代化响应式 UI，支持暗色/亮色主题
 - 📦 **版本管理** - 支持角色卡 Bundle 多版本管理
 - 🏷️ **标签系统** - 强大的标签过滤和批量标签管理
 - 🔍 **智能搜索** - 支持名称、文件名、标签、创作者等多维度搜索
-- 📝 **预设管理** - 管理 SillyTavern 生成参数预设（JSON）并支持上传/查看
-- 🔗 **酒馆资源同步** - 从本地 SillyTavern 读取并同步角色卡、世界书、预设、正则、快速回复
-- 🧩 **正则汇总** - 支持读取全局正则与预设绑定正则并汇总展示
+- 🔗 **酒馆资源同步** - 从本地 SillyTavern 读取并同步角色卡、世界书、预设、正则、ST脚本、快速回复
 
 ---
 
@@ -428,6 +434,169 @@ python -m core.auth --add-ip 192.168.*.*
 
 ---
 
+<a id="nav-feature-presets"></a>
+
+### 预设管理
+
+ST-Manager 提供完整的 SillyTavern 生成参数预设管理功能，支持全局预设和资源目录预设的统一管理。
+
+#### 预设类型
+
+| 类型 | 说明 | 存储位置 |
+|------|------|----------|
+| **全局预设** | 适用于所有聊天的通用预设 | `data/library/presets/` |
+| **资源目录预设** | 与特定角色卡绑定的预设 | 角色资源目录内 |
+
+#### 核心功能
+
+| 功能 | 描述 |
+|------|------|
+| **网格浏览** | 卡片式网格布局，显示预设名称、来源、修改时间 |
+| **拖拽上传** | 支持拖拽 JSON 文件直接上传，自动识别预设格式 |
+| **详情阅读器** | 三栏式布局展示预设完整内容：采样器、参数、Prompts、扩展 |
+| **Prompts 管理** | 支持查看、筛选（启用/禁用/全部）角色卡的 Prompt 注入 |
+| **扩展集成** | 显示预设绑定的正则脚本和 Tavern Helper 脚本 |
+| **批量操作** | 支持删除、移动预设文件 |
+| **来源角标** | 区分 GLOBAL（全局）和 RES（资源目录）预设 |
+
+#### 支持的预设字段
+
+- **采样器参数**：temperature、top_p、top_k、repetition_penalty 等
+- **Prompts**：角色描述、世界信息、对话示例等注入内容
+- **扩展**：regex_scripts（正则脚本）、tavern_helper（ST脚本）
+
+#### 操作说明
+
+1. **上传预设**：拖拽 JSON 文件到预设网格区域，自动保存到全局预设目录
+2. **查看详情**：点击预设卡片，打开三栏式详情阅读器
+3. **筛选 Prompts**：在详情界面使用"全部/启用/禁用"筛选器查看不同状态的 Prompts
+4. **编辑扩展**：点击"高级扩展"按钮，编辑预设绑定的正则和 ST 脚本
+5. **删除预设**：在网格界面悬停显示删除按钮，或在详情界面点击删除
+
+---
+
+<a id="nav-feature-regex"></a>
+
+### 正则脚本管理
+
+统一管理 SillyTavern 的正则替换脚本（Regex Scripts），支持全局正则和资源目录正则。
+
+#### 正则脚本来源
+
+| 来源 | 说明 |
+|------|------|
+| **全局正则** | 从 SillyTavern settings.json 读取，存储为 `global__*.json` |
+| **预设绑定** | 嵌入在角色卡或预设文件中的正则脚本 |
+| **独立文件** | 存储在 `data/library/extensions/regex/` 的 JSON 文件 |
+
+#### 核心功能
+
+| 功能 | 描述 |
+|------|------|
+| **正则汇总** | API 端点 `/api/st/regex` 汇总所有来源的正则脚本 |
+| **可视化展示** | 在角色卡/预设详情页展示绑定的正则脚本列表 |
+| **编辑支持** | 通过高级编辑器修改正则脚本的查找/替换模式 |
+| **格式兼容** | 支持 SillyTavern 原生正则格式和第三方格式 |
+
+#### 正则脚本字段
+
+```json
+{
+  "id": "脚本ID",
+  "name": "脚本名称",
+  "find": "查找正则",
+  "replace": "替换内容",
+  "enabled": true,
+  "markdown_only": false,
+  "prompt_only": false,
+  "run_on_edit": false
+}
+```
+
+---
+
+<a id="nav-feature-scripts"></a>
+
+### ST脚本管理
+
+管理 SillyTavern 的 Tavern Helper 脚本（原名 ST-Scripts），支持脚本库的统一管理。
+
+#### 脚本类型
+
+| 类型 | 说明 |
+|------|------|
+| **脚本库** | 通过 `//<prefix>:` 语法定义的脚本集合 |
+| **变量脚本** | 使用 `//<base>` 定义的基础脚本 |
+| **触发脚本** | 使用 `//<button>` 定义的按钮触发脚本 |
+
+#### 核心功能
+
+| 功能 | 描述 |
+|------|------|
+| **脚本解析** | 自动解析脚本文件的 prefix、base、button 定义 |
+| **列表展示** | 在角色卡/预设详情页展示绑定的脚本列表 |
+| **编辑支持** | 通过高级编辑器查看和修改脚本内容 |
+| **存储管理** | 支持存储在 `data/library/extensions/tavern_helper/` |
+
+#### 脚本格式示例
+
+```javascript
+//<prefix>:我的脚本库
+//<base>:基础响应模板
+//<button>:打招呼|sayHello
+function sayHello() {
+  return "你好！";
+}
+```
+
+---
+
+<a id="nav-feature-quickreplies"></a>
+
+### 快速回复管理
+
+管理 SillyTavern 的快速回复（Quick Replies），支持模板管理和分类浏览。
+
+#### 快速回复类型
+
+| 类型 | 说明 |
+|------|------|
+| **全局快速回复** | 适用于所有聊天的通用模板 |
+| **角色专用** | 与特定角色卡绑定的快速回复 |
+| **预设绑定** | 嵌入在预设文件中的快速回复配置 |
+
+#### 核心功能
+
+| 功能 | 描述 |
+|------|------|
+| **列表浏览** | 网格/列表视图展示快速回复模板 |
+| **内容查看** | 查看快速回复的标题、消息内容、快捷键 |
+| **导入导出** | 支持 JSON 格式的导入导出 |
+| **搜索过滤** | 按名称、内容、标签搜索快速回复 |
+| **批量管理** | 批量删除、移动、分类快速回复 |
+
+#### 快速回复字段
+
+```json
+{
+  "label": "显示标签",
+  "message": "回复消息内容",
+  "title": "悬停提示",
+  "shortcut": "快捷键",
+  "inject": true,
+  "hidden": false
+}
+```
+
+#### 界面特性
+
+- **标签分类**：按功能分类（问候、动作、表情等）
+- **图标显示**：根据内容自动匹配 Emoji 图标
+- **快捷预览**：卡片形式展示消息内容预览
+- **拖拽排序**：支持拖拽调整快速回复顺序
+
+---
+
 <a id="nav-feature-automation"></a>
 
 ### 自动化规则引擎
@@ -513,26 +682,6 @@ ST-Manager 内置强大的规则引擎，支持基于条件的自动化任务执
 - `set_resource_folder` - 设置资源目录
 
 ---
-
-### 扩展脚本管理
-
-支持管理 SillyTavern 的扩展脚本：
-
-#### 正则脚本（Regex Scripts）
-- 浏览和编辑正则替换脚本
-- 支持批量导入导出
-
-#### Tavern Helper 脚本
-- 管理 Tavern Helper 脚本库
-- 支持变量和脚本配置
-
-#### 快速回复（Quick Replies）
-- 快速回复模板管理
-- 支持分类和搜索
-
-#### 预设（Presets）
-- 管理生成参数预设（JSON）
-- 支持拖拽上传、查看与基础信息展示
 
 ### SillyTavern 本地资源读取与同步
 
@@ -655,6 +804,108 @@ Content-Type: application/json
 
 ```
 GET /api/st/regex
+```
+
+### 预设 API
+
+#### 获取预设列表
+
+```
+GET /api/presets/list?filter_type=all&search=
+```
+
+参数：
+- `filter_type`: `all` | `global` | `resource` - 筛选类型
+- `search`: 搜索关键词
+
+#### 获取预设详情
+
+```
+GET /api/presets/detail/{preset_id}
+```
+
+#### 上传预设
+
+```
+POST /api/presets/upload
+Content-Type: multipart/form-data
+
+files: [preset1.json, preset2.json]
+```
+
+#### 删除预设
+
+```
+POST /api/presets/delete
+Content-Type: application/json
+
+{
+  "id": "preset_id"
+}
+```
+
+#### 保存预设扩展
+
+```
+POST /api/presets/save-extensions
+Content-Type: application/json
+
+{
+  "id": "preset_id",
+  "extensions": {
+    "regex_scripts": [...],
+    "tavern_helper": { "scripts": [...] }
+  }
+}
+```
+
+### 快速回复 API
+
+#### 获取快速回复列表
+
+```
+GET /api/quick-replies/list?type=all&search=
+```
+
+#### 获取快速回复详情
+
+```
+GET /api/quick-replies/detail/{qr_id}
+```
+
+#### 上传快速回复
+
+```
+POST /api/quick-replies/upload
+Content-Type: multipart/form-data
+
+files: [quickreply1.json]
+```
+
+### 正则脚本 API
+
+#### 获取正则脚本列表
+
+```
+GET /api/regex/list?source=all
+```
+
+参数：
+- `source`: `all` | `global` | `preset` | `character` - 脚本来源
+
+#### 保存正则脚本
+
+```
+POST /api/regex/save
+Content-Type: application/json
+
+{
+  "id": "regex_id",
+  "name": "脚本名称",
+  "find": "查找模式",
+  "replace": "替换内容",
+  "enabled": true
+}
 ```
 
 ### 自动化 API
