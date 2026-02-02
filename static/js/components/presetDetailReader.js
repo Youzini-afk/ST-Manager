@@ -60,9 +60,61 @@ export default function presetDetailReader() {
         
         openAdvancedExtensions() {
             if (!this.activePresetDetail) return;
-            window.dispatchEvent(new CustomEvent('open-advanced-extensions', {
-                detail: this.activePresetDetail
+            
+            // 准备extensions数据结构
+            const extensions = this.activePresetDetail.extensions || {};
+            const regex_scripts = extensions.regex_scripts || [];
+            const tavern_helper = extensions.tavern_helper || { scripts: [] };
+            
+            // 构造editingData，与角色卡详情页保持一致
+            const editingData = {
+                extensions: {
+                    regex_scripts: regex_scripts,
+                    tavern_helper: tavern_helper
+                }
+            };
+            
+            // 触发高级编辑器事件
+            window.dispatchEvent(new CustomEvent('open-advanced-editor', {
+                detail: editingData
             }));
+            
+            // 监听保存事件，将修改后的extensions保存回预设
+            const saveHandler = (e) => {
+                if (e.detail && e.detail.extensions) {
+                    this.savePresetExtensions(e.detail.extensions);
+                }
+                window.removeEventListener('advanced-editor-save', saveHandler);
+            };
+            window.addEventListener('advanced-editor-save', saveHandler);
+        },
+        
+        // 保存extensions到预设文件
+        async savePresetExtensions(extensions) {
+            if (!this.activePresetDetail) return;
+            
+            try {
+                const resp = await fetch('/api/presets/save-extensions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: this.activePresetDetail.id,
+                        extensions: extensions
+                    })
+                });
+                
+                const res = await resp.json();
+                if (res.success) {
+                    this.$store.global.showToast('扩展已保存');
+                    // 刷新详情
+                    this.openPreset({ id: this.activePresetDetail.id });
+                } else {
+                    this.$store.global.showToast(res.msg || '保存失败', 'error');
+                }
+            } catch (e) {
+                console.error('Failed to save preset extensions:', e);
+                this.$store.global.showToast('保存失败', 'error');
+            }
         },
         
         // 格式化参数值
