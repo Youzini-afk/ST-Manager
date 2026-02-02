@@ -4,6 +4,16 @@ import threading
 import webbrowser
 import platform
 
+# 设置 UTF-8 输出编码，支持 emoji 显示（兼容 Windows）
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except AttributeError:
+        import codecs
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+
 # 确保在 PyInstaller 打包环境下也能正确找到资源
 if getattr(sys, 'frozen', False):
     os.chdir(os.path.dirname(sys.executable))
@@ -27,7 +37,7 @@ if __name__ == '__main__':
     if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
         if not is_port_available(server_port, server_host):
             print(f"\n{'='*60}")
-            print(f"[错误] 启动失败：地址 {server_host}:{server_port} 已被占用！")
+            print(f"❌ 启动失败：地址 {server_host}:{server_port} 已被占用！")
             print(f"{'='*60}")
             print(f"可能的原因：")
             print(f"1. 另一个 ST Manager 实例已经在运行中。")
@@ -65,9 +75,9 @@ if __name__ == '__main__':
             pass
 
     # 5. 创建并运行 Flask 应用
-    print(f"[启动] 服务器已启动: http://{server_host}:{server_port}")
+    print(f"🚀 服务器已启动: http://{server_host}:{server_port}")
     if debug_mode:
-        print(f"[DEBUG] Debug 模式: 开启 (Hot Reload enabled)")
+        print(f"🔧 Debug 模式: 开启 (Hot Reload enabled)")
     
     app = create_app()
     
@@ -77,9 +87,9 @@ if __name__ == '__main__':
         app.run(debug=debug_mode, host=server_host, port=server_port, use_reloader=debug_mode)
     except OSError as e:
         if "Address already in use" in str(e):
-            print(f"[错误] 端口 {server_port} 被占用。")
+            print(f"❌ 端口 {server_port} 被占用。")
         else:
-            print(f"[错误] 服务器异常退出: {e}")
+            print(f"❌ 服务器异常退出: {e}"))
         
         if platform.system() == "Windows":
             os.system("pause")
