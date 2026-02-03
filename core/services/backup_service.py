@@ -22,14 +22,14 @@ logger = logging.getLogger(__name__)
 class BackupService:
     """备份服务"""
     
-    # 支持的资源类型及其对应的酒馆目录（相对于 st_data_path）
-    RESOURCE_DIRS = {
-        'characters': 'characters',
-        'worldbooks': 'worlds',
-        'presets': 'OpenAI Settings',  # 预设目录
-        'regexes': 'scripts/extensions/regex',
-        'scripts': 'scripts/extensions/tavern_helper',
-        'quickreplies': 'scripts/extensions/quick-replies',
+    # 资源类型与配置键的映射
+    RESOURCE_CONFIG_KEYS = {
+        'characters': 'cards_dir',
+        'worldbooks': 'world_info_dir',
+        'presets': 'presets_dir',
+        'regexes': 'regex_dir',
+        'scripts': 'scripts_dir',
+        'quickreplies': 'quick_replies_dir',
     }
     
     def __init__(self):
@@ -108,12 +108,16 @@ class BackupService:
         """
         with self._lock:
             try:
-                st_data_path = self._get_st_data_path()
-                if not st_data_path or not os.path.exists(st_data_path):
-                    return {
-                        'success': False,
-                        'error': f'酒馆数据目录不存在: {st_data_path}'
-                    }
+                config = load_config()
+                from core.config import BASE_DIR
+                
+                def resolve_path(path):
+                    """将相对路径转为绝对路径"""
+                    if not path:
+                        return ''
+                    if os.path.isabs(path):
+                        return path
+                    return os.path.join(BASE_DIR, path)
                 
                 # 确定备份目录
                 target_root = backup_path or self._get_backup_path()
@@ -125,18 +129,20 @@ class BackupService:
                 
                 # 确定要备份的资源
                 if resources is None:
-                    resources = list(self.RESOURCE_DIRS.keys())
+                    resources = list(self.RESOURCE_CONFIG_KEYS.keys())
                 
                 total_files = 0
                 total_size = 0
                 backed_up_resources = []
                 
                 for res_type in resources:
-                    if res_type not in self.RESOURCE_DIRS:
+                    if res_type not in self.RESOURCE_CONFIG_KEYS:
                         logger.warning(f"未知资源类型: {res_type}")
                         continue
                     
-                    source_dir = os.path.join(st_data_path, self.RESOURCE_DIRS[res_type])
+                    # 从配置获取目录路径
+                    config_key = self.RESOURCE_CONFIG_KEYS[res_type]
+                    source_dir = resolve_path(config.get(config_key, ''))
                     target_dir = os.path.join(backup_dir, res_type)
                     
                     if not os.path.exists(source_dir):
@@ -307,16 +313,20 @@ class BackupService:
                     'message': f'备份不存在: {backup_id}'
                 }
             
-            st_data_path = self._get_st_data_path()
-            if not st_data_path:
-                return {
-                    'success': False,
-                    'message': '未配置酒馆数据目录'
-                }
+            config = load_config()
+            from core.config import BASE_DIR
+            
+            def resolve_path(path):
+                """将相对路径转为绝对路径"""
+                if not path:
+                    return ''
+                if os.path.isabs(path):
+                    return path
+                return os.path.join(BASE_DIR, path)
             
             # 读取元数据
             metadata_path = os.path.join(backup_dir, 'metadata.json')
-            resources = list(self.RESOURCE_DIRS.keys())
+            resources = list(self.RESOURCE_CONFIG_KEYS.keys())
             
             if os.path.exists(metadata_path):
                 with open(metadata_path, 'r', encoding='utf-8') as f:
@@ -330,7 +340,13 @@ class BackupService:
                 if not os.path.exists(source_dir):
                     continue
                 
-                target_dir = os.path.join(st_data_path, self.RESOURCE_DIRS.get(res_type, res_type))
+                # 从配置获取目标目录
+                config_key = self.RESOURCE_CONFIG_KEYS.get(res_type)
+                if not config_key:
+                    continue
+                target_dir = resolve_path(config.get(config_key, ''))
+                if not target_dir:
+                    continue
                 
                 # 备份当前数据（防止意外）
                 if os.path.exists(target_dir):
