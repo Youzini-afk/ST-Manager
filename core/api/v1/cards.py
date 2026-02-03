@@ -553,7 +553,17 @@ def api_update_card():
                     'link': new_link,
                     'resource_folder': new_resource_folder
                 }
-                if set_version_remark(ui_data, ui_key, target_version_id, remark_data):
+                # 获取封面ID用于向后兼容
+                bundle_dir = data.get('bundle_dir')
+                cover_id = None
+                if bundle_dir and bundle_dir in ctx.cache.bundle_map:
+                    main_bundle_id = ctx.cache.bundle_map[bundle_dir]
+                    if main_bundle_id in ctx.cache.id_map:
+                        bundle_card = ctx.cache.id_map[main_bundle_id]
+                        if bundle_card.get('versions'):
+                            cover_id = bundle_card['versions'][0]['id']
+
+                if set_version_remark(ui_data, ui_key, target_version_id, remark_data, cover_id):
                     ui_changed = True
             else:
                 if ui_data[ui_key].get('summary', '') != new_summary:
@@ -721,6 +731,7 @@ def api_update_card():
                     bundle_card['bundle_dir'] = bundle_dir
 
                     bundle_card['versions'] = []
+                    cover_id = version_list[0]['id']  # 提前定义封面ID供循环使用
                     for v in version_list:
                         ver_info = {
                             "id": v['id'],
@@ -728,7 +739,7 @@ def api_update_card():
                             "last_modified": v['last_modified'],
                             "char_version": v.get('char_version', '')
                         }
-                        ver_remark = get_version_remark(ui_data, bundle_dir, v['id'])
+                        ver_remark = get_version_remark(ui_data, bundle_dir, v['id'], cover_id)
                         if ver_remark:
                             ver_info['ui_summary'] = ver_remark.get('summary', '')
                             ver_info['source_link'] = ver_remark.get('link', '')
@@ -737,9 +748,8 @@ def api_update_card():
 
                     ui_info = ui_data.get(bundle_dir, {})
 
-                    cover_id = version_list[0]['id']
                     # 总是重新获取 cover 的备注，不使用可能包含非主版本备注的 ui_summary_val
-                    cover_remark = get_version_remark(ui_data, bundle_dir, cover_id)
+                    cover_remark = get_version_remark(ui_data, bundle_dir, cover_id, cover_id)
                     if cover_remark:
                         bundle_card['ui_summary'] = cover_remark.get('summary', '')
                         bundle_card['source_link'] = cover_remark.get('link', '')
@@ -2017,6 +2027,8 @@ def api_toggle_bundle_mode():
             
             # 3.3 迁移各版本的 summary 到版本级别
             from core.data.ui_store import set_version_remark
+            # 封面是第一个卡片（已按修改时间排序）
+            cover_id = cards_in_dir[0]['id'] if cards_in_dir else None
             for c in cards_in_dir:
                 version_id = c['id']
                 old_ui = c['ui']
@@ -2027,7 +2039,7 @@ def api_toggle_bundle_mode():
                         'link': '',  # link 和 resource_folder 由 bundle 全局提供
                         'resource_folder': ''
                     }
-                    if set_version_remark(ui_data, folder_path, version_id, version_remark):
+                    if set_version_remark(ui_data, folder_path, version_id, version_remark, cover_id):
                         pass  # set_version_remark 已经修改了 ui_data
             
             # 保存 bundle 的全局 UI 数据（包含 link 和 resource_folder）
@@ -2303,7 +2315,16 @@ def api_get_card_detail():
             is_version_of_bundle = True
 
         if is_version_of_bundle:
-            ver_remark = get_version_remark(ui_data, parent_dir, card_id)
+            # 获取 bundle 的封面ID以支持向后兼容
+            cover_id = None
+            if parent_dir in ctx.cache.bundle_map:
+                main_bundle_id = ctx.cache.bundle_map[parent_dir]
+                if main_bundle_id in ctx.cache.id_map:
+                    bundle_card = ctx.cache.id_map[main_bundle_id]
+                    if bundle_card.get('versions'):
+                        cover_id = bundle_card['versions'][0]['id']
+
+            ver_remark = get_version_remark(ui_data, parent_dir, card_id, cover_id)
             if ver_remark:
                 card_data['ui_summary'] = ver_remark.get('summary', '')
                 card_data['source_link'] = ver_remark.get('link', '')

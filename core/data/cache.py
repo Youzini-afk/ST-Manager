@@ -397,6 +397,7 @@ class GlobalMetadataCache:
                     bundle_card['bundle_dir'] = dir_path
 
                     bundle_card['versions'] = []
+                    cover_id = latest_card['id']
                     for v in version_list:
                         ver_info = {
                             "id": v['id'],
@@ -404,7 +405,7 @@ class GlobalMetadataCache:
                             "last_modified": v['last_modified'],
                             "char_version": v.get('char_version', '')
                         }
-                        ver_remark = get_version_remark(ui_data, dir_path, v['id'])
+                        ver_remark = get_version_remark(ui_data, dir_path, v['id'], cover_id)
                         if ver_remark:
                             ver_info['ui_summary'] = ver_remark.get('summary', '')
                             ver_info['source_link'] = ver_remark.get('link', '')
@@ -494,7 +495,7 @@ class GlobalMetadataCache:
         if is_bundle and ui_info:
             cover_id = card.get('id')
             if cover_id:
-                cover_remark = get_version_remark(ui_data, key, cover_id)
+                cover_remark = get_version_remark(ui_data, key, cover_id, cover_id)
                 if cover_remark:
                     card['ui_summary'] = cover_remark.get('summary', '')
                     card['source_link'] = cover_remark.get('link', '')

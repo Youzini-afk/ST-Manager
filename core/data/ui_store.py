@@ -67,15 +67,19 @@ def save_ui_data(data):
         logger.error(f"保存 ui_data.json 失败: {e}")
         return False
 
-def get_version_remark(ui_data, ui_key, version_id):
+def get_version_remark(ui_data, ui_key, version_id, cover_id=None):
     """
     获取指定版本的备注信息（仅 summary 是版本独立的）。
     link 和 resource_folder 从 bundle 全局获取。
+    
+    向后兼容：如果没有 _version_remarks 且根上有 summary，
+    当请求的 version_id 是封面（cover_id）时，返回根上的 summary。
 
     Args:
         ui_data: UI 数据字典
         ui_key: UI 键 (卡片 ID 或 bundle_dir)
         version_id: 版本 ID
+        cover_id: 封面版本 ID（可选），用于向后兼容旧格式
 
     Returns:
         dict: 包含 summary, link, resource_folder 的字典，如果不存在返回空字典
@@ -87,9 +91,16 @@ def get_version_remark(ui_data, ui_key, version_id):
     result = {}
 
     # 1. 从版本级别获取 summary（版本独立）
+    has_version_remark = False
     if VERSION_REMARKS_KEY in entry and version_id in entry[VERSION_REMARKS_KEY]:
         version_data = entry[VERSION_REMARKS_KEY][version_id]
         result['summary'] = version_data.get('summary', '')
+        has_version_remark = True
+    
+    # 向后兼容：如果没有版本级别的备注，且这是封面版本，使用根上的 summary
+    if not has_version_remark and cover_id and version_id == cover_id:
+        if 'summary' in entry:
+            result['summary'] = entry['summary']
 
     # 2. 从 bundle 全局获取 link 和 resource_folder（共享）
     result['link'] = entry.get('link', '')
@@ -97,16 +108,19 @@ def get_version_remark(ui_data, ui_key, version_id):
 
     return result
 
-def set_version_remark(ui_data, ui_key, version_id, remark_data):
+def set_version_remark(ui_data, ui_key, version_id, remark_data, cover_id=None):
     """
     设置指定版本的备注信息（仅 summary 是版本独立的）。
     link 和 resource_folder 存储在 bundle 全局级别。
+    
+    向后兼容：如果根上有 summary 且这是封面版本，自动迁移到 _version_remarks。
 
     Args:
         ui_data: UI 数据字典 (会被直接修改)
         ui_key: UI 键 (卡片 ID 或 bundle_dir)
         version_id: 版本 ID
         remark_data: 包含 summary, link, resource_folder 的字典
+        cover_id: 封面版本 ID（可选），用于向后兼容旧格式
 
     Returns:
         bool: 是否需要保存
@@ -116,6 +130,17 @@ def set_version_remark(ui_data, ui_key, version_id, remark_data):
 
     entry = ui_data[ui_key]
     changed = False
+
+    # 向后兼容：如果根上有 summary 且这是封面版本，自动迁移
+    if 'summary' in entry and cover_id and version_id == cover_id:
+        if VERSION_REMARKS_KEY not in entry:
+            entry[VERSION_REMARKS_KEY] = {}
+        # 只有当封面版本还没有备注时，才迁移根上的 summary
+        if cover_id not in entry[VERSION_REMARKS_KEY]:
+            entry[VERSION_REMARKS_KEY][cover_id] = {'summary': entry['summary']}
+            changed = True
+        # 删除根上的 summary（已迁移到新格式）
+        del entry['summary']
 
     # 1. 处理版本级别的 summary
     if VERSION_REMARKS_KEY not in entry:
