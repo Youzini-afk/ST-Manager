@@ -54,23 +54,41 @@ def get_stats():
             'regexScripts': 0
         }
         
-        # 从缓存获取统计
-        if ctx.cache:
-            # 角色卡数量
-            cards = ctx.cache.get_all_cards()
-            stats['characters'] = len(cards) if cards else 0
-            
-            # 世界书数量
-            wis = ctx.cache.get_all_world_infos()
-            stats['worldbooks'] = len(wis) if wis else 0
-            
-            # 预设数量
-            presets = ctx.cache.get_all_presets()
-            stats['presets'] = len(presets) if presets else 0
-            
-            # 正则脚本数量
-            regexes = ctx.cache.get_all_regex_scripts()
-            stats['regexScripts'] = len(regexes) if regexes else 0
+        # 从缓存获取角色卡数量
+        if ctx.cache and ctx.cache.cards:
+            stats['characters'] = len(ctx.cache.cards)
+        
+        # 世界书、预设、正则脚本使用文件系统统计
+        config = load_config()
+        
+        # 获取项目根目录（用于处理相对路径）
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        
+        def resolve_path(path):
+            """将相对路径转为绝对路径"""
+            if not path:
+                return ''
+            if os.path.isabs(path):
+                return path
+            return os.path.join(base_dir, path)
+        
+        # 世界书数量
+        world_info_dir = resolve_path(config.get('world_info_dir', ''))
+        if world_info_dir and os.path.isdir(world_info_dir):
+            wi_files = [f for f in os.listdir(world_info_dir) if f.endswith('.json')]
+            stats['worldbooks'] = len(wi_files)
+        
+        # 预设数量
+        presets_dir = resolve_path(config.get('presets_dir', ''))
+        if presets_dir and os.path.isdir(presets_dir):
+            preset_files = [f for f in os.listdir(presets_dir) if f.endswith('.json')]
+            stats['presets'] = len(preset_files)
+        
+        # 正则脚本数量
+        regex_dir = resolve_path(config.get('regex_dir', ''))
+        if regex_dir and os.path.isdir(regex_dir):
+            regex_files = [f for f in os.listdir(regex_dir) if f.endswith('.json')]
+            stats['regexScripts'] = len(regex_files)
         
         return jsonify(stats)
     except Exception as e:
@@ -80,6 +98,87 @@ def get_stats():
             'worldbooks': 0,
             'presets': 0,
             'regexScripts': 0
+        }), 500
+
+
+# ============ 正则脚本接口 ============
+
+@bp.route('/regex/list', methods=['GET'])
+def list_regex_scripts():
+    """
+    获取正则脚本列表
+    
+    返回:
+    {
+        "success": true,
+        "items": [
+            {"name": "script1.json", "enabled": true, ...},
+            ...
+        ]
+    }
+    """
+    try:
+        config = load_config()
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        
+        regex_dir = config.get('regex_dir', '')
+        if regex_dir and not os.path.isabs(regex_dir):
+            regex_dir = os.path.join(base_dir, regex_dir)
+        
+        items = []
+        if regex_dir and os.path.isdir(regex_dir):
+            for f in os.listdir(regex_dir):
+                if not f.endswith('.json'):
+                    continue
+                full_path = os.path.join(regex_dir, f)
+                if not os.path.isfile(full_path):
+                    continue
+                
+                try:
+                    with open(full_path, 'r', encoding='utf-8') as fp:
+                        data = json.load(fp)
+                    
+                    # 可能是单个脚本或脚本数组
+                    if isinstance(data, list):
+                        for script in data:
+                            items.append({
+                                'id': script.get('id', f),
+                                'name': script.get('scriptName', f.replace('.json', '')),
+                                'enabled': script.get('disabled', False) == False,
+                                'findRegex': script.get('findRegex', ''),
+                                'replaceString': script.get('replaceString', ''),
+                                'filename': f
+                            })
+                    else:
+                        items.append({
+                            'id': data.get('id', f),
+                            'name': data.get('scriptName', f.replace('.json', '')),
+                            'enabled': data.get('disabled', False) == False,
+                            'findRegex': data.get('findRegex', ''),
+                            'replaceString': data.get('replaceString', ''),
+                            'filename': f
+                        })
+                except Exception as parse_err:
+                    logger.warning(f"解析正则脚本失败 {f}: {parse_err}")
+                    items.append({
+                        'id': f,
+                        'name': f.replace('.json', ''),
+                        'enabled': False,
+                        'filename': f,
+                        'error': str(parse_err)
+                    })
+        
+        return jsonify({
+            'success': True,
+            'items': items,
+            'count': len(items)
+        })
+    except Exception as e:
+        logger.error(f"获取正则脚本列表失败: {e}")
+        return jsonify({
+            'success': False,
+            'items': [],
+            'error': str(e)
         }), 500
 
 
