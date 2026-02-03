@@ -4,19 +4,21 @@ import logging
 import threading
 import traceback
 import mimetypes
-from flask import Flask
+from flask import Flask, request
 
 # === 基础设施 ===
-from core.config import INTERNAL_DIR, BASE_DIR, TEMP_DIR
+from core.config import INTERNAL_DIR, BASE_DIR, TEMP_DIR, load_config
 from core.context import ctx
 from core.auth import init_auth
 
 # === 数据与服务 ===
 from core.data.db_session import init_database, close_connection, backfill_wi_metadata
 from core.services.scan_service import start_background_scanner
+from core.services.backup_service import backup_service
 
 # === API 蓝图 ===
 from core.api.v1 import cards, world_info, system, resources, automation, extensions, presets, st_sync
+from core.api.v2 import register_v2_blueprints
 from core.api import views
 
 logger = logging.getLogger(__name__)
@@ -51,8 +53,35 @@ def create_app():
     # 2. 页面视图
     app.register_blueprint(views.bp)       # 前端页面入口
     
-    # 3. 初始化外网访问认证
+    # 3. API v2 (插件通信接口)
+    register_v2_blueprints(app)
+    
+    # 4. 初始化外网访问认证
     init_auth(app)
+    
+    # 5. 配置 CORS (允许酒馆插件跨域访问)
+    @app.after_request
+    def add_cors_headers(response):
+        config = load_config()
+        cors_config = config.get('cors', {})
+        
+        if cors_config.get('enabled', True):
+            # 允许的来源
+            origins = cors_config.get('origins', ['*'])
+            origin = request.headers.get('Origin', '')
+            
+            if '*' in origins or origin in origins:
+                response.headers['Access-Control-Allow-Origin'] = origin or '*'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+        
+        return response
+    
+    # 处理 OPTIONS 预检请求
+    @app.route('/<path:path>', methods=['OPTIONS'])
+    def handle_options(path):
+        return '', 204
     
     return app
 
@@ -114,6 +143,9 @@ def init_services():
         # 4. 启动文件系统扫描器
         # 负责监听文件变动并同步到数据库
         start_background_scanner()
+        
+        # 5. 启动定时备份服务
+        backup_service.start_scheduler()
         
         # 初始化完成
         ctx.set_status(status="ready", message="服务已就绪")

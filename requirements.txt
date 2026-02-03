@@ -2,3 +2,6 @@ Flask>=2.0.0
 Pillow>=9.0.0
 requests>=2.28.0
 watchdog>=2.1.0
+
+# 可选依赖 - 定时备份功能
+apscheduler>=3.10.0
