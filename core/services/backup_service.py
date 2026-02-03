@@ -22,14 +22,14 @@ logger = logging.getLogger(__name__)
 class BackupService:
     """备份服务"""
     
-    # 支持的资源类型及其对应的酒馆目录
+    # 支持的资源类型及其对应的酒馆目录（相对于 st_data_path）
     RESOURCE_DIRS = {
         'characters': 'characters',
         'worldbooks': 'worlds',
         'presets': 'OpenAI Settings',  # 预设目录
-        'regexes': 'regex',
-        'scripts': 'scripts',
-        'quickreplies': 'QuickReplies',
+        'regexes': 'scripts/extensions/regex',
+        'scripts': 'scripts/extensions/tavern_helper',
+        'quickreplies': 'scripts/extensions/quick-replies',
     }
     
     def __init__(self):
@@ -65,10 +65,15 @@ class BackupService:
         config = load_config()
         st_path = config.get('st_data_path', '')
         if not st_path:
-            # 尝试从 CARDS_FOLDER 推断
-            cards_folder = config.get('CARDS_FOLDER', '')
-            if cards_folder:
-                st_path = str(Path(cards_folder).parent)
+            # 尝试从 cards_dir 推断 (data/default-user/characters -> data/default-user)
+            cards_dir = config.get('cards_dir', '')
+            if cards_dir:
+                # 如果是相对路径，转为绝对路径
+                if not os.path.isabs(cards_dir):
+                    from core.config import BASE_DIR
+                    cards_dir = os.path.join(BASE_DIR, cards_dir)
+                # 从 characters 目录向上两级得到 data/default-user
+                st_path = str(Path(cards_dir).parent)
         return st_path
     
     def _get_backup_path(self) -> str:
