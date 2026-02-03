@@ -34,12 +34,12 @@ for d in [DATA_DIR, SYSTEM_DIR, DB_FOLDER, THUMB_FOLDER, TRASH_FOLDER, TEMP_DIR]
 
 # 默认配置
 DEFAULT_CONFIG = {
-    "cards_dir": "data/library/characters",
-    "world_info_dir": "data/library/lorebooks",
-    "presets_dir": "data/library/presets",
-    "regex_dir": "data/library/extensions/regex",
-    "scripts_dir": "data/library/extensions/tavern_helper",
-    "quick_replies_dir": "data/library/extensions/quick-replies", 
+    "cards_dir": "data/default-user/characters",
+    "world_info_dir": "data/default-user/worlds",
+    "presets_dir": "data/default-user/OpenAI Settings",
+    "regex_dir": "data/default-user/scripts/extensions/regex",
+    "scripts_dir": "data/default-user/scripts/extensions/tavern_helper",
+    "quick_replies_dir": "data/default-user/scripts/extensions/quick-replies", 
     "default_sort": "date_desc",
     "theme_accent": "blue",
     "host": "127.0.0.1",
