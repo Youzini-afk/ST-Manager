@@ -12,6 +12,7 @@ from flask import Blueprint, request, jsonify
 
 from core.config import load_config
 from core.services.backup_service import backup_service
+from core.context import ctx
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,58 @@ def health_check():
         'version': '2.0.0',
         'timestamp': datetime.now().isoformat()
     })
+
+
+# ============ 统计接口 ============
+
+@bp.route('/stats', methods=['GET'])
+def get_stats():
+    """
+    获取资源统计信息
+    
+    返回:
+    {
+        "characters": 42,
+        "worldbooks": 10,
+        "presets": 5,
+        "regexScripts": 3
+    }
+    """
+    try:
+        stats = {
+            'characters': 0,
+            'worldbooks': 0,
+            'presets': 0,
+            'regexScripts': 0
+        }
+        
+        # 从缓存获取统计
+        if ctx.cache:
+            # 角色卡数量
+            cards = ctx.cache.get_all_cards()
+            stats['characters'] = len(cards) if cards else 0
+            
+            # 世界书数量
+            wis = ctx.cache.get_all_world_infos()
+            stats['worldbooks'] = len(wis) if wis else 0
+            
+            # 预设数量
+            presets = ctx.cache.get_all_presets()
+            stats['presets'] = len(presets) if presets else 0
+            
+            # 正则脚本数量
+            regexes = ctx.cache.get_all_regex_scripts()
+            stats['regexScripts'] = len(regexes) if regexes else 0
+        
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"获取统计信息失败: {e}")
+        return jsonify({
+            'characters': 0,
+            'worldbooks': 0,
+            'presets': 0,
+            'regexScripts': 0
+        }), 500
 
 
 # ============ 备份相关接口 ============
