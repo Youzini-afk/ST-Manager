@@ -69,7 +69,8 @@ def save_ui_data(data):
 
 def get_version_remark(ui_data, ui_key, version_id):
     """
-    获取指定版本的备注信息。
+    获取指定版本的备注信息（仅 summary 是版本独立的）。
+    link 和 resource_folder 从 bundle 全局获取。
 
     Args:
         ui_data: UI 数据字典
@@ -83,15 +84,23 @@ def get_version_remark(ui_data, ui_key, version_id):
         return {}
 
     entry = ui_data[ui_key]
+    result = {}
 
+    # 1. 从版本级别获取 summary（版本独立）
     if VERSION_REMARKS_KEY in entry and version_id in entry[VERSION_REMARKS_KEY]:
-        return entry[VERSION_REMARKS_KEY][version_id]
+        version_data = entry[VERSION_REMARKS_KEY][version_id]
+        result['summary'] = version_data.get('summary', '')
 
-    return {}
+    # 2. 从 bundle 全局获取 link 和 resource_folder（共享）
+    result['link'] = entry.get('link', '')
+    result['resource_folder'] = entry.get('resource_folder', '')
+
+    return result
 
 def set_version_remark(ui_data, ui_key, version_id, remark_data):
     """
-    设置指定版本的备注信息。
+    设置指定版本的备注信息（仅 summary 是版本独立的）。
+    link 和 resource_folder 存储在 bundle 全局级别。
 
     Args:
         ui_data: UI 数据字典 (会被直接修改)
@@ -106,22 +115,38 @@ def set_version_remark(ui_data, ui_key, version_id, remark_data):
         ui_data[ui_key] = {}
 
     entry = ui_data[ui_key]
+    changed = False
 
+    # 1. 处理版本级别的 summary
     if VERSION_REMARKS_KEY not in entry:
         entry[VERSION_REMARKS_KEY] = {}
 
     old_remark = entry[VERSION_REMARKS_KEY].get(version_id, {})
-    if old_remark == remark_data:
-        return False
+    new_summary = remark_data.get('summary', '')
 
-    # 存储副本而不是引用，避免外部修改污染已存储的数据
-    entry[VERSION_REMARKS_KEY][version_id] = remark_data.copy()
-    return True
+    if old_remark.get('summary', '') != new_summary:
+        entry[VERSION_REMARKS_KEY][version_id] = {'summary': new_summary}
+        changed = True
+
+    # 2. 处理 bundle 全局的 link 和 resource_folder
+    new_link = remark_data.get('link', '')
+    new_resource_folder = remark_data.get('resource_folder', '')
+
+    if entry.get('link', '') != new_link:
+        entry['link'] = new_link
+        changed = True
+
+    if entry.get('resource_folder', '') != new_resource_folder:
+        entry['resource_folder'] = new_resource_folder
+        changed = True
+
+    return changed
 
 def migrate_version_remark_to_standalone(ui_data, bundle_dir, version_id):
     """
     将 bundle 下的版本备注迁移为独立卡片的备注。
     用于取消聚合或删除 bundle 时。
+    注意：summary 从版本级别获取，link 和 resource_folder 从 bundle 全局获取。
 
     Args:
         ui_data: UI 数据字典
@@ -135,16 +160,30 @@ def migrate_version_remark_to_standalone(ui_data, bundle_dir, version_id):
         return False
 
     entry = ui_data[bundle_dir]
+    migrated_data = {}
+    has_data = False
 
-    if VERSION_REMARKS_KEY not in entry:
-        return False
+    # 1. 从版本级别获取 summary
+    if VERSION_REMARKS_KEY in entry and version_id in entry[VERSION_REMARKS_KEY]:
+        version_data = entry[VERSION_REMARKS_KEY][version_id]
+        if version_data.get('summary'):
+            migrated_data['summary'] = version_data['summary']
+            has_data = True
 
-    version_remark = entry[VERSION_REMARKS_KEY].get(version_id)
-    if not version_remark:
-        return False
+    # 2. 从 bundle 全局获取 link 和 resource_folder
+    if entry.get('link'):
+        migrated_data['link'] = entry['link']
+        has_data = True
 
-    ui_data[version_id] = version_remark
-    return True
+    if entry.get('resource_folder'):
+        migrated_data['resource_folder'] = entry['resource_folder']
+        has_data = True
+
+    if has_data:
+        ui_data[version_id] = migrated_data
+        return True
+
+    return False
 
 def delete_version_remark(ui_data, bundle_dir, version_id):
     """
@@ -214,14 +253,16 @@ def cleanup_stale_version_remarks(ui_data, bundle_dir, valid_version_ids):
 
     return removed_count
 
-def migrate_bundle_remarks_to_versions(ui_data, bundle_dir):
+def migrate_bundle_remarks_to_versions(ui_data, bundle_dir, version_ids=None):
     """
     将 bundle 的版本备注迁移为独立卡片的备注。
     用于 bundle 取消聚合时。
+    注意：summary 从版本级别获取，link 和 resource_folder 从 bundle 全局复制到每个版本。
 
     Args:
         ui_data: UI 数据字典
         bundle_dir: bundle 目录路径
+        version_ids: 可选，指定要迁移的版本 ID 列表，如果为 None 则迁移所有有备注的版本
 
     Returns:
         int: 迁移的备注数量
@@ -232,9 +273,39 @@ def migrate_bundle_remarks_to_versions(ui_data, bundle_dir):
     entry = ui_data[bundle_dir]
     migrated_count = 0
 
-    if VERSION_REMARKS_KEY in entry:
-        for version_id, remark in entry[VERSION_REMARKS_KEY].items():
-            ui_data[version_id] = remark
+    # 获取 bundle 全局的 link 和 resource_folder
+    global_link = entry.get('link', '')
+    global_resource_folder = entry.get('resource_folder', '')
+
+    # 确定要处理的版本列表
+    versions_to_process = []
+    if version_ids is not None:
+        versions_to_process = version_ids
+    elif VERSION_REMARKS_KEY in entry:
+        versions_to_process = list(entry[VERSION_REMARKS_KEY].keys())
+
+    for version_id in versions_to_process:
+        migrated_data = {}
+        has_data = False
+
+        # 1. 从版本级别获取 summary
+        if VERSION_REMARKS_KEY in entry and version_id in entry[VERSION_REMARKS_KEY]:
+            version_data = entry[VERSION_REMARKS_KEY][version_id]
+            if version_data.get('summary'):
+                migrated_data['summary'] = version_data['summary']
+                has_data = True
+
+        # 2. 复制 bundle 全局的 link 和 resource_folder 到每个版本
+        if global_link:
+            migrated_data['link'] = global_link
+            has_data = True
+
+        if global_resource_folder:
+            migrated_data['resource_folder'] = global_resource_folder
+            has_data = True
+
+        if has_data:
+            ui_data[version_id] = migrated_data
             migrated_count += 1
 
     return migrated_count

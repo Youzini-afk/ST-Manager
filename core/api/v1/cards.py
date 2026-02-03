@@ -1924,11 +1924,39 @@ def api_toggle_bundle_mode():
         
         # === 1. 取消聚合 (Disable) ===
         if action == 'disable':
+            # 在删除标记文件前，先将 bundle 的全局 link/resource_folder 复制到每个版本
+            ui_data = load_ui_data()
+            ui_changed = False
+            
+            if folder_path in ui_data and os.path.exists(full_path):
+                # 收集该目录下所有卡片 ID
+                version_ids = []
+                for root, dirs, files in os.walk(full_path):
+                    if root != full_path:
+                        continue
+                    for f in files:
+                        if f.lower().endswith('.png'):
+                            rel_id = f"{folder_path}/{f}"
+                            version_ids.append(rel_id)
+                
+                # 迁移 bundle 的全局数据到各个版本
+                if version_ids:
+                    from core.data.ui_store import migrate_bundle_remarks_to_versions
+                    migrate_bundle_remarks_to_versions(ui_data, folder_path, version_ids)
+                    ui_changed = True
+                
+                # 删除 bundle 的全局数据（保留版本级别的 summary）
+                del ui_data[folder_path]
+                ui_changed = True
+            
+            if ui_changed:
+                save_ui_data(ui_data)
+            
             if os.path.exists(marker_path):
                 os.remove(marker_path)
             # 刷新缓存
             force_reload(reason="toggle_bundle_mode:disable")
-            return jsonify({"success": True, "msg": "已取消聚合。所有版本现已作为独立卡片显示。"})
+            return jsonify({"success": True, "msg": "已取消聚合。所有版本现已作为独立卡片显示，资源目录和链接已保留。"})
 
         # === 2. 检查阶段 (Check) ===
         # 扫描目录下所有PNG
@@ -1966,24 +1994,44 @@ def api_toggle_bundle_mode():
             for c in cards_in_dir:
                 all_tags.update(c['tags'])
             
-            # 3.2 UI 数据合并 (Notes/Links/Resource)
-            # 策略：按修改时间倒序，优先使用最新的有数据的卡片
+            # 3.2 UI 数据合并
+            # 策略：按修改时间倒序
             cards_in_dir.sort(key=lambda x: x['mtime'], reverse=True)
             
-            merged_ui = {
-                "summary": "", "link": "", "resource_folder": ""
+            # 初始化 bundle 的全局 UI 数据
+            bundle_ui = {
+                "link": "",
+                "resource_folder": ""
             }
             
-            # 查找最新的一条非空数据
-            for field in ['summary', 'link', 'resource_folder']:
-                for c in cards_in_dir:
-                    val = c['ui'].get(field)
-                    if val:
-                        merged_ui[field] = val
-                        break
+            # 查找最新的有 link/resource_folder 的卡片作为全局值
+            for c in cards_in_dir:
+                ui = c['ui']
+                if ui.get('link') and not bundle_ui['link']:
+                    bundle_ui['link'] = ui['link']
+                if ui.get('resource_folder') and not bundle_ui['resource_folder']:
+                    bundle_ui['resource_folder'] = ui['resource_folder']
+                # 如果都已找到，提前退出
+                if bundle_ui['link'] and bundle_ui['resource_folder']:
+                    break
             
-            # 3.3 保存 UI 数据到文件夹 Key
-            ui_data[folder_path] = merged_ui
+            # 3.3 迁移各版本的 summary 到版本级别
+            from core.data.ui_store import set_version_remark
+            for c in cards_in_dir:
+                version_id = c['id']
+                old_ui = c['ui']
+                # 只保留 summary 在版本级别
+                if old_ui.get('summary'):
+                    version_remark = {
+                        'summary': old_ui['summary'],
+                        'link': '',  # link 和 resource_folder 由 bundle 全局提供
+                        'resource_folder': ''
+                    }
+                    if set_version_remark(ui_data, folder_path, version_id, version_remark):
+                        pass  # set_version_remark 已经修改了 ui_data
+            
+            # 保存 bundle 的全局 UI 数据（包含 link 和 resource_folder）
+            ui_data[folder_path] = bundle_ui
             
             # 3.4 可选：将合并后的标签写回最新那张卡片 (为了让搜索能搜到)
             # 或者，我们在 GlobalMetadataCache 处理聚合时已经处理了标签显示
