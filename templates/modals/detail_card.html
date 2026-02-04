@@ -85,6 +85,15 @@
                             📷
                         </button>
 
+                        <!-- 移动端：编辑模式开关按钮 -->
+                        <button x-show="$store.global.deviceType === 'mobile' && !isCardFlipped"
+                            @click="isEditMode = !isEditMode" 
+                            class="btn-secondary detail-icon-btn detail-close-mobile"
+                            :class="isEditMode ? 'active' : ''"
+                            :title="isEditMode ? '切换到阅览模式' : '切换到编辑模式'">
+                            <span x-show="!isEditMode">📖</span>
+                            <span x-show="isEditMode">✏️</span>
+                        </button>
                         <!-- 移动端：快照按钮（在图片区域右上角） -->
                         <button x-show="$store.global.deviceType === 'mobile' && !isCardFlipped"
                             @click="createSnapshot('card')" class="btn-secondary detail-icon-btn detail-close-mobile"
@@ -174,7 +183,15 @@
                 <header class="detail-topbar" x-show="$store.global.deviceType !== 'mobile'">
                     <!-- 桌面端：关闭按钮 -->
                     <button @click="showDetail=false" class="btn-secondary detail-close-floating" title="关闭">✕</button>
-                    <!-- 桌面端：帮助按钮 (位于关闭按钮左侧) -->
+                    <!-- 桌面端：编辑模式开关 (位于关闭按钮左侧) -->
+                    <button @click="isEditMode = !isEditMode" 
+                        class="btn-secondary detail-edit-mode-floating"
+                        :class="isEditMode ? 'active' : ''"
+                        :title="isEditMode ? '切换到阅览模式' : '切换到编辑模式'">
+                        <span x-show="!isEditMode">📖</span>
+                        <span x-show="isEditMode">✏️</span>
+                    </button>
+                    <!-- 桌面端：帮助按钮 (位于编辑按钮左侧) -->
                     <button @click="showHelpModal=true" class="btn-secondary detail-help-floating"
                         title="查看帮助指南">?</button>
 
@@ -193,8 +210,29 @@
                             <!-- 创作者 -->
                             <div class="flex items-center gap-2 min-w-[120px] flex-shrink-0" title="创作者 (Creator)">
                                 <span class="text-xs opacity-60">🎨</span>
-                                <input type="text" x-model="editingData.creator" placeholder="未知创作者"
+                                <!-- 编辑模式：可编辑 -->
+                                <input x-show="isEditMode" type="text" x-model="editingData.creator" placeholder="未知创作者"
                                     class="bg-transparent border-b border-dashed border-[var(--border-light)] text-xs text-[var(--text-sub)] focus:border-[var(--accent-main)] focus:text-[var(--text-main)] outline-none transition-colors w-full max-w-[150px] py-0.5">
+                                <!-- 阅览模式：只读显示 -->
+                                <span x-show="!isEditMode && editingData.creator" 
+                                    class="text-xs text-[var(--text-sub)] max-w-[150px] truncate" 
+                                    x-text="editingData.creator"></span>
+                                <span x-show="!isEditMode && !editingData.creator" 
+                                    class="text-xs text-[var(--text-dim)] opacity-50 italic">未知创作者</span>
+                            </div>
+                            
+                            <!-- 版本号 -->
+                            <div class="flex items-center gap-2 min-w-[100px] flex-shrink-0" title="角色版本 (Character Version)">
+                                <span class="text-xs opacity-60">🔢</span>
+                                <!-- 编辑模式：可编辑 -->
+                                <input x-show="isEditMode" type="text" x-model="editingData.character_version" placeholder="版本号"
+                                    class="bg-transparent border-b border-dashed border-[var(--border-light)] text-xs text-[var(--text-sub)] focus:border-[var(--accent-main)] focus:text-[var(--text-main)] outline-none transition-colors w-full max-w-[120px] py-0.5">
+                                <!-- 阅览模式：只读显示 -->
+                                <span x-show="!isEditMode && editingData.character_version" 
+                                    class="text-xs text-[var(--text-sub)] max-w-[120px] truncate" 
+                                    x-text="editingData.character_version"></span>
+                                <span x-show="!isEditMode && !editingData.character_version" 
+                                    class="text-xs text-[var(--text-dim)] opacity-50 italic">无版本号</span>
                             </div>
 
                             <!-- 来源链接 -->
@@ -327,8 +365,29 @@
                                 <!-- 创作者 -->
                                 <div class="flex items-center gap-2 min-w-[120px] flex-shrink-0" title="创作者 (Creator)">
                                     <span class="text-xs opacity-60">🎨</span>
-                                    <input type="text" x-model="editingData.creator" placeholder="未知创作者"
+                                    <!-- 编辑模式：可编辑 -->
+                                    <input x-show="isEditMode" type="text" x-model="editingData.creator" placeholder="未知创作者"
                                         class="bg-transparent border-b border-dashed border-[var(--border-light)] text-xs text-[var(--text-sub)] focus:border-[var(--accent-main)] focus:text-[var(--text-main)] outline-none transition-colors w-full max-w-[150px] py-0.5">
+                                    <!-- 阅览模式：只读显示 -->
+                                    <span x-show="!isEditMode && editingData.creator" 
+                                        class="text-xs text-[var(--text-sub)] max-w-[150px] truncate" 
+                                        x-text="editingData.creator"></span>
+                                    <span x-show="!isEditMode && !editingData.creator" 
+                                        class="text-xs text-[var(--text-dim)] opacity-50 italic">未知创作者</span>
+                                </div>
+                                
+                                <!-- 版本号 -->
+                                <div class="flex items-center gap-2 min-w-[100px] flex-shrink-0" title="角色版本 (Character Version)">
+                                    <span class="text-xs opacity-60">🔢</span>
+                                    <!-- 编辑模式：可编辑 -->
+                                    <input x-show="isEditMode" type="text" x-model="editingData.character_version" placeholder="版本号"
+                                        class="bg-transparent border-b border-dashed border-[var(--border-light)] text-xs text-[var(--text-sub)] focus:border-[var(--accent-main)] focus:text-[var(--text-main)] outline-none transition-colors w-full max-w-[120px] py-0.5">
+                                    <!-- 阅览模式：只读显示 -->
+                                    <span x-show="!isEditMode && editingData.character_version" 
+                                        class="text-xs text-[var(--text-sub)] max-w-[120px] truncate" 
+                                        x-text="editingData.character_version"></span>
+                                    <span x-show="!isEditMode && !editingData.character_version" 
+                                        class="text-xs text-[var(--text-dim)] opacity-50 italic">无版本号</span>
                                 </div>
 
                                 <!-- 来源链接 -->
@@ -360,13 +419,20 @@
                                     </textarea>
                             </div>
 
-                            <div class="detail-card">
+                            <!-- 原简介卡片：条件渲染 -->
+                            <div class="detail-card" x-show="isEditMode || editingData.description">
                                 <div class="detail-card-head">
                                     <div class="detail-card-title">原简介 (Description)</div>
-                                    <button class="expand-btn" @click="openLargeEditor('description','原简介')">⤢</button>
+                                    <button x-show="isEditMode" class="expand-btn" @click="openLargeEditor('description','原简介')">⤢</button>
                                 </div>
-                                <textarea x-model="editingData.description" class="form-textarea"
+                                <!-- 编辑模式：可编辑 -->
+                                <textarea x-show="isEditMode" x-model="editingData.description" class="form-textarea"
                                     style="height: 10rem; resize:none;"></textarea>
+                                <!-- 阅览模式：只读显示 -->
+                                <div x-show="!isEditMode && editingData.description" 
+                                    class="form-textarea custom-scrollbar" 
+                                    style="height: 10rem; background: var(--bg-sub); border-color: var(--border-light); color: var(--text-dim); cursor: default;"
+                                    x-text="editingData.description"></div>
                             </div>
                         </div>
                     </section>
@@ -375,89 +441,114 @@
                         <div class="detail-tab-scroll custom-scrollbar">
 
                             <!-- 1. 人格设定 (Personality) -->
-                            <template x-if="editingData.personality">
+                            <template x-if="isEditMode || editingData.personality">
                                 <div class="detail-card"
                                     style="background: rgba(0,0,0,0.15); border-color: transparent;">
                                     <div class="detail-card-head py-1 min-h-[2rem]">
                                         <div class="detail-card-title text-xs text-gray-500 uppercase tracking-wider">
                                             人格设定 (Personality)</div>
-                                        <button
+                                        <button x-show="isEditMode"
                                             class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity"
                                             @click="openLargeEditor('personality','人格设定')">⤢</button>
                                     </div>
-                                    <textarea readonly x-model="editingData.personality"
-                                        class="form-textarea text-xs bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                    <!-- 编辑模式：可编辑 -->
+                                    <textarea x-show="isEditMode" x-model="editingData.personality"
+                                        class="form-textarea text-xs bg-transparent text-[var(--text-main)] custom-scrollbar"
                                         style="height: 8rem; resize:none; border:none; box-shadow: none;"></textarea>
+                                    <!-- 阅览模式：只读显示 -->
+                                    <textarea x-show="!isEditMode" readonly x-model="editingData.personality"
+                                        class="form-textarea text-xs bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 8rem; resize:none; border:none; box-shadow: none; cursor: default;"></textarea>
                                 </div>
                             </template>
 
                             <!-- 2. 场景设定 (Scenario) -->
-                            <template x-if="editingData.scenario">
+                            <template x-if="isEditMode || editingData.scenario">
                                 <div class="detail-card"
                                     style="background: rgba(0,0,0,0.15); border-color: transparent;">
                                     <div class="detail-card-head py-1 min-h-[2rem]">
                                         <div class="detail-card-title text-xs text-gray-500 uppercase tracking-wider">
                                             场景设定 (Scenario)</div>
-                                        <button
+                                        <button x-show="isEditMode"
                                             class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity"
                                             @click="openLargeEditor('scenario','场景设定')">⤢</button>
                                     </div>
-                                    <textarea readonly x-model="editingData.scenario"
-                                        class="form-textarea text-xs bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                    <!-- 编辑模式：可编辑 -->
+                                    <textarea x-show="isEditMode" x-model="editingData.scenario"
+                                        class="form-textarea text-xs bg-transparent text-[var(--text-main)] custom-scrollbar"
                                         style="height: 6rem; resize:none; border:none; box-shadow: none;"></textarea>
+                                    <!-- 阅览模式：只读显示 -->
+                                    <textarea x-show="!isEditMode" readonly x-model="editingData.scenario"
+                                        class="form-textarea text-xs bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 6rem; resize:none; border:none; box-shadow: none; cursor: default;"></textarea>
                                 </div>
                             </template>
 
                             <!-- 3. 作者注释 (Creator Notes) -->
-                            <template x-if="editingData.creator_notes">
+                            <template x-if="isEditMode || editingData.creator_notes">
                                 <div class="detail-card"
                                     style="background: rgba(0,0,0,0.15); border-color: transparent;">
                                     <div class="detail-card-head py-1 min-h-[2rem]">
                                         <div class="detail-card-title text-xs text-gray-500 uppercase tracking-wider">
                                             作者注释 (Creator Notes)</div>
-                                        <button
+                                        <button x-show="isEditMode"
                                             class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity"
                                             @click="openLargeEditor('creator_notes','作者注释')">⤢</button>
                                     </div>
-                                    <textarea readonly x-model="editingData.creator_notes"
-                                        class="form-textarea text-xs bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                    <!-- 编辑模式：可编辑 -->
+                                    <textarea x-show="isEditMode" x-model="editingData.creator_notes"
+                                        class="form-textarea text-xs bg-transparent text-[var(--text-main)] custom-scrollbar"
                                         style="height: 6rem; resize:none; border:none; box-shadow: none;"></textarea>
+                                    <!-- 阅览模式：只读显示 -->
+                                    <textarea x-show="!isEditMode" readonly x-model="editingData.creator_notes"
+                                        class="form-textarea text-xs bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 6rem; resize:none; border:none; box-shadow: none; cursor: default;"></textarea>
                                 </div>
                             </template>
 
                             <!-- 4. 系统提示词 (System Prompt) -->
-                            <template x-if="editingData.system_prompt">
+                            <template x-if="isEditMode || editingData.system_prompt">
                                 <div class="detail-card"
                                     style="background: rgba(40, 20, 60, 0.15); border-color: transparent;">
                                     <div class="detail-card-head py-1 min-h-[2rem]">
                                         <div
                                             class="detail-card-title text-xs text-purple-400/70 uppercase tracking-wider">
                                             系统提示词 (System Prompt)</div>
-                                        <button
+                                        <button x-show="isEditMode"
                                             class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity"
                                             @click="openLargeEditor('system_prompt','系统提示词')">⤢</button>
                                     </div>
-                                    <textarea readonly x-model="editingData.system_prompt"
-                                        class="form-textarea text-xs font-mono bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                    <!-- 编辑模式：可编辑 -->
+                                    <textarea x-show="isEditMode" x-model="editingData.system_prompt"
+                                        class="form-textarea text-xs font-mono bg-transparent text-[var(--text-main)] custom-scrollbar"
                                         style="height: 6rem; resize:none; border:none; box-shadow: none;"></textarea>
+                                    <!-- 阅览模式：只读显示 -->
+                                    <textarea x-show="!isEditMode" readonly x-model="editingData.system_prompt"
+                                        class="form-textarea text-xs font-mono bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 6rem; resize:none; border:none; box-shadow: none; cursor: default;"></textarea>
                                 </div>
                             </template>
 
                             <!-- 5. 历史指令 (Post History) -->
-                            <template x-if="editingData.post_history_instructions">
+                            <template x-if="isEditMode || editingData.post_history_instructions">
                                 <div class="detail-card"
                                     style="background: rgba(40, 20, 60, 0.15); border-color: transparent;">
                                     <div class="detail-card-head py-1 min-h-[2rem]">
                                         <div
                                             class="detail-card-title text-xs text-purple-400/70 uppercase tracking-wider">
                                             历史指令 (Post History)</div>
-                                        <button
+                                        <button x-show="isEditMode"
                                             class="expand-btn scale-90 opacity-50 hover:opacity-100 transition-opacity"
                                             @click="openLargeEditor('post_history_instructions','历史指令')">⤢</button>
                                     </div>
-                                    <textarea readonly x-model="editingData.post_history_instructions"
-                                        class="form-textarea text-xs font-mono bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                    <!-- 编辑模式：可编辑 -->
+                                    <textarea x-show="isEditMode" x-model="editingData.post_history_instructions"
+                                        class="form-textarea text-xs font-mono bg-transparent text-[var(--text-main)] custom-scrollbar"
                                         style="height: 6rem; resize:none; border:none; box-shadow: none;"></textarea>
+                                    <!-- 阅览模式：只读显示 -->
+                                    <textarea x-show="!isEditMode" readonly x-model="editingData.post_history_instructions"
+                                        class="form-textarea text-xs font-mono bg-transparent text-[var(--text-dim)] focus:outline-none custom-scrollbar"
+                                        style="height: 6rem; resize:none; border:none; box-shadow: none; cursor: default;"></textarea>
                                 </div>
                             </template>
                         </div>
@@ -467,13 +558,13 @@
                     <section x-show="tab==='dialog'" x-transition.opacity class="detail-section detail-section-fill">
                         <div class="detail-tab-scroll custom-scrollbar">
                             <!-- First Message：编辑/预览 -->
-                            <div class="detail-card detail-card--lg">
+                            <div class="detail-card detail-card--lg" x-show="isEditMode || editingData.first_mes">
                                 <div class="detail-card-head detail-card-head-row">
                                     <div class="detail-card-title">开场白 (First Message)</div>
                                     <div class="detail-card-actions">
-                                        <button class="expand-btn"
+                                        <button x-show="isEditMode" class="expand-btn"
                                             @click="openLargeEditor('first_mes','开场白')">⤢</button>
-                                        <div class="toggle-btn-group">
+                                        <div x-show="isEditMode" class="toggle-btn-group">
                                             <button class="toggle-btn" :class="!showFirstPreview ? 'active' : ''"
                                                 @click="showFirstPreview=false">编辑</button>
                                             <button class="toggle-btn" :class="showFirstPreview ? 'active' : ''"
@@ -482,32 +573,46 @@
                                     </div>
                                 </div>
 
-                                <textarea x-show="!showFirstPreview" x-model="editingData.first_mes"
+                                <!-- 编辑模式 -->
+                                <textarea x-show="isEditMode && !showFirstPreview" x-model="editingData.first_mes"
                                     class="form-textarea" style="height: 10rem; resize:none;"></textarea>
 
-                                <div x-show="showFirstPreview" class="form-textarea custom-scrollbar"
+                                <div x-show="isEditMode && showFirstPreview" class="form-textarea custom-scrollbar"
                                     style="height: 10rem; background: var(--bg-panel); border-color: var(--accent-main); padding: 0; overflow: auto;"
                                     x-effect="updateShadowContent($el, showFirstPreview ? editingData.first_mes : null)">
                                 </div>
+                                
+                                <!-- 阅览模式：只读显示 -->
+                                <div x-show="!isEditMode && editingData.first_mes" 
+                                    class="form-textarea custom-scrollbar" 
+                                    style="height: 10rem; background: var(--bg-sub); border-color: var(--border-light); color: var(--text-dim); cursor: default; white-space: pre-wrap; word-wrap: break-word;"
+                                    x-text="editingData.first_mes"></div>
                             </div>
 
                             <!-- Mes Example -->
-                            <div class="detail-card">
+                            <div class="detail-card" x-show="isEditMode || editingData.mes_example">
                                 <div class="detail-card-head">
                                     <div class="detail-card-title">对话示例 (Mes Example)</div>
-                                    <button class="expand-btn" @click="openLargeEditor('mes_example','对话示例')">⤢</button>
+                                    <button x-show="isEditMode" class="expand-btn" @click="openLargeEditor('mes_example','对话示例')">⤢</button>
                                 </div>
-                                <textarea x-model="editingData.mes_example" class="form-textarea"
+                                <!-- 编辑模式 -->
+                                <textarea x-show="isEditMode" x-model="editingData.mes_example" class="form-textarea"
                                     style="height: 10rem; resize:none; font-family: monospace; font-size: 0.85rem;"></textarea>
+                                <!-- 阅览模式：只读显示 -->
+                                <div x-show="!isEditMode && editingData.mes_example" 
+                                    class="form-textarea custom-scrollbar" 
+                                    style="height: 10rem; background: var(--bg-sub); border-color: var(--border-light); color: var(--text-dim); cursor: default; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.85rem;"
+                                    x-text="editingData.mes_example"></div>
                             </div>
 
-                            <!-- Alternate Greetings -->
-                            <div class="detail-card detail-card--sm">
+                            <!-- Alternate Greetings: 特殊处理数组判空 -->
+                            <div class="detail-card detail-card--sm" 
+                                x-show="isEditMode || (editingData.alternate_greetings && editingData.alternate_greetings.filter(g => g && g.trim()).length > 0)">
                                 <div class="detail-card-head detail-card-head-row">
                                     <div class="detail-card-title">备用开场白 (Alternate Greetings)</div>
 
                                     <div class="detail-card-actions">
-                                        <button class="expand-btn" x-show="editingData.alternate_greetings.length > 0"
+                                        <button x-show="isEditMode" class="expand-btn" x-show="editingData.alternate_greetings.length > 0"
                                             @click="openLargeEditor('alternate_greetings','备用开场白 #' + (altIdx+1), true, altIdx)">⤢</button>
 
                                         <div class="detail-alt-nav" x-show="editingData.alternate_greetings.length > 1">
@@ -517,16 +622,24 @@
                                             <button @click="nextAlt()" class="detail-alt-btn">›</button>
                                         </div>
 
-                                        <button @click="removeAlt()" title="删除" class="btn-secondary detail-mini-btn"
+                                        <button x-show="isEditMode" @click="removeAlt()" title="删除" class="btn-secondary detail-mini-btn"
                                             style="color:#f87171;">🗑️</button>
-                                        <button @click="addAlt()" title="新增"
+                                        <button x-show="isEditMode" @click="addAlt()" title="新增"
                                             class="btn-primary detail-mini-btn">＋</button>
                                     </div>
                                 </div>
 
-                                <template x-if="editingData.alternate_greetings.length > 0">
+                                <!-- 编辑模式 -->
+                                <template x-if="isEditMode && editingData.alternate_greetings.length > 0">
                                     <textarea x-model="editingData.alternate_greetings[altIdx]" class="form-textarea"
                                         style="height: 8rem; resize:none;" placeholder="在此输入备用开场白..."></textarea>
+                                </template>
+                                
+                                <!-- 阅览模式：只读显示 -->
+                                <template x-if="!isEditMode && editingData.alternate_greetings && editingData.alternate_greetings.length > 0">
+                                    <div class="form-textarea custom-scrollbar" 
+                                        style="height: 8rem; background: var(--bg-sub); border-color: var(--border-light); color: var(--text-dim); cursor: default; white-space: pre-wrap; word-wrap: break-word;"
+                                        x-text="editingData.alternate_greetings[altIdx] || ''"></div>
                                 </template>
                             </div>
                         </div>

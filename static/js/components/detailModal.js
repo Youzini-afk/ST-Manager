@@ -87,6 +87,7 @@ export default function detailModal() {
         zoomLevel: 100,
         altIdx: 0,
         rawMetadataContent: 'Loading...',
+        isEditMode: false, // 编辑模式开关，默认为阅览模式
 
         // 资源文件列表状态
         resourceLorebooks: [],
@@ -138,6 +139,7 @@ export default function detailModal() {
                     this.skinImages = [];
                     this.updateImagePolicy = 'overwrite';
                     this.saveOldCoverOnSwap = false;
+                    this.isEditMode = false; // 重置编辑模式
                 }
             });
         },
