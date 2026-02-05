@@ -780,15 +780,51 @@ def api_update_card():
                     if not found_in_list:
                         ctx.cache.cards.insert(0, bundle_card)
 
+                    # 如果保存的是非主版本，返回该版本的备注信息而不是主版本的
+                    # 这样前端在刷新详情时会显示正确的版本备注
+                    if target_version_id and target_version_id != bundle_card['id']:
+                        # 获取当前保存版本的备注
+                        target_ver_remark = get_version_remark(ui_data, bundle_dir, target_version_id, cover_id)
+                        if target_ver_remark:
+                            bundle_card['ui_summary'] = target_ver_remark.get('summary', '')
+                            bundle_card['source_link'] = target_ver_remark.get('link', '')
+                            bundle_card['resource_folder'] = target_ver_remark.get('resource_folder', '')
+                        # 记录当前正在查看的版本ID，供前端使用
+                        bundle_card['current_view_version_id'] = target_version_id
+
                     final_return_obj = bundle_card
 
+        # 确定返回给前端的 new_id
+        # Bundle模式下：始终返回主版本ID，避免前端activeCard被切换
+        # 非Bundle模式下：返回实际的文件ID
+        return_new_id = final_rel_path_id
+        return_new_filename = new_filename
+        current_version_id = None
+        # 检查是否是Bundle模式：有bundle_dir且final_return_obj是Bundle对象，或者bundle_dir存在
+        is_bundle_mode = bool(bundle_dir)
+        if is_bundle_mode and final_return_obj:
+            # 如果final_return_obj不是Bundle对象（保存非主版本时），需要获取Bundle对象
+            if not final_return_obj.get('is_bundle'):
+                # 从缓存中获取Bundle对象
+                if bundle_dir in ctx.cache.bundle_map:
+                    bundle_main_id = ctx.cache.bundle_map[bundle_dir]
+                    if bundle_main_id in ctx.cache.id_map:
+                        final_return_obj = ctx.cache.id_map[bundle_main_id]
+            
+            if final_return_obj.get('is_bundle'):
+                return_new_id = final_return_obj['id']  # Bundle的主版本ID
+                return_new_filename = final_return_obj['filename']  # Bundle的主版本文件名
+                # 记录当前保存的版本ID，供前端刷新详情使用
+                current_version_id = target_version_id if target_version_id != final_return_obj['id'] else None
+        
         return jsonify({
             "success": True,
             "file_modified": should_touch_file,
-            "new_id": final_rel_path_id,
-            "new_filename": new_filename,
+            "new_id": return_new_id,
+            "new_filename": return_new_filename,
             "new_image_url": final_return_obj['image_url'] if final_return_obj else None,
-            "updated_card": final_return_obj 
+            "updated_card": final_return_obj,
+            "current_version_id": current_version_id
         })
 
     except Exception as e:

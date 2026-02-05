@@ -585,8 +585,10 @@ export default function detailModal() {
             }
 
             // 3. 构建 Payload
+            // 使用editingData.id而非activeCard.id
+            // Bundle模式下：editingData.id是当前编辑版本的ID，activeCard.id是Bundle主版本ID
             const payload = {
-                id: this.activeCard.id,
+                id: this.editingData.id,
                 new_filename: this.editingData.filename,
 
                 // 核心数据 (Spread Clean Data)
@@ -614,13 +616,14 @@ export default function detailModal() {
                     const ts = new Date().getTime();
 
                     // 更新 ID/Filename
-                    if (res.new_id) {
+                    // Bundle模式下：new_id是主版本ID，不要覆盖当前编辑的版本ID和image_url
+                    if (res.new_id && !this.activeCard.is_bundle) {
                         this.activeCard.id = res.new_id;
                         this.editingData.id = res.new_id;
                         this.activeCard.filename = res.new_filename;
                         this.editingData.filename = res.new_filename;
+                        if (res.new_image_url) this.activeCard.image_url = res.new_image_url;
                     }
-                    if (res.new_image_url) this.activeCard.image_url = res.new_image_url;
 
                     // 通知列表更新 (通过事件总线)
                     if (res.updated_card) {
@@ -649,9 +652,9 @@ export default function detailModal() {
                             Object.assign(this.activeCard, res.updated_card);
                         } else {
                             // Bundle 模式下只更新部分字段，避免覆盖当前版本的 UI 数据
+                            // 注意：不更新image_url，保持当前版本的封面显示
                             if (res.new_id) this.activeCard.id = res.new_id;
                             if (res.new_filename) this.activeCard.filename = res.new_filename;
-                            if (res.new_image_url) this.activeCard.image_url = res.new_image_url;
                         }
                     } else {
                         // 兜底刷新
@@ -661,7 +664,9 @@ export default function detailModal() {
                     this.$store.global.showToast("💾 保存成功", 2000);
                     
                     // 刷新详情
-                    const idToRefresh = (res.new_id || (res.updated_card && res.updated_card.id) || this.editingData.id);
+                    // Bundle模式下：使用current_version_id保持当前版本，不要切换到主版本
+                    // 如果没有current_version_id（保存的是主版本），则使用editingData.id
+                    const idToRefresh = res.current_version_id || this.editingData.id;
                     this.refreshActiveCardDetail(idToRefresh);
                     autoSaver.initBaseline(this.editingData); // 手动保存后，重置自动保存
                 } else {
@@ -921,7 +926,8 @@ export default function detailModal() {
             getCardDetail(ver.id).then(res => {
                 if (res.success && res.card) {
                     const c = res.card;
-                    if (!this.activeCard.is_bundle) this.editingData.filename = c.filename;
+                    // 更新文件名（Bundle模式下也需要更新）
+                    this.editingData.filename = c.filename;
 
                     this.editingData.id = c.id;
                     this.editingData.char_name = c.char_name;
