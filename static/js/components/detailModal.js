@@ -729,8 +729,9 @@ export default function detailModal() {
             formData.append('card_id', this.editingData.id);
             formData.append('is_bundle_update', isBundleUpdate);
             formData.append('image_policy', finalPolicy);
+            // Bundle 新增版本时，不传递 ui_summary（新版本应该无备注）
             formData.append('keep_ui_data', JSON.stringify({
-                ui_summary: this.editingData.ui_summary,
+                ui_summary: isBundleUpdate ? '' : this.editingData.ui_summary,
                 source_link: this.editingData.source_link,
                 resource_folder: this.editingData.resource_folder,
                 tags: this.editingData.tags
@@ -807,13 +808,14 @@ export default function detailModal() {
             }
 
             this.isSaving = true;
+            // Bundle 新增版本时，不传 ui_summary（新版本应该无备注）
             updateCardFileFromUrl({
                 card_id: this.editingData.id,
                 url: url,
                 is_bundle_update: isBundleUpdate,
                 image_policy: finalPolicy,
                 keep_ui_data: {
-                    ui_summary: this.editingData.ui_summary,
+                    ui_summary: isBundleUpdate ? '' : this.editingData.ui_summary,
                     source_link: this.editingData.source_link,
                     resource_folder: this.editingData.resource_folder,
                     tags: this.editingData.tags

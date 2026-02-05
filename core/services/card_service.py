@@ -335,18 +335,22 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
         ui_data[ui_key]['resource_folder'] = str(current_res_folder).strip()
     
     # UI Data 安全同步
-    target_fields = [
-        ('summary', 'ui_summary'), 
-        ('link', 'source_link')
-    ]
-    
-    for db_field, input_field in target_fields:
-        new_val = keep_ui_data.get(input_field)
-        if new_val:
-            ui_data[ui_key][db_field] = str(new_val).strip()
-        elif not is_bundle_update:
-            if input_field in keep_ui_data:
-                ui_data[ui_key][db_field] = ""
+    # Bundle 新增版本时，不应将备注保存到根级别（新版本应该无备注）
+    if not is_bundle_update:
+        target_fields = [
+            ('summary', 'ui_summary'), 
+            ('link', 'source_link')
+        ]
+        
+        for db_field, input_field in target_fields:
+            new_val = keep_ui_data.get(input_field)
+            if new_val:
+                ui_data[ui_key][db_field] = str(new_val).strip()
+            else:
+                if input_field in keep_ui_data:
+                    ui_data[ui_key][db_field] = ""
+    # Bundle 模式下：link 和 resource_folder 是共享的，summary 应存储在版本级别
+    # 新增版本时，前端不应传递 ui_summary，保持新版本无备注
     save_ui_data(ui_data)
     
     # 2. 更新 mtime 和 清理缩略图
