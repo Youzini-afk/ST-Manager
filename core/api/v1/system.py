@@ -342,7 +342,7 @@ def api_create_snapshot():
         target_dir = os.path.join(backups_root, safe_dir_name)
         if not os.path.exists(target_dir): os.makedirs(target_dir)
 
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
         if label:
             safe_label = re.sub(r'[\\/:*?"<>|]', '-', label)
             backup_filename = f"{name_no_ext}_{timestamp}__KEY__{safe_label}{ext}"
@@ -493,7 +493,7 @@ def api_smart_auto_snapshot():
         elif target_id.endswith('.png'): ext = '.png'
         elif target_id.endswith('.json'): ext = '.json'
 
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
         backup_filename = f"{name_no_ext}_{timestamp}__AUTO__{ext}"
         dst_path = os.path.join(target_dir, backup_filename)
         
@@ -613,6 +613,95 @@ def api_list_backups():
 
     except Exception as e:
         logger.error(f"List backups error: {e}")
+        return jsonify({"success": False, "msg": str(e)})
+
+
+@bp.route('/api/cleanup_init_backups', methods=['POST'])
+def api_cleanup_init_backups():
+    """
+    清理指定目标的 INIT 快照。
+    默认 keep_latest=0：关闭编辑器时清空 INIT，下次进入再生成新的 INIT。
+    """
+    try:
+        req = request.json or {}
+        target_id = req.get('id')
+        snapshot_type = req.get('type', 'card')
+        file_path_param = req.get('file_path')
+        keep_latest = int(req.get('keep_latest', 0) or 0)
+        keep_latest = max(0, min(keep_latest, 5))
+
+        system_backups_dir = os.path.join(DATA_DIR, 'system', 'backups')
+
+        backups_root = ""
+        filename = ""
+
+        if snapshot_type == 'lorebook':
+            if target_id and target_id.startswith('embedded::'):
+                real_card_id = target_id.replace('embedded::', '')
+                filename = os.path.basename(real_card_id)
+                backups_root = os.path.join(system_backups_dir, 'cards')
+            else:
+                if file_path_param:
+                    filename = os.path.basename(file_path_param)
+                elif target_id:
+                    filename = os.path.basename(target_id)
+                backups_root = os.path.join(system_backups_dir, 'lorebooks')
+        else:
+            filename = os.path.basename(target_id or '')
+            backups_root = os.path.join(system_backups_dir, 'cards')
+
+        name_no_ext = os.path.splitext(filename)[0]
+        safe_dir_name = re.sub(r'[\\/:*?"<>|]', '_', name_no_ext).strip()
+        target_dir = os.path.join(backups_root, safe_dir_name)
+
+        if not os.path.exists(target_dir):
+            return jsonify({"success": True, "removed": 0, "target_dir": target_dir})
+
+        init_files = []
+        for f in os.listdir(target_dir):
+            f_lower = f.lower()
+            if not (f_lower.endswith('.png') or f_lower.endswith('.json')):
+                continue
+            if name_no_ext and name_no_ext not in f:
+                continue
+            if "__KEY__" not in f:
+                continue
+
+            parts = f.split("__KEY__")
+            if len(parts) <= 1:
+                continue
+            label = os.path.splitext(parts[1])[0]
+            if label != 'INIT':
+                continue
+
+            full_p = os.path.join(target_dir, f)
+            init_files.append((full_p, os.path.getmtime(full_p)))
+
+        init_files.sort(key=lambda x: x[1], reverse=True)
+        to_remove = init_files[keep_latest:]
+        removed = 0
+
+        for f_path, _ in to_remove:
+            try:
+                if os.path.exists(f_path):
+                    os.remove(f_path)
+                    removed += 1
+
+                # 清理同名伴生备份
+                base_path = os.path.splitext(f_path)[0]
+                for ext in ['.png', '.json', '.webp', '.jpg', '.jpeg']:
+                    sidecar = base_path + ext
+                    if os.path.exists(sidecar) and sidecar != f_path:
+                        try:
+                            os.remove(sidecar)
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.warning(f"Cleanup INIT backup failed: {f_path}, err={e}")
+
+        return jsonify({"success": True, "removed": removed, "target_dir": target_dir})
+    except Exception as e:
+        logger.error(f"Cleanup INIT backups error: {e}")
         return jsonify({"success": False, "msg": str(e)})
 
 # 回滚接口

@@ -6,6 +6,7 @@
 import {
     getWorldInfoDetail,
     saveWorldInfo,
+    listWiEntryHistory,
     clipboardList,
     clipboardAdd,
     clipboardDelete,
@@ -13,6 +14,7 @@ import {
     clipboardReorder
 } from '../api/wi.js';
 import { getCardDetail, updateCard } from '../api/card.js';
+import { createSnapshot as apiCreateSnapshot, cleanupInitBackups as apiCleanupInitBackups } from '../api/system.js';
 import { normalizeWiBook, toStV3Worldbook, getCleanedV3Data, updateWiKeys } from '../utils/data.js';
 import { createAutoSaver } from '../utils/autoSave.js';
 import { wiHelpers } from '../utils/wiHelpers.js';
@@ -41,6 +43,18 @@ export default function wiEditor() {
 
         // 索引与视图控制
         currentWiIndex: 0,
+        entryUidField: 'st_manager_uid',
+        initialSnapshotChecked: false,
+        initialSnapshotInitPromise: null,
+
+        // 条目历史回滚
+        showEntryHistoryModal: false,
+        isEntryHistoryLoading: false,
+        entryHistoryItems: [],
+        entryHistoryTargetUid: '',
+        entryHistoryVersions: [],
+        entryHistorySelection: { left: null, right: null },
+        entryHistoryDiff: { left: '', right: '' },
 
         // === 剪切板状态 ===
         showWiClipboard: false,
@@ -77,9 +91,12 @@ export default function wiEditor() {
             // 监听关闭
             this.$watch('showFullScreenWI', (val) => {
                 if (!val) {
+                    this._cleanupInitBackupsOnExit();
                     autoSaver.stop();
                     this.isEditingClipboard = false;
                     this.currentWiIndex = 0;
+                    this.initialSnapshotChecked = false;
+                    this.initialSnapshotInitPromise = null;
                 }
             });
 
@@ -94,18 +111,435 @@ export default function wiEditor() {
             this.handleOpenRollback(this.editingWiFile, this.editingData);
         },
 
+        _generateEntryUid() {
+            return `wi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        },
+
+        _ensureEntryUids() {
+            const arr = this.getWIArrayRef();
+            const used = new Set();
+            arr.forEach((entry) => {
+                if (!entry || typeof entry !== 'object') return;
+                let uid = String(entry[this.entryUidField] || '').trim();
+                if (!uid || used.has(uid)) {
+                    uid = this._generateEntryUid();
+                    entry[this.entryUidField] = uid;
+                }
+                used.add(uid);
+            });
+        },
+
+        _getEntryHistoryContext() {
+            const file = this.editingWiFile || {};
+            if (file.type === 'embedded' || (!file.type && this.editingData?.id)) {
+                return {
+                    source_type: 'embedded',
+                    source_id: (this.editingData && this.editingData.id) ? this.editingData.id : (file.card_id || ''),
+                    file_path: ''
+                };
+            }
+            return {
+                source_type: 'lorebook',
+                source_id: file.id || '',
+                file_path: file.file_path || file.path || ''
+            };
+        },
+
+        formatEntryHistoryTime(ts) {
+            if (!ts) return '';
+            const d = new Date(ts * 1000);
+            if (Number.isNaN(d.getTime())) return '';
+            return d.toLocaleString();
+        },
+
+        _escapeEntryHistoryHtml(text) {
+            return String(text ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        },
+
+        _toEntryHistoryArray(val) {
+            if (Array.isArray(val)) return val.map(v => String(v ?? '').trim()).filter(Boolean);
+            if (typeof val === 'string') return val.split(',').map(s => s.trim()).filter(Boolean);
+            return [];
+        },
+
+        _normalizeEntryHistorySnapshot(raw) {
+            if (!raw || typeof raw !== 'object') return null;
+            return {
+                comment: String(raw.comment ?? ''),
+                content: String(raw.content ?? ''),
+                keys: this._toEntryHistoryArray(raw.keys ?? raw.key),
+                secondary_keys: this._toEntryHistoryArray(raw.secondary_keys ?? raw.keysecondary)
+            };
+        },
+
+        _getEntryHistoryMeta(left, right) {
+            if (left && right) {
+                const changed = {
+                    comment: left.comment !== right.comment,
+                    keys: left.keys.join('|') !== right.keys.join('|') ||
+                        left.secondary_keys.join('|') !== right.secondary_keys.join('|'),
+                    content: left.content !== right.content
+                };
+                const status = (changed.comment || changed.keys || changed.content) ? 'changed' : 'same';
+                return { status, changed };
+            }
+            if (left && !right) {
+                return { status: 'removed', changed: { comment: true, keys: true, content: true } };
+            }
+            return { status: 'added', changed: { comment: true, keys: true, content: true } };
+        },
+
+        _entryHistoryFieldDiffClass(meta, side, fieldChanged) {
+            if (meta.status === 'added' && side === 'right') {
+                return 'bg-green-500/20 border border-green-500/40';
+            }
+            if (meta.status === 'removed' && side === 'left') {
+                return 'bg-red-500/20 border border-red-500/40';
+            }
+            if (meta.status === 'changed' && fieldChanged) {
+                return 'bg-yellow-500/20 border border-yellow-500/40';
+            }
+            return 'bg-black/10 border border-transparent';
+        },
+
+        _renderEntryHistoryPane(entry, meta, side) {
+            if (!entry) {
+                return `
+                    <div class="m-2 p-3 rounded border border-dashed border-[var(--border-light)] text-[11px] text-[var(--text-dim)] opacity-70">
+                        <div>（此侧无对应条目）</div>
+                    </div>
+                `;
+            }
+
+            const isLeft = side === 'left';
+            const isHot = (isLeft && (meta.status === 'removed' || meta.status === 'changed')) ||
+                (!isLeft && (meta.status === 'added' || meta.status === 'changed'));
+            const boxClass = isHot
+                ? (isLeft ? 'bg-red-500/8 border-red-500/30' : 'bg-green-500/8 border-green-500/30')
+                : 'bg-[var(--bg-sub)] border-[var(--border-light)]';
+            const markClass = isHot ? (isLeft ? 'text-red-300' : 'text-green-300') : 'text-[var(--text-main)]';
+
+            const comment = this._escapeEntryHistoryHtml(entry.comment || '(无备注)');
+            const keys = this._escapeEntryHistoryHtml(entry.keys.join(', ') || '(空)');
+            const sec = this._escapeEntryHistoryHtml(entry.secondary_keys.join(', ') || '(空)');
+            const content = this._escapeEntryHistoryHtml(entry.content || '');
+
+            const commentCls = meta.changed.comment ? markClass : 'text-[var(--text-main)]';
+            const keyCls = meta.changed.keys ? markClass : 'text-[var(--text-main)]';
+            const contentCls = meta.changed.content ? markClass : 'text-[var(--text-main)]';
+
+            const commentBgCls = this._entryHistoryFieldDiffClass(meta, side, meta.changed.comment);
+            const keysBgCls = this._entryHistoryFieldDiffClass(meta, side, meta.changed.keys);
+            const contentBgCls = this._entryHistoryFieldDiffClass(meta, side, meta.changed.content);
+
+            return `
+                <div class="m-2 p-3 rounded border ${boxClass}">
+                    <div class="mt-1 p-1.5 rounded ${commentBgCls}">
+                        <div class="text-sm font-bold ${commentCls}">${comment}</div>
+                    </div>
+                    <div class="mt-2 p-1.5 rounded ${keysBgCls}">
+                        <div class="text-[11px] ${keyCls}">关键词: ${keys}</div>
+                        <div class="mt-1 text-[11px] ${keyCls}">次级词: ${sec}</div>
+                    </div>
+                    <div class="mt-2 p-1.5 rounded ${contentBgCls}">
+                        <div class="text-[11px] text-[var(--text-dim)]">内容预览</div>
+                        <div class="mt-1 p-2 rounded bg-black/10 text-[11px] whitespace-pre-wrap break-words max-h-72 overflow-auto ${contentCls}">${content}</div>
+                    </div>
+                </div>
+            `;
+        },
+
+        updateEntryHistoryDiff() {
+            const leftVer = this.entryHistorySelection.left;
+            const rightVer = this.entryHistorySelection.right;
+            if (!leftVer || !rightVer) {
+                this.entryHistoryDiff = {
+                    left: '<div class="p-6 text-center text-[var(--text-dim)] text-xs">请选择版本进行对比</div>',
+                    right: '<div class="p-6 text-center text-[var(--text-dim)] text-xs">请选择版本进行对比</div>'
+                };
+                return;
+            }
+
+            const left = this._normalizeEntryHistorySnapshot(leftVer.snapshot);
+            const right = this._normalizeEntryHistorySnapshot(rightVer.snapshot);
+            const meta = this._getEntryHistoryMeta(left, right);
+
+            this.entryHistoryDiff = {
+                left: this._renderEntryHistoryPane(left, meta, 'left'),
+                right: this._renderEntryHistoryPane(right, meta, 'right')
+            };
+        },
+
+        setEntryHistorySide(side, version) {
+            if (!version) return;
+            this.entryHistorySelection[side] = version;
+            this.updateEntryHistoryDiff();
+        },
+
+        openEntryHistoryModal() {
+            if (this.isEditingClipboard) {
+                alert('剪切板条目不支持历史版本。');
+                return;
+            }
+            if (!this.activeEditorEntry) return;
+
+            this._ensureEntryUids();
+            const uid = this.activeEditorEntry[this.entryUidField];
+            if (!uid) {
+                alert('当前条目缺少唯一标识，无法读取历史版本。');
+                return;
+            }
+
+            const context = this._getEntryHistoryContext();
+            this.entryHistoryTargetUid = uid;
+            this.entryHistoryItems = [];
+            this.entryHistoryVersions = [];
+            this.entryHistorySelection = { left: null, right: null };
+            this.entryHistoryDiff = { left: '', right: '' };
+            this.showEntryHistoryModal = true;
+            this.isEntryHistoryLoading = true;
+
+            listWiEntryHistory({
+                ...context,
+                entry_uid: uid
+            }).then(res => {
+                if (res.success) {
+                    this.entryHistoryItems = res.items || [];
+                    const currentVersion = {
+                        id: '__current__',
+                        is_current: true,
+                        created_at: Math.floor(Date.now() / 1000),
+                        snapshot: JSON.parse(JSON.stringify(this.activeEditorEntry || {}))
+                    };
+                    this.entryHistoryVersions = [currentVersion, ...this.entryHistoryItems];
+                    this.entryHistorySelection = {
+                        left: this.entryHistoryItems[0] || null,
+                        right: currentVersion
+                    };
+                    this.updateEntryHistoryDiff();
+                } else {
+                    alert('读取历史失败: ' + (res.msg || '未知错误'));
+                }
+            }).catch(e => {
+                alert('读取历史失败: ' + e);
+            }).finally(() => {
+                this.isEntryHistoryLoading = false;
+            });
+        },
+
+        restoreEntryFromSelectedHistory() {
+            const target = this.entryHistorySelection.left;
+            if (!target || target.is_current) {
+                alert('请在左侧选择一个历史版本再恢复。');
+                return;
+            }
+            this.restoreEntryFromHistory(target);
+        },
+
+        restoreEntryFromHistory(item) {
+            if (!item || !item.snapshot || !this.activeEditorEntry) return;
+            if (!confirm('确定回滚当前条目到该历史版本吗？')) return;
+
+            const target = this.activeEditorEntry;
+            const keepId = target.id;
+            const keepUid = target[this.entryUidField] || this.entryHistoryTargetUid;
+            const restored = JSON.parse(JSON.stringify(item.snapshot));
+
+            Object.keys(target).forEach((k) => delete target[k]);
+            Object.assign(target, restored);
+
+            if (keepId !== undefined) target.id = keepId;
+            if (keepUid) target[this.entryUidField] = keepUid;
+
+            this.showEntryHistoryModal = false;
+            this.$store.global.showToast('⏪ 条目已回滚，请记得保存世界书', 2200);
+        },
+
         getTotalWiTokens() {
             // 必须传入当前的条目数组
             return getTotalWiTokens(this.getWIArrayRef());
         },
 
-        saveChanges() {
-            // 如果不是内嵌模式，但误调了此方法，转给文件保存逻辑
-            if (!this.editingWiFile || this.editingWiFile.type !== 'embedded') {
-                return this.saveWiFileChanges();
+        async _createWholeWorldbookSnapshot() {
+            const payload = this._getAutoSavePayload();
+            const isLorebook = payload.type === 'lorebook';
+            const res = await apiCreateSnapshot({
+                id: payload.id,
+                type: isLorebook ? 'lorebook' : 'card',
+                file_path: payload.file_path || '',
+                label: '',
+                // 整本保存前快照：备份磁盘上的“旧文件状态”，避免首版被覆盖
+                content: null,
+                compact: isLorebook
+            });
+            return res;
+        },
+
+        async _ensureInitialBaselineSnapshot() {
+            const payload = this._getAutoSavePayload();
+            const isLorebook = payload.type === 'lorebook';
+            const snapshotType = isLorebook ? 'lorebook' : 'card';
+
+            const snapshotRes = await apiCreateSnapshot({
+                id: payload.id,
+                type: snapshotType,
+                file_path: payload.file_path || '',
+                label: 'INIT',
+                content: null,
+                compact: isLorebook
+            });
+
+            if (!snapshotRes || !snapshotRes.success) {
+                throw new Error((snapshotRes && snapshotRes.msg) ? snapshotRes.msg : '创建初始快照失败');
+            }
+            return { created: true };
+        },
+
+        async _ensureInitialBaselineOnEnter() {
+            if (this.initialSnapshotChecked) return;
+            if (!this.initialSnapshotInitPromise) {
+                this.initialSnapshotInitPromise = this._ensureInitialBaselineSnapshot()
+                    .then((res) => {
+                        this.initialSnapshotChecked = true;
+                        if (res && res.created) this.$store.global.showToast('🧷 已记录本次编辑初始版本', 1800);
+                        return res;
+                    })
+                    .catch((e) => {
+                        this.initialSnapshotChecked = false;
+                        throw e;
+                    })
+                    .finally(() => {
+                        this.initialSnapshotInitPromise = null;
+                    });
+            }
+            return this.initialSnapshotInitPromise;
+        },
+
+        _nextTickPromise() {
+            return new Promise((resolve) => {
+                this.$nextTick(() => resolve());
+            });
+        },
+
+        async _flushPendingEditorInput() {
+            const active = document.activeElement;
+            if (!active || !this.$root || !this.$root.contains(active)) return;
+
+            const tag = active.tagName;
+            const isField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+            if (!isField) return;
+
+            try {
+                active.dispatchEvent(new Event('input', { bubbles: true }));
+                active.dispatchEvent(new Event('change', { bubbles: true }));
+                if (typeof active.blur === 'function') active.blur();
+            } catch (e) {
+                console.warn('Flush editor input failed:', e);
             }
 
+            await this._nextTickPromise();
+        },
+
+        _getSnapshotContext() {
+            const file = this.editingWiFile || {};
+
+            if (file.type === 'embedded' || (!file.type && this.editingData?.id)) {
+                return {
+                    id: (this.editingData && this.editingData.id) ? this.editingData.id : (file.card_id || ''),
+                    type: 'card',
+                    file_path: ''
+                };
+            }
+
+            return {
+                id: file.id || file.path || file.file_path || '',
+                type: 'lorebook',
+                file_path: file.file_path || file.path || ''
+            };
+        },
+
+        async _cleanupInitBackupsOnExit() {
+            const pendingInit = this.initialSnapshotInitPromise;
+            if (pendingInit) {
+                try {
+                    await pendingInit;
+                } catch (e) {
+                    console.warn('Init snapshot promise rejected before cleanup:', e);
+                }
+            }
+
+            const ctx = this._getSnapshotContext();
+            if (!ctx.id) return;
+            try {
+                const res = await apiCleanupInitBackups({
+                    id: ctx.id,
+                    type: ctx.type,
+                    file_path: ctx.file_path,
+                    // 保留最近一个 INIT，避免“仅保存条目”后时光机无历史
+                    keep_latest: 1
+                });
+                if (!res || !res.success) {
+                    console.warn('Cleanup INIT backups failed:', res && res.msg ? res.msg : res);
+                }
+            } catch (e) {
+                console.warn('Cleanup INIT backups error:', e);
+            }
+        },
+
+        async _ensureInitSnapshotReadyForSave() {
+            if (this.initialSnapshotInitPromise) {
+                try {
+                    await this.initialSnapshotInitPromise;
+                } catch (e) {
+                    console.warn('Init snapshot on enter failed:', e);
+                }
+                return;
+            }
+
+            if (!this.initialSnapshotChecked) {
+                try {
+                    await this._ensureInitialBaselineOnEnter();
+                } catch (e) {
+                    console.warn('Init snapshot retry before save failed:', e);
+                }
+            }
+        },
+
+        saveWholeWorldbook() {
+            if (this.editingWiFile && this.editingWiFile.type === 'embedded') {
+                return this.saveChanges(true);
+            }
+            return this.saveWiFileChanges(true);
+        },
+
+        async saveChanges(withSnapshot = false) {
+            // 如果不是内嵌模式，但误调了此方法，转给文件保存逻辑
+            if (!this.editingWiFile || this.editingWiFile.type !== 'embedded') {
+                return this.saveWiFileChanges(withSnapshot);
+            }
+
+            await this._flushPendingEditorInput();
+            this._ensureEntryUids();
             this.isSaving = true;
+            await this._ensureInitSnapshotReadyForSave();
+
+            if (withSnapshot) {
+                try {
+                    const snapshotRes = await this._createWholeWorldbookSnapshot();
+                    if (!snapshotRes || !snapshotRes.success) {
+                        this.isSaving = false;
+                        alert("整本保存失败：无法创建版本快照" + (snapshotRes && snapshotRes.msg ? ` (${snapshotRes.msg})` : ""));
+                        return;
+                    }
+                } catch (e) {
+                    this.isSaving = false;
+                    alert("整本保存失败：创建版本快照异常 - " + e);
+                    return;
+                }
+            }
 
             // 1. 深拷贝当前编辑数据
             const cardData = JSON.parse(JSON.stringify(this.editingData));
@@ -138,7 +572,11 @@ export default function wiEditor() {
             updateCard(payload).then(res => {
                 this.isSaving = false;
                 if (res.success) {
-                    this.$store.global.showToast("💾 角色内嵌世界书已保存", 2000);
+                    if (withSnapshot) {
+                        this.$store.global.showToast("💾 已保存整本并生成回滚版本", 2200);
+                    } else {
+                        this.$store.global.showToast("💾 条目修改已保存", 1800);
+                    }
 
                     // 通知外部 (如卡片列表或详情页) 刷新数据
                     window.dispatchEvent(new CustomEvent('card-updated', { detail: res.updated_card }));
@@ -187,6 +625,8 @@ export default function wiEditor() {
         // 打开编辑器 (适配三种来源: global, resource, embedded)
         openWorldInfoEditor(item) {
             this.isLoading = true;
+            this.initialSnapshotChecked = false;
+            this.initialSnapshotInitPromise = null;
 
             const handleSuccess = (dataObj, source) => {
                 // === 强制执行归一化 ===
@@ -205,6 +645,7 @@ export default function wiEditor() {
                 // 赋值给响应式对象
                 this.editingData = dataObj;
                 this.editingWiFile = item;
+                this._ensureEntryUids();
                 let targetIndex = 0;
                 if (typeof item.jumpToIndex === 'number' && item.jumpToIndex >= 0) {
                     targetIndex = item.jumpToIndex;
@@ -301,6 +742,8 @@ export default function wiEditor() {
         // 打开独立文件 (兼容接口)
         openWorldInfoFile(item) {
             this.isLoading = true;
+            this.initialSnapshotChecked = false;
+            this.initialSnapshotInitPromise = null;
             getWorldInfoDetail({
                 id: item.id,
                 source_type: item.source_type,
@@ -320,8 +763,16 @@ export default function wiEditor() {
                     
                     this.editingData.character_book = book;
                     this.editingWiFile = item;
+                    this._ensureEntryUids();
                     this.openFullScreenWI();
-                    this.$nextTick(() => {
+                    this.$nextTick(async () => {
+                        if (this.initialSnapshotInitPromise) {
+                            try {
+                                await this.initialSnapshotInitPromise;
+                            } catch (e) {
+                                console.warn('Init snapshot on enter failed before auto-save start:', e);
+                            }
+                        }
                         autoSaver.initBaseline(this.editingData);
                         autoSaver.start(() => this.editingData, () => this._getAutoSavePayload());
                     });
@@ -340,6 +791,11 @@ export default function wiEditor() {
             }
             // 加载剪切板
             this.loadWiClipboard();
+
+            // 进入编辑器时自动生成“本次编辑起点”的 INIT 快照
+            this._ensureInitialBaselineOnEnter().catch((e) => {
+                console.warn('Auto init snapshot failed:', e);
+            });
         },
 
         // === 数据存取 ===
@@ -366,13 +822,33 @@ export default function wiEditor() {
 
         // === 保存逻辑 ===
 
-        saveWiFileChanges() {
+        async saveWiFileChanges(withSnapshot = false) {
             if (!this.editingWiFile) return;
 
             // 如果是内嵌模式，实际上应该调用 UpdateCard
             if (this.editingWiFile.type === 'embedded') {
                 alert("内嵌世界书将随角色卡自动保存 (Auto-save) 或请关闭后点击角色保存。");
                 return;
+            }
+
+            await this._flushPendingEditorInput();
+            this._ensureEntryUids();
+            this.isSaving = true;
+            await this._ensureInitSnapshotReadyForSave();
+
+            if (withSnapshot) {
+                try {
+                    const snapshotRes = await this._createWholeWorldbookSnapshot();
+                    if (!snapshotRes || !snapshotRes.success) {
+                        this.isSaving = false;
+                        alert("整本保存失败：无法创建版本快照" + (snapshotRes && snapshotRes.msg ? ` (${snapshotRes.msg})` : ""));
+                        return;
+                    }
+                } catch (e) {
+                    this.isSaving = false;
+                    alert("整本保存失败：创建版本快照异常 - " + e);
+                    return;
+                }
             }
 
             // 独立文件保存
@@ -387,12 +863,20 @@ export default function wiEditor() {
                 content: contentToSave,
                 compact: true
             }).then(res => {
+                this.isSaving = false;
                 if (res.success) {
-                    this.$store.global.showToast("💾 世界书已保存", 2000);
+                    if (withSnapshot) {
+                        this.$store.global.showToast("💾 已保存整本并生成回滚版本", 2200);
+                    } else {
+                        this.$store.global.showToast("💾 条目修改已保存", 1800);
+                    }
                     autoSaver.initBaseline(this.editingData);
                 } else {
                     alert("保存失败: " + res.msg);
                 }
+            }).catch(e => {
+                this.isSaving = false;
+                alert("请求错误: " + e);
             });
         },
 
@@ -400,6 +884,7 @@ export default function wiEditor() {
             const name = prompt("请输入新世界书名称:", this.editingData.character_book.name || "New World Book");
             if (!name) return;
 
+            this._ensureEntryUids();
             const contentToSave = toStV3Worldbook(this.editingData.character_book, name);
             contentToSave.name = name; // 确保内部名一致
 
@@ -482,6 +967,7 @@ export default function wiEditor() {
             // 注意：必须显式设置为 undefined 或 delete，防止后端复用 ID
             delete copy.id;
             delete copy.uid;
+            delete copy[this.entryUidField];
 
             // 4. 确保 content 字段存在
             if (copy.content === undefined || copy.content === null) copy.content = "";
@@ -526,6 +1012,7 @@ export default function wiEditor() {
             const arr = this.getWIArrayRef();
             const newEntry = JSON.parse(JSON.stringify(content));
             newEntry.id = Math.floor(Math.random() * 1000000);
+            newEntry[this.entryUidField] = this._generateEntryUid();
 
             let insertPos = this.currentWiIndex + 1;
             if (insertPos > arr.length) insertPos = arr.length;
@@ -633,6 +1120,7 @@ export default function wiEditor() {
                     const arr = this.getWIArrayRef();
                     const newEntry = JSON.parse(JSON.stringify(content));
                     newEntry.id = Math.floor(Math.random() * 1000000);
+                    newEntry[this.entryUidField] = this._generateEntryUid();
 
                     arr.splice(targetIndex, 0, newEntry);
                     this.currentWiIndex = targetIndex;

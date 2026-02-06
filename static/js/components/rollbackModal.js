@@ -30,6 +30,8 @@ export default function rollbackModal() {
         rollbackTargetId: '',
         rollbackTargetPath: '',
         rollbackLiveContent: null, // 当前编辑器中的实时内容
+        rollbackEmbeddedWiContext: false,
+        diffRenderMode: 'raw',     // 'raw' | 'wi_entries'
         
         // Diff 状态
         diffSelection: { left: null, right: null },
@@ -49,11 +51,17 @@ export default function rollbackModal() {
             this.rollbackTargetId = targetId;
             this.rollbackTargetPath = targetPath;
             this.rollbackLiveContent = null;
+            this.rollbackEmbeddedWiContext = !!(editingWiFile && editingWiFile.type === 'embedded');
+            this.diffRenderMode = (type === 'lorebook' || this.rollbackEmbeddedWiContext) ? 'wi_entries' : 'raw';
 
             // 1. 捕获实时内容 (Live Content)
             if (type === 'card') {
-                // 如果传入了 editingData 且 ID 匹配，说明正在编辑
-                if (editingData && editingData.id === targetId) {
+                // 内嵌世界书上下文：只比较世界书
+                if (this.rollbackEmbeddedWiContext && editingData && editingData.character_book) {
+                    const name = editingData.character_book.name || "World Info";
+                    this.rollbackLiveContent = toStV3Worldbook(editingData.character_book, name);
+                } else if (editingData && editingData.id === targetId) {
+                    // 如果传入了 editingData 且 ID 匹配，说明正在编辑
                     this.rollbackLiveContent = getCleanedV3Data(editingData);
                 }
             } else if (type === 'lorebook') {
@@ -111,10 +119,386 @@ export default function rollbackModal() {
 
         setDiffSide(side, version) {
             this.diffSelection[side] = version;
-            this.updateDiffView();
+            // 手动切换时不自动跳转，尊重用户选择
+            this.updateDiffView(false);
         },
 
-        updateDiffView() {
+        _isLorebookComparison() {
+            return this.rollbackTargetType === 'lorebook' || this.rollbackEmbeddedWiContext;
+        },
+
+        _escapeHtml(text) {
+            return String(text ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        },
+
+        _stableStringify(value) {
+            if (Array.isArray(value)) {
+                return `[${value.map(v => this._stableStringify(v)).join(',')}]`;
+            }
+            if (value && typeof value === 'object') {
+                const keys = Object.keys(value).sort();
+                return `{${keys.map(k => `${JSON.stringify(k)}:${this._stableStringify(value[k])}`).join(',')}}`;
+            }
+            return JSON.stringify(value);
+        },
+
+        _toArray(val) {
+            if (Array.isArray(val)) {
+                return val.map(v => String(v ?? '').trim()).filter(Boolean);
+            }
+            if (typeof val === 'string') {
+                return val.split(',').map(s => s.trim()).filter(Boolean);
+            }
+            return [];
+        },
+
+        _extractLorebookEntries(raw) {
+            if (!raw) return [];
+
+            let book = raw;
+            if (raw?.data?.character_book) {
+                book = raw.data.character_book;
+            } else if (raw?.character_book) {
+                book = raw.character_book;
+            }
+
+            if (Array.isArray(book)) {
+                return book.filter(e => e && typeof e === 'object');
+            }
+
+            if (book && typeof book === 'object') {
+                const entries = book.entries;
+                if (Array.isArray(entries)) return entries.filter(e => e && typeof e === 'object');
+                if (entries && typeof entries === 'object') {
+                    return Object.values(entries).filter(e => e && typeof e === 'object');
+                }
+            }
+            return [];
+        },
+
+        _normalizeLorebookEntry(entry, index) {
+            const raw = entry || {};
+            const keys = this._toArray(raw.keys ?? raw.key);
+            const secondaryKeys = this._toArray(raw.secondary_keys ?? raw.keysecondary);
+            const comment = String(raw.comment ?? '').trim();
+            const content = String(raw.content ?? '');
+            const uid = String(raw.st_manager_uid ?? '').trim();
+            const legacyUid = String(raw.uid ?? '').trim();
+
+            const compareObj = { ...raw };
+            delete compareObj.id;
+            delete compareObj.uid;
+            delete compareObj.displayIndex;
+            delete compareObj.st_manager_uid;
+
+            const keySig = keys.map(k => k.toLowerCase()).sort().join('|');
+            const secSig = secondaryKeys.map(k => k.toLowerCase()).sort().join('|');
+            const quickSig = `${comment.toLowerCase()}|${keySig}|${secSig}`;
+            const stableSig = this._stableStringify(compareObj);
+
+            return {
+                raw,
+                index,
+                uid,
+                legacyUid,
+                comment,
+                content,
+                keys,
+                secondaryKeys,
+                compareObj,
+                quickSig,
+                stableSig,
+                title: comment || `(无备注 #${index + 1})`
+            };
+        },
+
+        _buildLorebookPairs(leftEntries, rightEntries) {
+            const left = leftEntries.map((e, i) => this._normalizeLorebookEntry(e, i));
+            const right = rightEntries.map((e, i) => this._normalizeLorebookEntry(e, i));
+
+            const rightUsed = new Set();
+            const rightUidMap = new Map();
+            const rightLegacyUidMap = new Map();
+            const rightStableMap = new Map();
+            const rightQuickMap = new Map();
+
+            const pushMap = (map, key, idx) => {
+                if (!key) return;
+                if (!map.has(key)) map.set(key, []);
+                map.get(key).push(idx);
+            };
+
+            right.forEach((item, idx) => {
+                pushMap(rightUidMap, item.uid, idx);
+                pushMap(rightLegacyUidMap, item.legacyUid, idx);
+                pushMap(rightStableMap, item.stableSig, idx);
+                pushMap(rightQuickMap, item.quickSig, idx);
+            });
+
+            const pickUnique = (map, key) => {
+                const arr = map.get(key);
+                if (!arr || arr.length !== 1) return -1;
+                const idx = arr[0];
+                if (rightUsed.has(idx)) return -1;
+                return idx;
+            };
+
+            const pairs = [];
+            left.forEach((item) => {
+                let rightIdx = -1;
+                if (item.uid) rightIdx = pickUnique(rightUidMap, item.uid);
+                if (rightIdx < 0 && item.legacyUid) rightIdx = pickUnique(rightLegacyUidMap, item.legacyUid);
+                if (rightIdx < 0) rightIdx = pickUnique(rightStableMap, item.stableSig);
+                if (rightIdx < 0) rightIdx = pickUnique(rightQuickMap, item.quickSig);
+
+                if (rightIdx >= 0) {
+                    rightUsed.add(rightIdx);
+                    pairs.push({ left: item, right: right[rightIdx] });
+                } else {
+                    pairs.push({ left: item, right: null, _needsFallback: true });
+                }
+            });
+
+            // 二次兜底：当 UID/签名无法匹配（常见于旧版本无 UID，且条目内容变化较大），
+            // 按剩余顺序配对，避免“修改被误判为删除+新增”造成可读性差和“条目丢失”错觉。
+            const fallbackLeftPairs = pairs.filter(p => p._needsFallback);
+            const unmatchedRight = [];
+            right.forEach((item, idx) => {
+                if (!rightUsed.has(idx)) unmatchedRight.push(item);
+            });
+
+            const fallbackCount = Math.min(fallbackLeftPairs.length, unmatchedRight.length);
+            for (let i = 0; i < fallbackCount; i++) {
+                fallbackLeftPairs[i].right = unmatchedRight[i];
+                delete fallbackLeftPairs[i]._needsFallback;
+            }
+            for (let i = fallbackCount; i < fallbackLeftPairs.length; i++) {
+                delete fallbackLeftPairs[i]._needsFallback;
+            }
+            for (let i = fallbackCount; i < unmatchedRight.length; i++) {
+                pairs.push({ left: null, right: unmatchedRight[i] });
+            }
+
+            // 清理临时标记
+            pairs.forEach((p) => {
+                if (p._needsFallback) {
+                    delete p._needsFallback;
+                }
+            });
+
+            return pairs;
+        },
+
+        _getPairMeta(pair) {
+            if (pair.left && pair.right) {
+                const leftStr = this._stableStringify(pair.left.compareObj);
+                const rightStr = this._stableStringify(pair.right.compareObj);
+                const isSame = leftStr === rightStr;
+                return {
+                    status: isSame ? 'same' : 'changed',
+                    changed: {
+                        comment: pair.left.comment !== pair.right.comment,
+                        keys: pair.left.keys.join('|') !== pair.right.keys.join('|') ||
+                            pair.left.secondaryKeys.join('|') !== pair.right.secondaryKeys.join('|'),
+                        content: pair.left.content !== pair.right.content
+                    }
+                };
+            }
+            if (pair.left && !pair.right) {
+                return { status: 'removed', changed: { comment: true, keys: true, content: true } };
+            }
+            return { status: 'added', changed: { comment: true, keys: true, content: true } };
+        },
+
+        _previewContent(text, maxLen = 800) {
+            const raw = String(text ?? '');
+            if (raw.length <= maxLen) return raw;
+            return `${raw.slice(0, maxLen)}\n...(已省略 ${raw.length - maxLen} 字)`;
+        },
+
+        _fieldDiffClass(meta, side, fieldChanged) {
+            const isLeft = side === 'left';
+            const isRight = side === 'right';
+
+            // 整条新增：右侧字段全部绿底
+            if (meta.status === 'added' && isRight) {
+                return 'bg-green-500/20 border border-green-500/40';
+            }
+            // 整条删除：左侧字段全部红底
+            if (meta.status === 'removed' && isLeft) {
+                return 'bg-red-500/20 border border-red-500/40';
+            }
+            // 双侧都存在时，仅变化字段黄底
+            if (meta.status === 'changed' && fieldChanged) {
+                return 'bg-yellow-500/20 border border-yellow-500/40';
+            }
+            return 'bg-black/10 border border-transparent';
+        },
+
+        _renderLorebookEntry(entry, meta, side, orderNo) {
+            if (!entry) {
+                return `
+                    <div class="m-2 p-3 rounded border border-dashed border-[var(--border-light)] text-[11px] text-[var(--text-dim)] opacity-70">
+                        <div>（此侧无对应条目）</div>
+                    </div>
+                `;
+            }
+
+            const isLeft = side === 'left';
+            const isHot = (isLeft && (meta.status === 'removed' || meta.status === 'changed')) ||
+                (!isLeft && (meta.status === 'added' || meta.status === 'changed'));
+
+            const boxClass = isHot
+                ? (isLeft ? 'bg-red-500/8 border-red-500/30' : 'bg-green-500/8 border-green-500/30')
+                : 'bg-[var(--bg-sub)] border-[var(--border-light)]';
+
+            const markClass = isHot ? (isLeft ? 'text-red-300' : 'text-green-300') : 'text-[var(--text-main)]';
+            const comment = this._escapeHtml(entry.title);
+            const keys = this._escapeHtml(entry.keys.join(', ') || '(空)');
+            const sec = this._escapeHtml(entry.secondaryKeys.join(', ') || '(空)');
+            const content = this._escapeHtml(this._previewContent(entry.content));
+            const idx = entry.index + 1;
+
+            const commentCls = meta.changed.comment ? markClass : 'text-[var(--text-main)]';
+            const keyCls = meta.changed.keys ? markClass : 'text-[var(--text-main)]';
+            const contentCls = meta.changed.content ? markClass : 'text-[var(--text-main)]';
+
+            const commentBgCls = this._fieldDiffClass(meta, side, meta.changed.comment);
+            const keysBgCls = this._fieldDiffClass(meta, side, meta.changed.keys);
+            const contentBgCls = this._fieldDiffClass(meta, side, meta.changed.content);
+
+            return `
+                <div class="m-2 p-3 rounded border ${boxClass}">
+                    <div class="text-[10px] uppercase tracking-wide text-[var(--text-dim)]">Entry ${orderNo} · Source #${idx}</div>
+                    <div class="mt-1 p-1.5 rounded ${commentBgCls}">
+                        <div class="text-sm font-bold ${commentCls}">${comment}</div>
+                    </div>
+                    <div class="mt-2 p-1.5 rounded ${keysBgCls}">
+                        <div class="text-[11px] ${keyCls}">关键词: ${keys}</div>
+                        <div class="mt-1 text-[11px] ${keyCls}">次级词: ${sec}</div>
+                    </div>
+                    <div class="mt-2 p-1.5 rounded ${contentBgCls}">
+                        <div class="text-[11px] text-[var(--text-dim)]">内容预览</div>
+                        <div class="mt-1 p-2 rounded bg-black/10 text-[11px] whitespace-pre-wrap break-words max-h-56 overflow-auto ${contentCls}">${content}</div>
+                    </div>
+                </div>
+            `;
+        },
+
+        _renderLorebookDiff(leftData, rightData) {
+            const leftEntries = this._extractLorebookEntries(leftData);
+            const rightEntries = this._extractLorebookEntries(rightData);
+            const pairs = this._buildLorebookPairs(leftEntries, rightEntries);
+            const withMeta = pairs.map(pair => ({ pair, meta: this._getPairMeta(pair) }));
+
+            const changed = withMeta.filter(x => x.meta.status !== 'same');
+            const hiddenCount = withMeta.length - changed.length;
+            const displayList = changed.length > 0 ? changed : withMeta.slice(0, 20);
+
+            const counts = { added: 0, removed: 0, changed: 0, same: 0 };
+            withMeta.forEach(x => { counts[x.meta.status] += 1; });
+
+            const summary = `
+                <div class="sticky top-0 z-10 px-3 py-2 border-b border-[var(--border-light)] bg-[var(--bg-panel)] text-[11px]">
+                    <span class="text-green-400 mr-3">新增 ${counts.added}</span>
+                    <span class="text-red-400 mr-3">删除 ${counts.removed}</span>
+                    <span class="text-orange-400 mr-3">修改 ${counts.changed}</span>
+                    <span class="text-[var(--text-dim)]">未变化 ${counts.same}</span>
+                    <span class="ml-3 text-[var(--text-dim)]">字段底色: <span class="text-green-400">绿=新增</span> / <span class="text-yellow-300">黄=修改</span> / <span class="text-red-400">红=删除</span></span>
+                    ${hiddenCount > 0 ? `<span class="ml-3 text-[var(--text-dim)]">（已隐藏 ${hiddenCount} 条未变化）</span>` : ''}
+                </div>
+            `;
+
+            let leftHtml = summary;
+            let rightHtml = summary;
+            displayList.forEach((item, idx) => {
+                leftHtml += this._renderLorebookEntry(item.pair.left, item.meta, 'left', idx + 1);
+                rightHtml += this._renderLorebookEntry(item.pair.right, item.meta, 'right', idx + 1);
+            });
+
+            if (displayList.length === 0) {
+                leftHtml += '<div class="p-6 text-center text-[var(--text-dim)] text-xs">无可展示条目</div>';
+                rightHtml += '<div class="p-6 text-center text-[var(--text-dim)] text-xs">无可展示条目</div>';
+            }
+
+            return { left: leftHtml, right: rightHtml };
+        },
+
+        _isDataEqual(a, b) {
+            try {
+                return this._stableStringify(a) === this._stableStringify(b);
+            } catch (e) {
+                try {
+                    return JSON.stringify(a) === JSON.stringify(b);
+                } catch {
+                    return false;
+                }
+            }
+        },
+
+        async _loadVersionData(ver) {
+            let data;
+
+            // 场景 A: 当前版本 (Current)
+            if (ver.is_current) {
+                let rawContent = this.rollbackLiveContent;
+
+                // 如果没有实时内容，从 API 读取
+                if (!rawContent) {
+                    if (this.rollbackTargetType === 'card') {
+                        // 读取角色卡元数据
+                        const res = await getCardMetadata(this.rollbackTargetId);
+                        rawContent = (res.success === true && res.data) ? res.data : res;
+                    } else if (this.rollbackTargetType === 'lorebook') {
+                        // 读取世界书
+                        if (this.rollbackTargetId.startsWith('embedded::')) {
+                            // 内嵌：读取宿主卡片
+                            const realId = this.rollbackTargetId.replace('embedded::', '');
+                            const res = await getCardMetadata(realId);
+                            rawContent = (res.success === true && res.data) ? res.data : res;
+                        } else {
+                            // 独立文件
+                            const res = await readFileContent({ path: this.rollbackTargetPath });
+                            rawContent = res.data;
+                        }
+                    }
+                }
+
+                // 角色卡走标准化，世界书保持原结构以做条目级匹配
+                if (this._isLorebookComparison()) {
+                    data = rawContent;
+                } else {
+                    const cleanRes = await normalizeCardData(rawContent);
+                    if (cleanRes.success) {
+                        data = cleanRes.data;
+                    } else {
+                        console.warn("清洗失败，使用原始数据", cleanRes.msg);
+                        data = rawContent;
+                    }
+                }
+            }
+            // 场景 B: 历史备份 (Backup)
+            else {
+                const res = await readFileContent({ path: ver.path });
+                data = res.data;
+            }
+
+            // 世界书对比模式：统一提取 character_book
+            if (this._isLorebookComparison()) {
+                if (data?.data?.character_book) {
+                    data = data.data.character_book;
+                } else if (data?.character_book) {
+                    data = data.character_book;
+                }
+            }
+
+            return data;
+        },
+
+        async updateDiffView(autoAdjustLeft = true) {
             const leftVer = this.diffSelection.left;
             const rightVer = this.diffSelection.right;
 
@@ -124,78 +508,41 @@ export default function rollbackModal() {
             }
 
             this.isDiffLoading = true;
+            try {
+                const [leftData, rightData] = await Promise.all([
+                    this._loadVersionData(leftVer),
+                    this._loadVersionData(rightVer)
+                ]);
 
-            // Helper: 加载单侧数据
-            const loadData = async (ver) => {
-                let data;
-                
-                // 场景 A: 当前版本 (Current)
-                if (ver.is_current) {
-                    let rawContent = this.rollbackLiveContent;
-                    
-                    // 如果没有实时内容，从 API 读取
-                    if (!rawContent) {
-                        if (this.rollbackTargetType === 'card') {
-                            // 读取角色卡元数据
-                            const res = await getCardMetadata(this.rollbackTargetId);
-                            rawContent = (res.success === true && res.data) ? res.data : res;
-                        } else if (this.rollbackTargetType === 'lorebook') {
-                            // 读取世界书
-                            if (this.rollbackTargetId.startsWith('embedded::')) {
-                                // 内嵌：读取宿主卡片
-                                const realId = this.rollbackTargetId.replace('embedded::', '');
-                                const res = await getCardMetadata(realId);
-                                rawContent = (res.success === true && res.data) ? res.data : res;
-                            } else {
-                                // 独立文件
-                                const res = await readFileContent({ path: this.rollbackTargetPath });
-                                rawContent = res.data;
+                // 默认打开时：若“最新快照”与 Current 完全一致，自动切到下一个有差异的版本
+                if (autoAdjustLeft && rightVer.is_current && leftVer && !leftVer.is_current) {
+                    const isSameAsCurrent = this._isDataEqual(leftData, rightData);
+                    if (isSameAsCurrent && this.backupList.length > 1) {
+                        const currentIdx = this.backupList.findIndex(b => b.path === leftVer.path);
+                        for (let i = currentIdx + 1; i < this.backupList.length; i++) {
+                            const candidate = this.backupList[i];
+                            const candidateData = await this._loadVersionData(candidate);
+                            if (!this._isDataEqual(candidateData, rightData)) {
+                                this.diffSelection.left = candidate;
+                                await this.updateDiffView(false);
+                                return;
                             }
                         }
                     }
-
-                    // 后端清洗 (Normalize) - 确保格式与备份一致，便于 Diff
-                    const cleanRes = await normalizeCardData(rawContent);
-                    if (cleanRes.success) {
-                        data = cleanRes.data;
-                    } else {
-                        console.warn("清洗失败，使用原始数据", cleanRes.msg);
-                        data = rawContent;
-                    }
-                } 
-                // 场景 B: 历史备份 (Backup)
-                else {
-                    const res = await readFileContent({ path: ver.path });
-                    data = res.data;
                 }
 
-                // 特殊处理：如果是内嵌世界书，只提取 character_book 字段进行对比
-                if (this.rollbackTargetType === 'lorebook' && this.rollbackTargetId.startsWith('embedded::')) {
-                    if (data.data && data.data.character_book) {
-                        data = data.data.character_book;
-                    } else if (data.character_book) {
-                        data = data.character_book;
-                    }
-                }
-
-                return data;
-            };
-
-            // 并行加载并对比
-            Promise.all([loadData(leftVer), loadData(rightVer)])
-                .then(([leftData, rightData]) => {
-                    const result = generateSideBySideDiff(leftData, rightData);
-                    this.diffData.left = result.left;
-                    this.diffData.right = result.right;
-                })
-                .catch(e => {
-                    console.error(e);
-                    this.diffData.left = `<div class="p-4 text-red-500">Error: ${e.message}</div>`;
-                    this.diffData.right = '';
-                })
-                .finally(() => {
-                    this.isDiffLoading = false;
-                });
+                const result = this._isLorebookComparison()
+                    ? this._renderLorebookDiff(leftData, rightData)
+                    : generateSideBySideDiff(leftData, rightData);
+                this.diffData.left = result.left;
+                this.diffData.right = result.right;
+            } catch (e) {
+                console.error(e);
+                this.diffData.left = `<div class="p-4 text-red-500">Error: ${e.message}</div>`;
+                this.diffData.right = '';
+            } finally {
+                this.isDiffLoading = false;
+            }
         },
 
         // === 恢复逻辑 ===
