@@ -705,7 +705,8 @@
         x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 scale-100"
         x-transition:leave-end="opacity-0 scale-95"
         class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-        @click.self="showSettingsHelpModal = false">
+        @click.self="showSettingsHelpModal = false"
+        @click.stop>
 
         <div
             class="bg-[var(--bg-panel)] border border-[var(--border-light)] rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[85vh]">
@@ -716,7 +717,7 @@
                     <span>📖</span>
                     <span x-text="settingsHelpContent[activeSettingTab]?.title || '帮助指南'"></span>
                 </h3>
-                <button @click="showSettingsHelpModal = false"
+                <button @click.stop="showSettingsHelpModal = false"
                     class="text-gray-500 hover:text-red-400 px-2 text-xl">✕</button>
             </div>
 
