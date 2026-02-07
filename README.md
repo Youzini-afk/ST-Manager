@@ -776,6 +776,24 @@ ST-Manager 内置强大的规则引擎，支持基于条件的自动化任务执
 - 批量更新已有角色卡的标签信息
 - 在卡片详情页更新来源链接时自动抓取标签
 
+**支持的URL格式**：
+
+Discord论坛帖子链接支持以下几种格式（均会自动识别并提取线程ID）：
+
+1. **标准格式**（带threads路径）：
+   - `https://discord.com/channels/{guild_id}/{channel_id}/threads/{thread_id}`
+   - `https://discord.com/channels/{guild_id}/{channel_id}/threads/{thread_id}/0`
+
+2. **简短格式**（直接访问线程）：
+   - `https://discord.com/channels/{guild_id}/{thread_id}`
+   - `https://discord.com/channels/{guild_id}/{thread_id}/0`
+
+3. **带楼层信息格式**（最后一个参数为楼层ID）：
+   - `https://discord.com/channels/{guild_id}/{channel_id}/{message_id}`
+   - `https://discord.com/channels/{guild_id}/{channel_id}/{message_id}/0`
+
+> **说明**：末尾的 `/0` 表示回顶参数，用于获取帖子第一页的标签信息（标签通常只在首页显示）。系统会自动处理所有格式并提取正确的线程ID。
+
 **配置方式**：
 
 1. 在规则动作的 `fetch_forum_tags` 中配置：

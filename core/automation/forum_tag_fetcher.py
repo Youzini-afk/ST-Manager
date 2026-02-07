@@ -53,8 +53,18 @@ class ForumTagFetcher:
             if not is_discord:
                 return False
             
-            # 检查路径格式: /channels/{guild_id}/{channel_id}/threads/{thread_id}
-            if len(path_parts) >= 5 and path_parts[0] == 'channels':
+            # 检查路径必须以 channels 开头
+            if len(path_parts) < 2 or path_parts[0] != 'channels':
+                return False
+            
+            # 支持的格式:
+            # 1. /channels/{guild_id}/{channel_id}/threads/{thread_id}
+            # 2. /channels/{guild_id}/{thread_id} (简短格式)
+            # 3. /channels/{guild_id}/{channel_id}/{message_id} (带楼层信息)
+            # 4. 以上格式后接 /0 表示回顶
+            
+            if len(path_parts) >= 3:
+                # 至少有 guild_id 和一个 ID
                 return True
             
             return False
@@ -66,16 +76,43 @@ class ForumTagFetcher:
     def _parse_discord_thread_url(self, url):
         """
         解析Discord线程URL
-        格式: https://discord.com/channels/{guild_id}/{channel_id}/threads/{thread_id}
+        
+        支持的格式:
+        1. https://discord.com/channels/{guild_id}/{channel_id}/threads/{thread_id}
+        2. https://discord.com/channels/{guild_id}/{thread_id} (简短格式)
+        3. https://discord.com/channels/{guild_id}/{channel_id}/{message_id} (带楼层)
+        4. 以上格式 + /0 (回顶参数)
+        
         返回: (guild_id, channel_id, thread_id) 或 (None, None, None)
         """
         try:
             parsed = urlparse(url)
             path_parts = parsed.path.strip('/').split('/')
             
-            if len(path_parts) >= 5 and path_parts[0] == 'channels':
-                return path_parts[1], path_parts[2], path_parts[4]
-            return None, None, None
+            if len(path_parts) < 3 or path_parts[0] != 'channels':
+                return None, None, None
+            
+            guild_id = path_parts[1]
+            
+            # 判断格式并提取 thread_id
+            if len(path_parts) >= 5 and path_parts[3] == 'threads':
+                # 格式1: /channels/{guild_id}/{channel_id}/threads/{thread_id}[/0]
+                channel_id = path_parts[2]
+                thread_id = path_parts[4]
+            elif len(path_parts) == 3 or (len(path_parts) >= 4 and path_parts[3] in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']):
+                # 格式2: /channels/{guild_id}/{thread_id}[/0]
+                # 简短格式，thread_id 在位置2，没有独立的 channel_id
+                channel_id = path_parts[2]  # 此时 channel_id 实际上就是 thread_id
+                thread_id = path_parts[2]
+            elif len(path_parts) >= 4:
+                # 格式3: /channels/{guild_id}/{channel_id}/{message_id}[/0]
+                # 带楼层信息的格式，使用 channel_id 作为 thread_id
+                channel_id = path_parts[2]
+                thread_id = path_parts[2]  # 使用 channel_id 作为 thread_id
+            else:
+                return None, None, None
+            
+            return guild_id, channel_id, thread_id
         except Exception as e:
             logger.error(f"解析Discord URL失败: {e}")
             return None, None, None
@@ -179,8 +216,14 @@ class ForumTagFetcher:
             if not applied_tags:
                 return [], title, None
             
+            # 获取父频道ID - 论坛线程的父频道在 parent_id 字段
+            parent_id = data.get('parent_id')
+            if not parent_id:
+                # 如果没有parent_id，可能是普通频道，尝试用channel_id
+                parent_id = channel_id
+            
             # 获取频道可用的标签定义
-            parent_api_url = f"https://discord.com/api/v10/channels/{channel_id}"
+            parent_api_url = f"https://discord.com/api/v10/channels/{parent_id}"
             parent_response = requests.get(parent_api_url, headers=headers, timeout=self.timeout)
             
             if parent_response.status_code == 200:
@@ -222,7 +265,7 @@ class ForumTagFetcher:
             return {
                 'success': False,
                 'tags': [],
-                'error': '无效的Discord论坛URL，格式应为: https://discord.com/channels/{guild_id}/{channel_id}/threads/{thread_id}',
+                'error': '无效的Discord论坛URL，支持的格式: https://discord.com/channels/{guild_id}/{channel_id}/threads/{thread_id} 或 https://discord.com/channels/{guild_id}/{thread_id}',
                 'title': None
             }
         
