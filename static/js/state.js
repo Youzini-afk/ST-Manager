@@ -120,6 +120,11 @@ export function initState() {
             auth_lockout_seconds: 900,
             auth_hard_lock_threshold: 50,
             auto_rename_on_import: true,
+            
+            // Discord 论坛标签抓取配置
+            discord_auth_type: 'token',
+            discord_bot_token: '',
+            discord_user_cookie: '',
         },
 
         // === 集中管理的视图状态 ===

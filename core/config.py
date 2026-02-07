@@ -108,6 +108,14 @@ DEFAULT_CONFIG = {
     # 导入文件时是否使用角色名自动重命名文件
     # 设为 False 则保留原始文件名（仅处理冲突时添加序号）
     "auto_rename_on_import": True,
+    
+    # Discord论坛标签抓取配置（类脑论坛使用Discord）
+    # 认证方式二选一：Bot Token 或 User Cookie
+    # Bot Token: 从 Discord Developer Portal 创建Bot获取
+    # Cookie: 从浏览器开发者工具复制完整的Cookie字符串
+    "discord_auth_type": "token",  # 'token' 或 'cookie'
+    "discord_bot_token": "",       # Bot Token (需要 forums 读取权限)
+    "discord_user_cookie": "",     # 浏览器Cookie字符串
 }
 
 def load_config():

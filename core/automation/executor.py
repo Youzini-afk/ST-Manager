@@ -103,6 +103,10 @@ class AutomationExecutor:
                 logger.warning(f"卡片 {card_id} (ui_key: {ui_key}) 未配置超链接")
                 return {'success': False, 'error': '未配置超链接，请在卡片详情中设置来源链接', 'tags': []}
 
+            # 调试：打印URL信息
+            logger.info(f"准备抓取标签 - 卡片: {card_id}, ui_key: {ui_key}, URL: '{url}'")
+            logger.info(f"URL长度: {len(url)}, URL类型: {type(url)}")
+
             # 抓取标签
             fetcher = get_tag_fetcher()
             fetch_result = fetcher.fetch_tags(url)

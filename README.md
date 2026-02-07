@@ -19,6 +19,7 @@
 - [Docker 部署](#nav-docker)
 - [项目结构](#nav-structure)
 - [配置说明](#nav-config)
+  - [Discord论坛认证配置](#nav-config-discord)
 - [公网/外网访问身份验证](#nav-auth)
 - [功能详解](#nav-features)
   - [角色卡管理](#nav-feature-cards)
@@ -46,6 +47,7 @@ ST-Manager 是一款专为 SillyTavern AI 聊天程序设计的资源可视化�
 - 📜 **ST脚本管理** - 管理 Tavern Helper 脚本库，支持脚本解析和分类展示
 - ⚡ **快速回复管理** - 快速回复模板管理，支持分类、搜索和批量操作
 - 🤖 **自动化引擎** - 基于规则的自动化任务执行，支持复杂的条件判断
+- 🏷️ **论坛标签抓取** - 支持从Discord论坛（类脑）自动抓取帖子标签并应用到角色卡
 - 🔄 **实时同步** - 文件系统自动监听，实时同步变更到数据库
 - 🎨 **可视化界面** - 现代化响应式 UI，支持暗色/亮色主题
 - 📦 **版本管理** - 支持角色卡 Bundle 多版本管理
@@ -315,6 +317,55 @@ ST-Manager/
 - `wi_preview_limit`：世界书详情预览最大条目数（0 表示不限制）
 - `wi_preview_entry_max_chars`：世界书单条内容预览最大字符数（0 表示不截断）
 - `wi_entry_history_limit`：世界书条目历史保留数（每条目独立，默认 7）
+
+<a id="nav-config-discord"></a>
+
+### Discord论坛认证配置
+
+用于自动化规则抓取Discord论坛（如类脑）帖子标签的认证信息。
+
+```json
+{
+  "discord_auth_type": "token",
+  "discord_bot_token": "your_discord_token_here",
+  "discord_user_cookie": ""
+}
+```
+
+#### 配置项说明
+
+| 配置项 | 说明 | 示例值 |
+|--------|------|--------|
+| `discord_auth_type` | 认证方式 | `"token"` 或 `"cookie"`（推荐Token） |
+| `discord_bot_token` | Discord Token | 从浏览器开发者工具获取的Token值 |
+| `discord_user_cookie` | Discord Cookie | 完整的浏览器Cookie字符串（备用方案） |
+
+#### 获取Token的步骤
+
+1. 在浏览器中打开Discord网页版（https://discord.com）并登录账号
+2. 按 `F12` 打开开发者工具
+3. 按 `Ctrl + Shift + M` 启用移动设备模拟
+4. 切换到 **Console（控制台）** 标签
+5. 粘贴以下代码并回车：
+```javascript
+const iframe = document.createElement('iframe');
+console.log(
+  'Token: %c%s',
+  'font-size:16px;',
+  JSON.parse(document.body.appendChild(iframe).contentWindow.localStorage.token)
+);
+iframe.remove();
+```
+6. 控制台会显示 `Token: xxxxxxxxxxxx`，复制这个值
+7. 在ST-Manager设置中粘贴保存
+
+#### 注意事项
+
+- Token有过期时间，通常几小时到几天不等
+- 如遇401错误，请重新获取Token
+- Token仅保存在本地 `config.json`，不会上传
+- 需要Discord账号已加入目标服务器并有访问权限
+- Cookie方式（`discord_auth_type: cookie`）为备用方案，成功率较低
 
 ---
 
@@ -709,6 +760,68 @@ ST-Manager 内置强大的规则引擎，支持基于条件的自动化任务执
 - `unset_favorite` - 取消收藏
 - `set_summary` - 设置备注
 - `set_resource_folder` - 设置资源目录
+- `fetch_forum_tags` - 抓取论坛标签（支持Discord类脑论坛）
+
+#### 抓取论坛标签功能
+
+自动化规则支持从Discord论坛帖子抓取标签并自动应用到角色卡。
+
+**使用场景**：
+- 从类脑论坛（Discord）导入角色卡时，自动同步帖子标签
+- 批量更新已有角色卡的标签信息
+
+**配置方式**：
+
+1. 在规则动作的 `fetch_forum_tags` 中配置：
+```json
+{
+  "type": "fetch_forum_tags",
+  "config": {
+    "exclude_tags": ["其他"],
+    "replace_rules": {"其他": "杂项"},
+    "merge_mode": "merge"
+  }
+}
+```
+
+2. 确保角色卡的"来源链接"指向Discord论坛帖子
+
+3. 配置Discord认证（见下方"Discord论坛认证配置"）
+
+#### Discord论坛认证配置
+
+抓取Discord论坛标签需要配置Discord认证信息。
+
+**获取Discord Token的方法**：
+
+1. 在浏览器中打开Discord网页版并登录
+2. 按 `F12` 打开开发者工具
+3. 按 `Ctrl + Shift + M` 启用移动设备模拟
+4. 切换到 **Console（控制台）** 标签
+5. 粘贴以下代码并回车：
+```javascript
+const iframe = document.createElement('iframe');
+console.log(
+  'Token: %c%s',
+  'font-size:16px;',
+  JSON.parse(document.body.appendChild(iframe).contentWindow.localStorage.token)
+);
+iframe.remove();
+```
+6. 控制台会输出 `Token: xxxxxxxxxxxx`，复制这个值
+
+**配置步骤**：
+
+1. 打开 ST-Manager 设置 → 连接与服务
+2. 找到 "Discord 论坛标签抓取" 配置区域
+3. 认证方式选择 **"Token (推荐)"**
+4. 将获取到的Token粘贴到输入框
+5. 保存设置
+
+**注意事项**：
+- Token有过期时间，如遇到401错误请重新获取
+- Token仅保存在本地配置文件中，不会上传到任何服务器
+- 使用Token方式需要你的Discord账号已加入类脑服务器并有权限访问对应频道
 
 ---
 

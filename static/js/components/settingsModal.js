@@ -12,6 +12,10 @@ export default function settingsModal() {
         // === 本地状态 ===
         activeSettingTab: 'general',
         allowedAbsRootsText: '',
+        
+        // Discord 认证显示状态
+        showDiscordToken: false,
+        showDiscordCookie: false,
 
         get settingsForm() { return this.$store.global.settingsForm; },
         get showSettingsModal() { 

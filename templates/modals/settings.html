@@ -440,6 +440,83 @@
                             ⚠️ 仅当用户名和密码都设置时才会启用认证。修改后保存即可生效。
                         </div>
                     </div>
+
+                    <div class="settings-group-title mt-8">Discord 论坛标签抓取 (类脑)</div>
+                    <div class="settings-row p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]">
+                        <div class="settings-label text-indigo-400 mb-2 block">🔌 Discord 认证</div>
+                        <div class="settings-desc mb-4">
+                            配置Discord认证以抓取类脑论坛帖子的标签。<br>
+                            <span class="text-xs opacity-70">
+                                • Bot Token: 从 <a href="https://discord.com/developers/applications" target="_blank" class="text-blue-400 hover:underline">Discord Developer Portal</a> 获取<br>
+                                • Cookie: 从浏览器开发者工具复制完整Cookie字符串
+                            </span>
+                        </div>
+                        
+                        <!-- 认证方式选择 -->
+                        <div class="flex gap-4 mb-4">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="discord_auth_type" value="token" x-model="settingsForm.discord_auth_type" 
+                                    class="w-4 h-4">
+                                <span class="text-sm">Token (推荐)</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="discord_auth_type" value="cookie" x-model="settingsForm.discord_auth_type" 
+                                    class="w-4 h-4">
+                                <span class="text-sm">Cookie</span>
+                            </label>
+                        </div>
+                        
+                        <!-- Token 输入 -->
+                        <div x-show="settingsForm.discord_auth_type === 'token'" x-transition>
+                            <label class="text-xs text-[var(--text-dim)] uppercase">Token (推荐)</label>
+                            <div class="flex gap-2 mt-1">
+                                <div class="flex-1 relative">
+                                    <input :type="showDiscordToken ? 'text' : 'password'" 
+                                        x-model="settingsForm.discord_bot_token" 
+                                        class="form-input w-full pr-10"
+                                        placeholder="粘贴浏览器开发者工具中的authorization值">
+                                    <button @click="showDiscordToken = !showDiscordToken" 
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
+                                        type="button">
+                                        <span x-text="showDiscordToken ? '🙈' : '👁️'"></span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="text-xs text-[var(--text-dim)] mt-2 space-y-1">
+                                <p><strong>获取方法（参考实现）：</strong></p>
+                                <p>1. 浏览器打开Discord并进入类脑论坛帖子</p>
+                                <p>2. F12打开开发者工具 → Network面板</p>
+                                <p>3. 刷新页面，找到任意 <code>channels/</code> 或 <code>threads/</code> 请求</p>
+                                <p>4. 复制Request Headers中的 <code>authorization</code> 值（以Bearer开头或长字符串）</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Cookie 输入 -->
+                        <div x-show="settingsForm.discord_auth_type === 'cookie'" x-transition>
+                            <label class="text-xs text-[var(--text-dim)] uppercase">Cookie</label>
+                            <div class="flex gap-2 mt-1">
+                                <div class="flex-1 relative">
+                                    <textarea :type="showDiscordCookie ? 'text' : 'password'" 
+                                        x-model="settingsForm.discord_user_cookie" 
+                                        class="form-input w-full pr-10"
+                                        rows="3"
+                                        placeholder="粘贴浏览器Cookie字符串"></textarea>
+                                    <button @click="showDiscordCookie = !showDiscordCookie" 
+                                        class="absolute right-2 top-2 text-gray-400 hover:text-gray-200"
+                                        type="button">
+                                        <span x-text="showDiscordCookie ? '🙈' : '👁️'"></span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="text-xs text-[var(--text-dim)] mt-1">
+                                从浏览器开发者工具 Network 面板复制请求中的完整Cookie
+                            </div>
+                        </div>
+                        
+                        <div class="text-xs text-yellow-400 mt-4">
+                            ⚠️ 认证信息仅保存在本地，不会上传到任何服务器。
+                        </div>
+                    </div>
                 </div>
 
                 <!-- TAB 4: 维护与高级 (Maintenance) -->

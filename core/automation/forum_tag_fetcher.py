@@ -6,147 +6,233 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-class NaobaijinTagParser(HTMLParser):
-    """
-    类脑论坛HTML标签解析器
-    支持抓取主帖子的标签（tags_e5a45e 容器）
-    忽略侧边栏推荐帖子的标签（tags__08166 等）
-    """
 
-    def __init__(self):
-        super().__init__()
-        self.tags = []
-        self.in_tag_pill = False
-        self.current_tag_text = []
-        # 支持多种标签格式
-        # 格式1: pill_a2c9e8 small_a2c9e8 tagPill__9a337 (有侧边栏)
-        # 格式2: pill_a2c9e8 small_a2c9e8 (无侧边栏)
-        self.tag_class_pattern = re.compile(r'pill_a2c9e8\s+small_a2c9e8')
-        self.div_depth = 0
-        self.expecting_text = False
-        self.in_main_tags_container = False  # 是否进入主帖子标签容器
-        self.main_container_depth = 0
-
-    def handle_starttag(self, tag, attrs):
-        attrs_dict = dict(attrs)
-
-        if tag == 'div':
-            class_attr = attrs_dict.get('class', '')
-
-            # 只抓取主帖子的标签容器 tags_e5a45e
-            # 忽略推荐帖子的 tags__08166（双下划线+数字）
-            if 'tags_e5a45e' in class_attr:
-                self.in_main_tags_container = True
-                self.main_container_depth = 1
-            elif self.in_main_tags_container:
-                self.main_container_depth += 1
-
-            # 只有在主帖子标签容器内才处理标签pill
-            if self.in_main_tags_container:
-                # 检查是否进入标签pill div
-                # 匹配 pill_a2c9e8 small_a2c9e8 类的div
-                if self.tag_class_pattern.search(class_attr):
-                    # 排除带 +N 计数的pill (如 "+1")
-                    # 这些通常包含 defaultColor__4bd52 类
-                    if 'defaultColor__4bd52' not in class_attr:
-                        self.in_tag_pill = True
-                        self.div_depth = 1
-                        self.expecting_text = True
-                        self.current_tag_text = []
-                elif self.in_tag_pill:
-                    self.div_depth += 1
-                    # 如果是内部的文字div，准备接收文本
-                    if self.expecting_text and 'lineClamp1__4bd52' in class_attr:
-                        self.expecting_text = False
-
-    def handle_endtag(self, tag):
-        if tag == 'div':
-            # 处理主帖子标签容器结束
-            if self.in_main_tags_container:
-                self.main_container_depth -= 1
-                if self.main_container_depth == 0:
-                    self.in_main_tags_container = False
-
-            # 处理标签pill结束
-            if self.in_tag_pill:
-                self.div_depth -= 1
-                if self.div_depth == 0:
-                    # 完成一个标签的解析
-                    tag_text = ''.join(self.current_tag_text).strip()
-                    # 排除 +N 计数标签和重复标签
-                    if tag_text and not tag_text.startswith('+') and tag_text not in self.tags:
-                        self.tags.append(tag_text)
-                    self.in_tag_pill = False
-                    self.current_tag_text = []
-
-    def handle_data(self, data):
-        if self.in_tag_pill:
-            self.current_tag_text.append(data)
+def get_discord_config():
+    """从配置读取Discord认证信息"""
+    try:
+        from core.config import load_config
+        cfg = load_config()
+        return {
+            'auth_type': cfg.get('discord_auth_type', 'token'),
+            'bot_token': cfg.get('discord_bot_token', '').strip(),
+            'user_cookie': cfg.get('discord_user_cookie', '').strip()
+        }
+    except Exception as e:
+        logger.error(f"读取Discord配置失败: {e}")
+        return {'auth_type': 'token', 'bot_token': '', 'user_cookie': ''}
 
 
 class ForumTagFetcher:
     """
     论坛标签获取器
-    支持从类脑论坛帖子URL抓取标签信息
+    支持从Discord论坛频道URL抓取标签信息
     """
     
-    # 类脑论坛域名列表
-    NAOBAIJIN_DOMAINS = [
-        'naobaijin.app',
-        'www.naobaijin.app',
+    # Discord域名（类脑论坛是Discord的论坛频道）
+    DISCORD_DOMAINS = [
+        'discord.com',
+        'www.discord.com',
     ]
     
-    def __init__(self, timeout=30):
+    def __init__(self, timeout=30, discord_token=None, discord_cookie=None):
         self.timeout = timeout
-        self.session = requests.Session()
-        # 设置User-Agent模拟浏览器
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
+        self.discord_token = discord_token
+        self.discord_cookie = discord_cookie
     
-    def is_valid_naobaijin_url(self, url):
-        """检查是否是有效的类脑论坛URL"""
+    def is_valid_discord_url(self, url):
+        """检查是否是有效的Discord论坛URL"""
+        logger.info(f"验证URL有效性: '{url}'")
         if not url:
+            logger.warning("URL为空")
             return False
         try:
             parsed = urlparse(url)
             domain = parsed.netloc.lower()
-            return any(domain.endswith(d) for d in self.NAOBAIJIN_DOMAINS)
-        except:
+            path_parts = parsed.path.strip('/').split('/')
+            
+            logger.info(f"解析结果 - 协议: {parsed.scheme}, 域名: '{domain}', 路径: {parsed.path}")
+            
+            # 检查是否是Discord域名
+            is_discord = any(domain.endswith(d) for d in self.DISCORD_DOMAINS)
+            if not is_discord:
+                logger.info(f"域名验证结果: False (域名 '{domain}' 不是Discord域名)")
+                return False
+            
+            # 检查路径格式: /channels/{guild_id}/{channel_id}/threads/{thread_id}
+            if len(path_parts) >= 5 and path_parts[0] == 'channels':
+                logger.info(f"Discord URL验证通过 - Guild: {path_parts[1]}, Channel: {path_parts[2]}, Thread: {path_parts[4]}")
+                return True
+            
+            logger.info(f"路径格式不匹配，期望: /channels/{{guild_id}}/{{channel_id}}/threads/{{thread_id}}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"URL解析失败: {e}")
             return False
     
-    def _try_fetch(self, url):
+    def _parse_discord_thread_url(self, url):
         """
-        尝试从URL抓取标签的内部方法
-        返回: (tags, title, error) 元组，成功时error为None
+        解析Discord线程URL
+        格式: https://discord.com/channels/{guild_id}/{channel_id}/threads/{thread_id}
+        返回: (guild_id, channel_id, thread_id) 或 (None, None, None)
         """
         try:
-            logger.info(f"尝试抓取: {url}")
-            response = self.session.get(url, timeout=self.timeout)
-            response.raise_for_status()
+            parsed = urlparse(url)
+            path_parts = parsed.path.strip('/').split('/')
             
-            # 解析HTML
-            parser = NaobaijinTagParser()
-            parser.feed(response.text)
-            parser.close()
-            
-            tags = parser.tags
-            title = self._extract_title(response.text)
-            
-            if not tags:
-                return None, title, '未找到标签'
-            
-            return tags, title, None
-            
-        except requests.exceptions.RequestException as e:
-            return None, None, str(e)
+            if len(path_parts) >= 5 and path_parts[0] == 'channels':
+                return path_parts[1], path_parts[2], path_parts[4]
+            return None, None, None
         except Exception as e:
+            logger.error(f"解析Discord URL失败: {e}")
+            return None, None, None
+    
+    def _fetch_discord_thread_tags(self, guild_id, channel_id, thread_id):
+        """
+        使用Discord API获取线程的标签信息
+        需要Bot Token或User Token认证
+        """
+        try:
+            # Discord API端点
+            api_url = f"https://discord.com/api/v10/channels/{thread_id}"
+            
+            logger.info(f"调用Discord API: {api_url}")
+            logger.info(f"认证状态 - Token: {'已设置' if self.discord_token else '未设置'}, Cookie: {'已设置' if self.discord_cookie else '未设置'}")
+            
+            # 构造请求头，模拟浏览器以减少 403 风险
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            
+            # 添加认证信息
+            if self.discord_token:
+                # 处理Token前缀
+                token = self.discord_token
+                if token.startswith("Bearer "):
+                    token = token.replace("Bearer ", "", 1).strip()
+                headers["Authorization"] = token if token.startswith("Bot ") else token
+                logger.info(f"使用Token认证，前缀: {'Bot ' if token.startswith('Bot ') else 'User'}")
+            elif self.discord_cookie:
+                # 清理并设置Cookie
+                cleaned_cookie = self.discord_cookie.strip().replace('\n', ' ').replace('\r', ' ')
+                headers["Cookie"] = cleaned_cookie
+                # Cookie认证时添加Referer和其他必要头
+                headers["Referer"] = f"https://discord.com/channels/{guild_id}/{channel_id}"
+                
+                # 添加Discord API所需的额外请求头
+                import base64
+                import json
+                # X-Super-Properties 包含浏览器指纹信息
+                super_properties = {
+                    "os": "Windows",
+                    "browser": "Chrome",
+                    "device": "",
+                    "system_locale": "zh-CN",
+                    "browser_user_agent": headers["User-Agent"],
+                    "browser_version": "120.0.0.0",
+                    "os_version": "10",
+                    "referrer": "",
+                    "referring_domain": "",
+                    "referrer_current": "",
+                    "referring_domain_current": "",
+                    "release_channel": "stable",
+                    "client_build_number": 9999,
+                    "client_event_source": None
+                }
+                super_props_b64 = base64.b64encode(json.dumps(super_properties).encode()).decode()
+                headers["X-Super-Properties"] = super_props_b64
+                headers["X-Discord-Locale"] = "zh-CN"
+                headers["X-Debug-Options"] = "bugReporterEnabled"
+                headers["sec-ch-ua"] = '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"'
+                headers["sec-ch-ua-mobile"] = "?0"
+                headers["sec-ch-ua-platform"] = '"Windows"'
+                
+                logger.info(f"使用Cookie认证，长度: {len(cleaned_cookie)} 字符")
+                logger.info(f"添加X-Super-Properties请求头")
+            
+            # 脱敏日志
+            safe_headers = {k: (v[:50] + '...' if k in ['Authorization', 'Cookie'] and len(str(v)) > 50 else v) 
+                           for k, v in headers.items()}
+            logger.info(f"请求头: {safe_headers}")
+            
+            response = requests.get(api_url, headers=headers, timeout=self.timeout)
+            
+            logger.info(f"Discord API响应状态码: {response.status_code}")
+            
+            if response.status_code == 401:
+                error_detail = ''
+                try:
+                    error_data = response.json()
+                    error_detail = f" - {error_data.get('message', '')}"
+                    logger.error(f"401错误详情: {error_data}")
+                except:
+                    error_detail = f" - {response.text[:200]}"
+                logger.error(f"Discord认证失败 - 状态码: 401{error_detail}")
+                logger.error("可能原因: 1) Cookie已过期 2) Cookie格式错误 3) 缺少必要请求头")
+                return None, None, f'Discord认证失败{error_detail}，请检查Cookie是否有效且未过期'
+            elif response.status_code == 403:
+                error_detail = ''
+                try:
+                    error_data = response.json()
+                    error_detail = f" - {error_data.get('message', '')}"
+                    logger.error(f"403错误详情: {error_data}")
+                except:
+                    pass
+                logger.error(f"Discord API 403错误: 请检查Token/Cookie是否已加入服务器并有权限查看频道")
+                return None, None, f'Discord API 拒绝访问 (403): 请检查该 Token/Cookie 是否已加入对应的服务器，或是否有权限查看该频道{error_detail}'
+            elif response.status_code == 404:
+                return None, None, 'Discord线程不存在或已被删除'
+            elif response.status_code != 200:
+                error_text = response.text[:200]
+                logger.error(f"Discord API错误响应: {error_text}")
+                return None, None, f'Discord API返回错误: HTTP {response.status_code} - {error_text}'
+            
+            data = response.json()
+            
+            # 提取线程标题
+            title = data.get('name', '')
+            
+            # 提取标签ID列表
+            applied_tags = data.get('applied_tags', [])
+            
+            logger.info(f"Discord线程数据 - 标题: '{title}', 标签IDs: {applied_tags}")
+            
+            if not applied_tags:
+                return [], title, None
+            
+            # 获取频道可用的标签定义
+            parent_api_url = f"https://discord.com/api/v10/channels/{channel_id}"
+            parent_response = requests.get(parent_api_url, headers=headers, timeout=self.timeout)
+            
+            if parent_response.status_code == 200:
+                parent_data = parent_response.json()
+                available_tags = parent_data.get('available_tags', [])
+                
+                # 构建标签ID到名称的映射
+                tag_map = {tag['id']: tag['name'] for tag in available_tags}
+                
+                # 将标签ID转换为名称
+                tag_names = [tag_map.get(tag_id, f"未知标签_{tag_id}") for tag_id in applied_tags]
+                
+                logger.info(f"标签映射结果: {tag_names}")
+                return tag_names, title, None
+            else:
+                # 如果无法获取父频道信息，返回原始标签ID
+                logger.warning(f"无法获取父频道标签定义，返回原始标签ID")
+                return [f"标签_{tag_id}" for tag_id in applied_tags], title, None
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Discord API请求失败: {e}")
+            return None, None, f'网络请求失败: {e}'
+        except Exception as e:
+            logger.error(f"获取Discord标签时出错: {e}")
             return None, None, str(e)
     
     def fetch_tags(self, url):
         """
-        从URL抓取标签
-        策略：先尝试 /0 获取第一页，如果失败再尝试原始URL
+        从Discord URL抓取标签
         
         返回: {
             'success': bool,
@@ -155,71 +241,59 @@ class ForumTagFetcher:
             'title': str   # 帖子标题(可选)
         }
         """
-        if not self.is_valid_naobaijin_url(url):
+        logger.info(f"fetch_tags 被调用，传入URL: '{url}'")
+        
+        if not self.is_valid_discord_url(url):
+            logger.warning(f"URL验证失败: '{url}' 不是有效的Discord论坛URL")
             return {
                 'success': False,
                 'tags': [],
-                'error': '无效的类脑论坛URL',
+                'error': '无效的Discord论坛URL，格式应为: https://discord.com/channels/{guild_id}/{channel_id}/threads/{thread_id}',
                 'title': None
             }
         
-        # 规范化URL：去除末尾斜杠
-        url = url.rstrip('/')
-        
-        # 第一步：尝试 /0 获取第一页
-        first_page_url = url + '/0'
-        tags, title, error = self._try_fetch(first_page_url)
-        
-        if tags:
-            logger.info(f"从第一页成功抓取到 {len(tags)} 个标签: {tags}")
+        # 检查是否有认证信息
+        if not self.discord_token and not self.discord_cookie:
+            logger.warning("未配置Discord认证信息")
             return {
-                'success': True,
-                'tags': tags,
-                'error': None,
+                'success': False,
+                'tags': [],
+                'error': '未配置Discord认证，请在设置中配置Bot Token或User Cookie',
+                'title': None
+            }
+        
+        # 解析URL获取线程信息
+        guild_id, channel_id, thread_id = self._parse_discord_thread_url(url)
+        
+        if not all([guild_id, channel_id, thread_id]):
+            return {
+                'success': False,
+                'tags': [],
+                'error': '无法解析Discord线程URL格式',
+                'title': None
+            }
+        
+        logger.info(f"解析到Discord线程 - Guild: {guild_id}, Channel: {channel_id}, Thread: {thread_id}")
+        
+        # 获取标签
+        tags, title, error = self._fetch_discord_thread_tags(guild_id, channel_id, thread_id)
+        
+        if error:
+            logger.warning(f"抓取Discord标签失败: {error}")
+            return {
+                'success': False,
+                'tags': [],
+                'error': error,
                 'title': title
             }
         
-        logger.info(f"第一页未找到标签，尝试原始URL: {url}")
-        
-        # 第二步：尝试原始URL
-        tags, title2, error2 = self._try_fetch(url)
-        
-        if tags:
-            logger.info(f"从原始URL成功抓取到 {len(tags)} 个标签: {tags}")
-            return {
-                'success': True,
-                'tags': tags,
-                'error': None,
-                'title': title2 or title
-            }
-        
-        # 都失败了
-        logger.warning(f"无法从URL抓取标签: {url}")
+        logger.info(f"成功抓取到 {len(tags)} 个标签: {tags}")
         return {
-            'success': False,
-            'tags': [],
-            'error': '未找到标签信息，帖子可能需要登录或页面格式不符',
-            'title': title or title2
+            'success': True,
+            'tags': tags,
+            'error': None,
+            'title': title
         }
-    
-    def _extract_title(self, html):
-        """从HTML中提取帖子标题"""
-        # 尝试多种方式提取标题
-        patterns = [
-            r'<title[^>]*>(.*?)</title>',
-            r'<meta[^>]*property="og:title"[^>]*content="([^"]*)"',
-            r'<h1[^>]*>(.*?)</h1>',
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
-            if match:
-                title = match.group(1).strip()
-                # 清理HTML实体
-                title = re.sub(r'<[^>]+>', '', title)
-                title = title.replace('&quot;', '"').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
-                if title:
-                    return title
-        return None
 
 
 class TagProcessor:
@@ -290,5 +364,32 @@ def get_tag_fetcher():
     """获取标签获取器单例"""
     global _tag_fetcher
     if _tag_fetcher is None:
-        _tag_fetcher = ForumTagFetcher()
+        # 从配置读取Discord认证信息
+        config = get_discord_config()
+        
+        auth_type = config['auth_type']
+        token = None
+        cookie = None
+        
+        if auth_type == 'token':
+            token = config['bot_token']
+            if token:
+                # 处理Token前缀（参考PR #3的实现）
+                # 如果是Bearer开头，去掉Bearer前缀
+                if token.startswith("Bearer "):
+                    token = token.replace("Bearer ", "", 1).strip()
+                # Bot Token需要保留"Bot "前缀，User Token不需要
+                # 这里不做自动添加，由用户决定是否加"Bot "
+                logger.info(f"使用Discord Token认证，类型: {'Bot' if token.startswith('Bot ') else 'User'}")
+            else:
+                logger.warning("Discord Token未配置")
+        elif auth_type == 'cookie':
+            cookie = config['user_cookie']
+            if cookie:
+                logger.info(f"使用Discord Cookie认证，长度: {len(cookie)}")
+            else:
+                logger.warning("Discord Cookie未配置")
+        
+        _tag_fetcher = ForumTagFetcher(discord_token=token, discord_cookie=cookie)
+    
     return _tag_fetcher
