@@ -29,6 +29,20 @@ class GlobalMetadataCache:
         self.lock = threading.Lock()    # 读写锁
         self.initialized = False        # 是否已加载完成
 
+    def _normalize_tags(self, tags):
+        """规范化 tags，兼容 None / 字符串 / 非法类型。"""
+        if tags is None:
+            return []
+
+        if isinstance(tags, str):
+            raw_tags = [t.strip() for t in tags.split(',') if t.strip()]
+        elif isinstance(tags, (list, tuple, set)):
+            raw_tags = list(tags)
+        else:
+            return []
+
+        return [str(t).strip() for t in raw_tags if str(t).strip()]
+
     def update_card_data(self, card_id, new_data):
         """
         [增量更新] 原地更新单个卡片对象的字段，无需重载数据库。
@@ -49,6 +63,10 @@ class GlobalMetadataCache:
                 # 2. 批量更新字段
                 for k, v in new_data.items():
                     card[k] = v
+
+                # 兼容异常元数据: tags 为 null/字符串/非法类型时标准化为列表
+                if 'tags' in new_data:
+                    card['tags'] = self._normalize_tags(new_data.get('tags'))
                 
                 # 3. 刷新 URL 时间戳 (强制前端重载图片)
                 mtime = card.get('last_modified', time.time())
@@ -59,7 +77,7 @@ class GlobalMetadataCache:
                 # 4. 更新全局标签池
                 if 'tags' in new_data:
                     current_tags = set(self.global_tags)
-                    for t in new_data['tags']:
+                    for t in card.get('tags', []):
                         current_tags.add(t)
                     self.global_tags = sorted(list(current_tags))
 
@@ -138,10 +156,10 @@ class GlobalMetadataCache:
         with self.lock:
             if card_id in self.id_map:
                 card = self.id_map[card_id]
-                card['tags'] = new_tags
+                card['tags'] = self._normalize_tags(new_tags)
                 
                 temp_tags = set(self.global_tags)
-                for t in new_tags:
+                for t in card['tags']:
                     temp_tags.add(t)
                 self.global_tags = sorted(list(temp_tags))
 
@@ -243,6 +261,7 @@ class GlobalMetadataCache:
     def add_card_update(self, new_card_data):
         """[增量更新] 新增卡片"""
         with self.lock:
+            new_card_data['tags'] = self._normalize_tags(new_card_data.get('tags'))
             self.cards.append(new_card_data)
             self.id_map[new_card_data['id']] = new_card_data
             
@@ -252,7 +271,7 @@ class GlobalMetadataCache:
                 temp_tags = set(self.global_tags)
             else:
                 temp_tags = self.global_tags
-            for t in new_card_data.get('tags', []):
+            for t in new_card_data['tags']:
                 temp_tags.add(t)
             self.global_tags = sorted(list(temp_tags))
 
@@ -329,6 +348,7 @@ class GlobalMetadataCache:
                         tags = json.loads(row['tags']) if row['tags'] else []
                     except: 
                         tags = []
+                    tags = self._normalize_tags(tags)
                     
                     card_id = row['id'].replace('\\', '/')
                     dir_path = card_id.rsplit('/', 1)[0] if '/' in card_id else ""
@@ -434,7 +454,7 @@ class GlobalMetadataCache:
                 derived_folders = set()
 
                 for c in final_cards:
-                    for t in c.get('tags', []): 
+                    for t in self._normalize_tags(c.get('tags')):
                         new_global_tags.add(t)
                     
                     cat = c['category']
