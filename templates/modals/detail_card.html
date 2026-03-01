@@ -619,13 +619,13 @@
 
                                     <div class="detail-card-actions">
                                         <!-- 编辑模式和阅览模式都显示放大按钮 -->
-                                        <button class="expand-btn" x-show="editingData.alternate_greetings.length > 0"
+                                        <button class="expand-btn" x-show="(editingData.alternate_greetings || []).length > 0"
                                             @click="openLargeEditor('alternate_greetings','备用开场白 #' + (altIdx+1), true, altIdx)">⤢</button>
 
-                                        <div class="detail-alt-nav" x-show="editingData.alternate_greetings.length > 1">
+                                        <div class="detail-alt-nav" x-show="(editingData.alternate_greetings || []).length > 1">
                                             <button @click="prevAlt()" class="detail-alt-btn">‹</button>
                                             <span class="detail-alt-count"
-                                                x-text="(altIdx+1) + '/' + editingData.alternate_greetings.length"></span>
+                                                x-text="(altIdx+1) + '/' + ((editingData.alternate_greetings || []).length)"></span>
                                             <button @click="nextAlt()" class="detail-alt-btn">›</button>
                                         </div>
 
@@ -637,7 +637,7 @@
                                 </div>
 
                                 <!-- 编辑模式 -->
-                                <template x-if="isEditMode && editingData.alternate_greetings.length > 0">
+                                <template x-if="isEditMode && (editingData.alternate_greetings || []).length > 0">
                                     <textarea x-model="editingData.alternate_greetings[altIdx]" class="form-textarea"
                                         style="height: 8rem; resize:none;" placeholder="在此输入备用开场白..."></textarea>
                                 </template>
@@ -715,10 +715,12 @@
                                         @click.stop>
                                         <div class="w-[1px] h-6 mr-3" style="background: var(--border-light);">
                                         </div>
-                                        <input type="text" x-model="editingData.character_book.name"
-                                            placeholder="未命名世界书..."
-                                            class="w-full bg-transparent text-sm font-medium outline-none border-b border-transparent transition-colors py-1"
-                                            style="color: var(--text-main);" title="世界书名称">
+                                        <template x-if="editingData.character_book">
+                                            <input type="text" x-model="editingData.character_book.name"
+                                                placeholder="未命名世界书..."
+                                                class="w-full bg-transparent text-sm font-medium outline-none border-b border-transparent transition-colors py-1"
+                                                style="color: var(--text-main);" title="世界书名称">
+                                        </template>
                                     </div>
 
                                     <div class="flex items-center gap-2 pl-2">

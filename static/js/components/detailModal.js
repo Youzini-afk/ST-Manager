@@ -111,6 +111,76 @@ export default function detailModal() {
         updateWiKeys,
         ...wiHelpers,
 
+        _normalizeEditingDataShape(source = {}) {
+            const normalized = {
+                id: null,
+                char_name: "",
+                description: "",
+                first_mes: "",
+                mes_example: "",
+                personality: "",
+                scenario: "",
+                creator_notes: "",
+                system_prompt: "",
+                post_history_instructions: "",
+                tags: [],
+                creator: "",
+                character_version: "",
+                alternate_greetings: [],
+                extensions: { regex_scripts: [], tavern_helper: [] },
+                character_book: { name: "", entries: [] },
+                filename: "",
+                ui_summary: "",
+                source_link: "",
+                resource_folder: "",
+                character_book_raw: ""
+            };
+
+            const data = { ...normalized, ...(source || {}) };
+
+            if (!Array.isArray(data.tags)) data.tags = [];
+
+            if (!Array.isArray(data.alternate_greetings)) data.alternate_greetings = [];
+            data.alternate_greetings = data.alternate_greetings.filter(g => typeof g === 'string');
+            if (data.alternate_greetings.length === 0) data.alternate_greetings = [""];
+
+            if (!data.extensions || typeof data.extensions !== 'object') data.extensions = {};
+            if (!Array.isArray(data.extensions.regex_scripts)) data.extensions.regex_scripts = [];
+            if (!Array.isArray(data.extensions.tavern_helper)) data.extensions.tavern_helper = [];
+
+            if (!data.character_book) {
+                data.character_book = { name: "World Info", entries: [] };
+            } else if (Array.isArray(data.character_book)) {
+                data.character_book = {
+                    name: data.char_name || "World Info",
+                    entries: data.character_book
+                };
+            } else if (typeof data.character_book !== 'object') {
+                data.character_book = { name: "World Info", entries: [] };
+            }
+
+            if (!Array.isArray(data.character_book.entries)) {
+                if (data.character_book.entries && typeof data.character_book.entries === 'object') {
+                    data.character_book.entries = Object.values(data.character_book.entries);
+                } else {
+                    data.character_book.entries = [];
+                }
+            }
+            if (!data.character_book.name) data.character_book.name = data.char_name || "World Info";
+
+            [
+                'description', 'first_mes', 'mes_example', 'personality', 'scenario',
+                'creator_notes', 'system_prompt', 'post_history_instructions',
+                'creator', 'character_version', 'filename', 'ui_summary',
+                'source_link', 'resource_folder'
+            ].forEach((k) => {
+                if (data[k] === null || data[k] === undefined) data[k] = "";
+            });
+
+            data.character_book_raw = JSON.stringify(data.character_book, null, 2);
+            return data;
+        },
+
         get hasPersonaFields() {
             // 编辑模式下始终显示设定tab
             if (this.isEditMode) return true;
@@ -480,25 +550,10 @@ export default function detailModal() {
                 if (rawData[k] === null || rawData[k] === undefined) rawData[k] = "";
             });
 
-            // 赋值给编辑器
-            this.editingData = rawData;
+            // 赋值给编辑器（带结构兜底，避免模板读取 undefined）
+            this.editingData = this._normalizeEditingDataShape(rawData);
             this.altIdx = 0;
-
-            // 6. 处理世界书
-            if (!this.editingData.character_book) {
-                this.editingData.character_book = { name: "World Info", entries: [] };
-            } else if (Array.isArray(this.editingData.character_book)) {
-                // 兼容 V2 数组
-                this.editingData.character_book = {
-                    name: this.editingData.char_name || "World Info",
-                    entries: this.editingData.character_book
-                };
-            }
-            if (!this.editingData.character_book.name) this.editingData.character_book.name = "World Info";
-            
-            // 生成 Raw JSON 字符串
-            this.editingData.character_book_raw = JSON.stringify(this.editingData.character_book, null, 2);
-            this.editingData.filename = c.filename;
+            this.editingData.filename = c.filename || this.editingData.filename;
 
             // 显示模态框
             this.showDetail = true;
@@ -540,7 +595,9 @@ export default function detailModal() {
                     // 更新标签（从后端重新加载，确保显示最新标签）
                     this.editingData.tags = safeCard.tags || [];
                     
-                    this.editingData.alternate_greetings = safeCard.alternate_greetings || [];
+                    this.editingData.alternate_greetings = Array.isArray(safeCard.alternate_greetings)
+                        ? safeCard.alternate_greetings
+                        : [];
                     if (this.editingData.alternate_greetings.length === 0) this.editingData.alternate_greetings = [""];
                     this.altIdx = 0;
 
@@ -563,6 +620,7 @@ export default function detailModal() {
                     this.editingData.ui_summary = safeCard.ui_summary || "";
                     this.editingData.source_link = safeCard.source_link || "";
                     this.editingData.resource_folder = safeCard.resource_folder || "";
+                    this.editingData = this._normalizeEditingDataShape(this.editingData);
 
                     if (this.lastTab === 'persona' && this.hasPersonaFields) {
                         this.tab = 'persona';
@@ -872,7 +930,7 @@ export default function detailModal() {
                     if (updatedCard.image_url) updatedCard.image_url += `?t=${ts}`;
                     
                     this.activeCard = updatedCard;
-                    this.editingData = JSON.parse(JSON.stringify(updatedCard));
+                    this.editingData = this._normalizeEditingDataShape(JSON.parse(JSON.stringify(updatedCard)));
                     
                     window.dispatchEvent(new CustomEvent('card-updated', { detail: updatedCard }));
                     
@@ -977,6 +1035,7 @@ export default function detailModal() {
                     this.editingData.ui_summary = c.ui_summary || "";
                     this.editingData.source_link = c.source_link || "";
                     this.editingData.resource_folder = c.resource_folder || "";
+                    this.editingData = this._normalizeEditingDataShape(this.editingData);
                 }
             });
         },
