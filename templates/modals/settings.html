@@ -209,6 +209,17 @@
                             <option value="token_desc">Token 量 (大 ➜ 小)</option>
                             <option value="token_asc">Token 量 (小 ➜ 大)</option>
                         </select>
+                        <div class="settings-desc mt-2">仅作为初始排序；主界面可临时切换，不会改写此默认值。</div>
+                    </div>
+
+                    <div
+                        class="settings-row flex justify-between items-center py-2 border-b border-[var(--border-light)]">
+                        <div>
+                            <div class="settings-label">主界面显示排序选项</div>
+                            <div class="settings-desc">在搜索框旁显示“当前列表排序”下拉菜单（仅角色卡管理界面）</div>
+                        </div>
+                        <input type="checkbox" x-model="settingsForm.show_header_sort"
+                            class="w-5 h-5 accent-[var(--accent-main)]">
                     </div>
 
                     <!-- 个性化背景 -->

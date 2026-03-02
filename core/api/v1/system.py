@@ -165,6 +165,8 @@ def api_get_settings():
     # 确保有默认值，防止前端 undefined
     if 'default_sort' not in cfg:
         cfg['default_sort'] = 'date_desc'
+    if 'show_header_sort' not in cfg:
+        cfg['show_header_sort'] = True
     return jsonify(cfg)
 
 @bp.route('/api/system_action', methods=['POST'])

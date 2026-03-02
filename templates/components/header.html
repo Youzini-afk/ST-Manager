@@ -195,6 +195,14 @@
                 <option value="creator">🎨 创作者</option>
                 <option value="tags">🏷️ 标签</option>
             </select>
+            <select x-show="currentMode === 'cards' && showHeaderSort" x-model="currentSort" class="search-select header-sort-select" title="仅影响当前列表排序，不会保存到配置">
+                <option value="date_desc">🕒 新到旧</option>
+                <option value="date_asc">🕒 旧到新</option>
+                <option value="name_asc">🔤 名称 A-Z</option>
+                <option value="name_desc">🔤 名称 Z-A</option>
+                <option value="token_desc">🔢 Token 大到小</option>
+                <option value="token_asc">🔢 Token 小到大</option>
+            </select>
             <input x-show="currentMode === 'cards'" type="text" x-model.debounce.300ms="searchQuery"
                 placeholder="搜索角色卡..." class="search-input">
             <input x-show="currentMode === 'worldinfo'" type="text" x-model.debounce.300ms="wiSearchQuery"
@@ -297,6 +305,20 @@
                 <option value="creator">🎨 创作者</option>
                 <option value="tags">🏷️ 标签</option>
             </select>
+        </div>
+
+        <!-- 临时排序（移动端） -->
+        <div x-show="currentMode === 'cards' && showHeaderSort" class="mobile-menu-section">
+            <label class="mobile-menu-label">当前列表排序</label>
+            <select x-model="currentSort" class="mobile-menu-select">
+                <option value="date_desc">修改日期 (新 ➜ 旧)</option>
+                <option value="date_asc">修改日期 (旧 ➜ 新)</option>
+                <option value="name_asc">名称 (A ➜ Z)</option>
+                <option value="name_desc">名称 (Z ➜ A)</option>
+                <option value="token_desc">Token 量 (大 ➜ 小)</option>
+                <option value="token_asc">Token 量 (小 ➜ 大)</option>
+            </select>
+            <div class="toggle-desc">仅影响当前会话，不会保存到设置</div>
         </div>
 
         <!-- 递归过滤开关（移动端） -->

@@ -41,6 +41,7 @@ DEFAULT_CONFIG = {
     "scripts_dir": "data/library/extensions/tavern_helper",
     "quick_replies_dir": "data/library/extensions/quick-replies", 
     "default_sort": "date_desc",
+    "show_header_sort": True,
     "theme_accent": "blue",
     "host": "127.0.0.1",
     "port": 5000,

@@ -62,8 +62,8 @@ export default function cardGrid() {
             this.$watch('$store.global.viewState.excludedCategories', () => { this.fetchCards(); });
             this.$watch('$store.global.viewState.recursiveFilter', () => { this.fetchCards(); });
 
-            // 监听排序设置变化
-            this.$watch('$store.global.settingsForm.default_sort', () => { this.currentPage = 1; this.fetchCards(); });
+            // 监听当前会话排序变化（不写入配置）
+            this.$watch('$store.global.currentSort', () => { this.currentPage = 1; this.fetchCards(); });
             this.$watch('$store.global.itemsPerPage', () => { this.currentPage = 1; this.fetchCards(); });
 
             // 监听收藏过滤变化
@@ -303,7 +303,7 @@ export default function cardGrid() {
                 excluded_cats: (vs.excludedCategories || []).join('|||'),
                 search: vs.searchQuery || '',
                 search_type: vs.searchType || 'mix',
-                sort: store.settingsForm.default_sort || 'date_desc',
+                sort: store.currentSort || store.settingsForm.default_sort || 'date_desc',
                 recursive: vs.recursiveFilter,
                 fav_filter: vs.favFilter,
                 favorites_first: store.settingsForm.favorites_first
@@ -701,7 +701,7 @@ export default function cardGrid() {
         },
 
         insertCardSorted(newCard) {
-            const sortMode = this.$store.global.settingsForm.default_sort || 'date_desc';
+            const sortMode = this.$store.global.currentSort || this.$store.global.settingsForm.default_sort || 'date_desc';
             let index = -1;
 
             const compare = (a, b) => {
@@ -817,7 +817,7 @@ export default function cardGrid() {
             findCardPage({
                 card_id: payload.id,
                 category: requestCategory,
-                sort: store.settingsForm.default_sort,
+                sort: store.currentSort || store.settingsForm.default_sort || 'date_desc',
                 page_size: store.itemsPerPage
             })
                 .then(res => {

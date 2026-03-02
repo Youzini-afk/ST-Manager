@@ -26,6 +26,17 @@ export default function header() {
         get searchType() { return this.$store.global.viewState.searchType; },
         set searchType(val) { this.$store.global.viewState.searchType = val; },
 
+        get currentSort() {
+            return this.$store.global.currentSort || this.$store.global.settingsForm.default_sort || 'date_desc';
+        },
+        set currentSort(val) {
+            this.$store.global.currentSort = val;
+        },
+
+        get showHeaderSort() {
+            return this.$store.global.settingsForm.show_header_sort !== false;
+        },
+
         get filterTags() { return this.$store.global.viewState.filterTags; },
         set filterTags(val) { this.$store.global.viewState.filterTags = val; },
 

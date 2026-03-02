@@ -64,6 +64,9 @@ export function initState() {
         // 分页配置
         itemsPerPage: 20,
 
+        // 当前会话排序（仅影响当前列表，不写入配置）
+        currentSort: 'date_desc',
+
         // 世界书共享状态
         wiList: [], // 世界书列表数据
         wiSearchQuery: '', // 搜索关键词
@@ -87,6 +90,7 @@ export function initState() {
             presets_dir: 'data/library/presets',
             quick_replies_dir: 'data/library/extensions/quick-replies',
             default_sort: 'date_desc', 
+            show_header_sort: true,
             st_url: 'http://127.0.0.1:8000',
             st_data_dir: '',
             st_username: '',
@@ -206,7 +210,6 @@ export function initState() {
         bootstrapOnce() {
             getSettings()
                 .then(settings => {
-                    const localSort = localStorage.getItem('st_manager_sort');
                     const localPerPage = localStorage.getItem('st_manager_per_page');
                     const localPerPageWi = localStorage.getItem('st_manager_per_page_wi');
                     
@@ -219,12 +222,15 @@ export function initState() {
                     this.settingsForm = {
                         ...settings,
                         allowed_abs_resource_roots: normalizedRoots,
-                        default_sort: localSort || settings.default_sort || 'date_desc',
+                        default_sort: settings.default_sort || 'date_desc',
+                        show_header_sort: settings.show_header_sort !== false,
                         st_auth_type: settings.st_auth_type || 'basic',
                         st_proxy: settings.st_proxy || '',
                         items_per_page: localPerPage ? parseInt(localPerPage) : (settings.items_per_page || 0),
                         items_per_page_wi: localPerPageWi ? parseInt(localPerPageWi) : (settings.items_per_page_wi || 0)
                     };
+
+                    this.currentSort = this.settingsForm.default_sort || 'date_desc';
 
                     // 应用视觉设置
                     if (settings.theme_accent) this.applyTheme(settings.theme_accent);
@@ -256,10 +262,8 @@ export function initState() {
 
         // 加载本地存储的偏好 (UI 优先)
         loadUserPreferences() {
-            const savedSort = localStorage.getItem('st_manager_sort');
             const savedPerPage = localStorage.getItem('st_manager_per_page');
             
-            if (savedSort) this.settingsForm.default_sort = savedSort;
             if (savedPerPage) this.settingsForm.items_per_page = parseInt(savedPerPage);
         },
 
@@ -310,7 +314,6 @@ export function initState() {
             // 乐观更新 localStorage
             if (this.settingsForm.items_per_page) localStorage.setItem('st_manager_per_page', this.settingsForm.items_per_page);
             if (this.settingsForm.items_per_page_wi) localStorage.setItem('st_manager_per_page_wi', this.settingsForm.items_per_page_wi);
-            if (this.settingsForm.default_sort) localStorage.setItem('st_manager_sort', this.settingsForm.default_sort);
 
             return saveSettings(this.settingsForm)
                 .then(res => {
