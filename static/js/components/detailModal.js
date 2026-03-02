@@ -1334,7 +1334,9 @@ export default function detailModal() {
                 this.editingData.tags = [];
             }
 
-            const tagsToAdd = rawInput.split(/[,|，\n]/).map(t => t.trim()).filter(t => t);
+            const slashAsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
+            const splitPattern = slashAsSeparator ? /[,|/，\n]/ : /[,|，\n]/;
+            const tagsToAdd = rawInput.split(splitPattern).map(t => t.trim()).filter(t => t);
 
             tagsToAdd.forEach(val => {
                 // 查重并添加

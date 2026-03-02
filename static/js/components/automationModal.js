@@ -163,6 +163,9 @@ export default function automationModal() {
         saveCurrentRuleSet() {
             if (!this.activeRuleSet) return;
 
+            const slashAsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
+            const listSplitPattern = slashAsSeparator ? /[,|/]/ : /[,|]/;
+
             // 深拷贝规则，避免修改原始数据
             const rulesToSave = JSON.parse(JSON.stringify(this.editingRules));
             
@@ -174,14 +177,14 @@ export default function automationModal() {
                             // 构建 value 对象
                             const config = action.config;
                             const valueObj = {
-                                exclude_tags: config.exclude_tags ? config.exclude_tags.split(/[,|]/).map(s => s.trim()).filter(s => s) : [],
+                                exclude_tags: config.exclude_tags ? config.exclude_tags.split(listSplitPattern).map(s => s.trim()).filter(s => s) : [],
                                 replace_rules: {},
                                 merge_mode: config.merge_mode || 'merge'
                             };
 
-                            // 解析替换规则（支持逗号或管道符分隔）
+                            // 解析替换规则（支持逗号/管道符，且可按设置支持斜杠分隔）
                             if (config.replace_rules_text) {
-                                const rules = config.replace_rules_text.split(/[,|]/);
+                                const rules = config.replace_rules_text.split(listSplitPattern);
                                 rules.forEach(rule => {
                                     const parts = rule.split('→');
                                     if (parts.length === 2) {

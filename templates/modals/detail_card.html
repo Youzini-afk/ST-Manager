@@ -667,7 +667,8 @@
 
                                     <div class="detail-inline-input">
                                         <input type="text" x-model="newTagInput" @keydown.enter.prevent="addTag()"
-                                            placeholder="自定义 (支持批量,逗号分隔)..." title="支持输入多个标签，使用逗号(,)或管道符(|)分隔"
+                                            :placeholder="$store.global.settingsForm.automation_slash_is_tag_separator ? '自定义 (支持批量,逗号/斜杠/管道分隔)...' : '自定义 (支持批量,逗号分隔)...'"
+                                            :title="$store.global.settingsForm.automation_slash_is_tag_separator ? '支持输入多个标签，使用逗号(,)、斜杠(/)或管道符(|)分隔' : '支持输入多个标签，使用逗号(,)或管道符(|)分隔'"
                                             class="detail-inline-text">
                                         <button @click="addTag()" class="detail-inline-add">+</button>
                                     </div>

@@ -3,6 +3,7 @@ import logging
 import requests
 from html.parser import HTMLParser
 from urllib.parse import urlparse
+from core.utils.tag_parser import split_action_tags
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +317,7 @@ class TagProcessor:
     支持标签过滤、替换和合并策略
     """
     
-    def __init__(self, exclude_tags=None, replace_rules=None):
+    def __init__(self, exclude_tags=None, replace_rules=None, slash_as_separator=False):
         """
         初始化处理器
         
@@ -324,8 +325,21 @@ class TagProcessor:
             exclude_tags: 要排除的标签列表，如 ['其他']
             replace_rules: 替换规则字典，如 {'其他': '杂项'}
         """
-        self.exclude_tags = set(exclude_tags or [])
-        self.replace_rules = replace_rules or {}
+        self.slash_as_separator = bool(slash_as_separator)
+        self.exclude_tags = set(split_action_tags(exclude_tags or [], slash_as_separator=self.slash_as_separator))
+
+        parsed_replace_rules = {}
+        for key, value in (replace_rules or {}).items():
+            from_items = split_action_tags(key, slash_as_separator=self.slash_as_separator)
+            to_items = split_action_tags(value, slash_as_separator=self.slash_as_separator)
+
+            if not from_items or not to_items:
+                continue
+
+            for from_tag in from_items:
+                parsed_replace_rules[from_tag] = to_items[0]
+
+        self.replace_rules = parsed_replace_rules
     
     def process(self, tags):
         """
@@ -335,18 +349,24 @@ class TagProcessor:
         """
         result = []
         
-        for tag in tags:
-            # 跳过排除的标签
-            if tag in self.exclude_tags:
-                logger.debug(f"跳过排除标签: {tag}")
-                continue
-            
-            # 应用替换规则
-            processed_tag = self.replace_rules.get(tag, tag)
-            
-            # 去重添加
-            if processed_tag not in result:
-                result.append(processed_tag)
+        for raw_tag in tags:
+            split_tags = split_action_tags(raw_tag, slash_as_separator=self.slash_as_separator)
+            if not split_tags:
+                fallback_tag = str(raw_tag).strip()
+                split_tags = [fallback_tag] if fallback_tag else []
+
+            for tag in split_tags:
+                # 跳过排除的标签
+                if tag in self.exclude_tags:
+                    logger.debug(f"跳过排除标签: {tag}")
+                    continue
+
+                # 应用替换规则
+                processed_tag = self.replace_rules.get(tag, tag)
+
+                # 去重添加
+                if processed_tag not in result:
+                    result.append(processed_tag)
         
         return result
     

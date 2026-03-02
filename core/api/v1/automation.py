@@ -18,9 +18,10 @@ from core.context import ctx
 from core.services.card_service import resolve_ui_key
 from core.data.ui_store import load_ui_data
 from core.data.db_session import get_db
-from core.config import CARDS_FOLDER
+from core.config import CARDS_FOLDER, load_config
 from core.utils.image import extract_card_info
 from core.utils.text import calculate_token_count
+from core.utils.tag_parser import split_action_tags
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('automation', __name__)
@@ -101,6 +102,9 @@ def execute_rules():
         ruleset = rule_manager.get_ruleset(ruleset_id)
         if not ruleset:
             return jsonify({"success": False, "msg": "规则集不存在"})
+
+        cfg = load_config()
+        slash_as_separator = bool(cfg.get('automation_slash_is_tag_separator', False))
 
         ui_data = load_ui_data()
         processed_count = 0
@@ -237,10 +241,10 @@ def execute_rules():
                 v = act.get('value')
                 if t == 'move_folder': exec_plan['move'] = v
                 elif t == 'add_tag':
-                    tags = [tag.strip() for tag in str(v).split('|') if tag.strip()]
+                    tags = split_action_tags(v, slash_as_separator=slash_as_separator)
                     exec_plan['add_tags'].update(tags)
                 elif t == 'remove_tag':
-                    tags = [tag.strip() for tag in str(v).split('|') if tag.strip()]
+                    tags = split_action_tags(v, slash_as_separator=slash_as_separator)
                     exec_plan['remove_tags'].update(tags)
                 elif t == 'set_favorite': exec_plan['favorite'] = (str(v).lower() == 'true')
                 elif t == ACT_SET_CHAR_NAME_FROM_FILENAME:

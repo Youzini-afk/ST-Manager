@@ -129,6 +129,9 @@ export function initState() {
             discord_auth_type: 'token',
             discord_bot_token: '',
             discord_user_cookie: '',
+
+            // 自动化标签分隔规则
+            automation_slash_is_tag_separator: false,
         },
 
         // === 集中管理的视图状态 ===

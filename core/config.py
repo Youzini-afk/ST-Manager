@@ -121,6 +121,11 @@ DEFAULT_CONFIG = {
     "discord_auth_type": "token",  # 'token' 或 'cookie'
     "discord_bot_token": "",       # Bot Token (需要 forums 读取权限)
     "discord_user_cookie": "",     # 浏览器Cookie字符串
+
+    # 标签分隔规则
+    # False: 仅将 | 视为自动化标签分隔符（保留 / 作为标签字符）
+    # True: 将 / 也视为分隔符（更便于批量输入）
+    "automation_slash_is_tag_separator": False,
 }
 
 def load_config():

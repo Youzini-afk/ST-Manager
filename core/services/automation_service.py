@@ -13,6 +13,7 @@ from core.automation.constants import (
 from core.context import ctx
 from core.data.ui_store import load_ui_data
 from core.services.card_service import resolve_ui_key
+from core.utils.tag_parser import split_action_tags
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,8 @@ def auto_run_rules_on_card(card_id):
         ruleset = rule_manager.get_ruleset(active_id)
         if not ruleset:
             return None
+
+        slash_as_separator = bool(cfg.get('automation_slash_is_tag_separator', False))
             
         # 获取卡片数据
         # 刚上传的卡片可能还没进缓存（如果是并发情况），但通常 API 也就是串行的
@@ -76,9 +79,9 @@ def auto_run_rules_on_card(card_id):
             if t == 'move_folder':
                 exec_plan['move'] = v
             elif t == 'add_tag':
-                exec_plan['add_tags'].add(v)
+                exec_plan['add_tags'].update(split_action_tags(v, slash_as_separator=slash_as_separator))
             elif t == 'remove_tag':
-                exec_plan['remove_tags'].add(v)
+                exec_plan['remove_tags'].update(split_action_tags(v, slash_as_separator=slash_as_separator))
             elif t == 'set_favorite':
                 exec_plan['favorite'] = (str(v).lower() == 'true')
             elif t == ACT_SET_CHAR_NAME_FROM_FILENAME:

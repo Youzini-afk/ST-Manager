@@ -8,6 +8,7 @@ from core.services.card_service import (
 from core.automation.forum_tag_fetcher import get_tag_fetcher, TagProcessor
 from core.data.ui_store import load_ui_data
 from core.context import ctx
+from core.config import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -148,9 +149,12 @@ class AutomationExecutor:
                 return fetch_result
 
             # 处理标签
+            cfg = load_config()
+            slash_as_separator = bool(cfg.get('automation_slash_is_tag_separator', False))
             processor = TagProcessor(
                 exclude_tags=config.get('exclude_tags', []),
-                replace_rules=config.get('replace_rules', {})
+                replace_rules=config.get('replace_rules', {}),
+                slash_as_separator=slash_as_separator
             )
 
             processed_tags = processor.process(fetch_result['tags'])

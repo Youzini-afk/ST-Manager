@@ -366,21 +366,21 @@
                                                               x-init="cfg = action.config || (action.config = { exclude_tags: '', replace_rules_text: '', merge_mode: 'merge' }); $watch('action.type', value => { if (value === 'fetch_forum_tags' && !action.config) { action.config = { exclude_tags: '', replace_rules_text: '', merge_mode: 'merge' }; } })"
                                                                class="space-y-2 p-2 bg-[var(--bg-sub)] rounded border border-[var(--border-light)]">
                                                               <!-- 排除标签 -->
-                                                              <div class="flex items-center gap-2">
-                                                                  <span class="text-xs text-[var(--text-dim)] w-16">排除标签:</span>
-                                                                  <input type="text"
-                                                                      x-model="cfg.exclude_tags"
-                                                                      class="auto-input flex-1 text-xs"
-                                                                      placeholder="多个标签用|分隔，如：其他|待审核">
-                                                              </div>
-                                                              <!-- 标签替换 -->
-                                                              <div class="flex items-center gap-2">
-                                                                  <span class="text-xs text-[var(--text-dim)] w-16">标签替换:</span>
-                                                                  <input type="text"
-                                                                      x-model="cfg.replace_rules_text"
-                                                                      class="auto-input flex-1 text-xs"
-                                                                      placeholder="格式：原标签→新标签，多个用|分隔，如：其他→杂项|待审核→审核中">
-                                                              </div>
+                                                               <div class="flex items-center gap-2">
+                                                                   <span class="text-xs text-[var(--text-dim)] w-16">排除标签:</span>
+                                                                   <input type="text"
+                                                                       x-model="cfg.exclude_tags"
+                                                                       class="auto-input flex-1 text-xs"
+                                                                      :placeholder="$store.global.settingsForm.automation_slash_is_tag_separator ? '多个标签用|或/分隔，如：其他|待审核/临时' : '多个标签用|分隔，如：其他|待审核'">
+                                                               </div>
+                                                               <!-- 标签替换 -->
+                                                               <div class="flex items-center gap-2">
+                                                                   <span class="text-xs text-[var(--text-dim)] w-16">标签替换:</span>
+                                                                   <input type="text"
+                                                                       x-model="cfg.replace_rules_text"
+                                                                       class="auto-input flex-1 text-xs"
+                                                                      :placeholder="$store.global.settingsForm.automation_slash_is_tag_separator ? '格式：原标签→新标签，多个用|或/分隔，如：其他→杂项|待审核→审核中/临时→归档' : '格式：原标签→新标签，多个用|分隔，如：其他→杂项|待审核→审核中'">
+                                                               </div>
                                                              <!-- 合并模式 -->
                                                              <div class="flex items-center gap-2">
                                                                  <span class="text-xs text-[var(--text-dim)] w-16">合并模式:</span>
@@ -399,7 +399,8 @@
                                                     <template x-if="action.type !== 'set_favorite' && action.type !== 'fetch_forum_tags' && action.type !== 'set_char_name_from_filename' && action.type !== 'set_wi_name_from_filename' && action.type !== 'set_filename_from_char_name' && action.type !== 'set_filename_from_wi_name'">
                                                         <input type="text" x-model="action.value"
                                                             class="auto-input w-full"
-                                                            :placeholder="action.type==='move_folder' ? '文件夹路径 (e.g. Race/Elf)' : '标签名称'">
+                                                            :placeholder="action.type==='move_folder' ? '文件夹路径 (e.g. Race/Elf)' : ((action.type==='add_tag' || action.type==='remove_tag') ? ($store.global.settingsForm.automation_slash_is_tag_separator ? '标签名称，多个可用 | 或 / 分隔' : '标签名称，多个可用 | 分隔') : '标签名称')"
+                                                            :title="(action.type==='add_tag' || action.type==='remove_tag') ? ($store.global.settingsForm.automation_slash_is_tag_separator ? '可批量输入：使用 | 或 / 分隔多个标签' : '可批量输入：使用 | 分隔多个标签') : ''">
                                                     </template>
 
                                                     <template x-if="action.type === 'set_char_name_from_filename' || action.type === 'set_wi_name_from_filename' || action.type === 'set_filename_from_char_name' || action.type === 'set_filename_from_wi_name'">
@@ -508,6 +509,8 @@
                                                 <span class="text-purple-400">Add Tag</span> <span class="text-gray-500">=</span> <span class="text-green-400">female|elf|mage</span>
                                                 <br>
                                                 <span class="text-gray-500 opacity-60">// 同时添加 "female", "elf", "mage" 三个标签</span>
+                                                <br>
+                                                <span class="text-gray-500 opacity-60" x-show="$store.global.settingsForm.automation_slash_is_tag_separator">// 当前已启用 / 分隔，也可写为 female/elf/mage</span>
                                             </div>
                                         </div>
                                     </div>
@@ -536,18 +539,18 @@
                                 <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-3">
                                     <div class="font-bold text-xs text-green-400 mb-2">配置说明：</div>
                                     <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
-                                        <li><strong>排除标签</strong>：填写不需要的标签，多个用管道符 <code class="font-mono text-yellow-500">|</code> 分隔</li>
-                                        <li><strong>标签替换</strong>：格式为"原标签→新标签"，多个规则用管道符 <code class="font-mono text-yellow-500">|</code> 分隔</li>
+                                        <li><strong>排除标签</strong>：填写不需要的标签，默认用 <code class="font-mono text-yellow-500">|</code> 分隔<span x-show="$store.global.settingsForm.automation_slash_is_tag_separator">，也支持 /</span></li>
+                                        <li><strong>标签替换</strong>：格式为"原标签→新标签"，多个规则默认用 <code class="font-mono text-yellow-500">|</code> 分隔<span x-show="$store.global.settingsForm.automation_slash_is_tag_separator">，也支持 /</span></li>
                                         <li><strong>合并模式</strong>：选择"合并"保留现有标签，或"替换"清空后添加</li>
                                     </ul>
                                     <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono mt-2">
                                         <span class="text-purple-400">示例</span><br>
-                                        排除标签: 其他|待审核<br>
-                                        标签替换: 其他→杂项|调教→BDSM<br>
+                                        <span x-text="$store.global.settingsForm.automation_slash_is_tag_separator ? '排除标签: 其他/待审核' : '排除标签: 其他|待审核'"></span><br>
+                                        <span x-text="$store.global.settingsForm.automation_slash_is_tag_separator ? '标签替换: 其他→杂项/调教→BDSM' : '标签替换: 其他→杂项|调教→BDSM'"></span><br>
                                         合并模式: 合并
                                     </div>
                                     <div class="mt-2 text-xs text-[var(--text-dim)]">
-                                        <span class="text-yellow-500">💡 提示：</span>支持管道符 <code class="font-mono">|</code> 语法，与条件匹配语法一致
+                                        <span class="text-yellow-500">💡 提示：</span>分隔符规则与条件匹配语法一致（是否支持 <code class="font-mono">/</code> 由设置决定）
                                     </div>
                                 </div>
                                 <div class="mt-3 p-2 bg-blue-500/10 border border-blue-500/30 rounded">

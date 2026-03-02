@@ -537,6 +537,20 @@
                             ⚠️ 认证信息仅保存在本地，不会上传到任何服务器。
                         </div>
                     </div>
+
+                    <div class="settings-group-title mt-8">自动化标签分隔符</div>
+                    <div class="settings-row p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <div class="settings-label text-emerald-400">将斜杠 / 视为标签分隔符</div>
+                                <div class="settings-desc">
+                                    关闭时仅支持 | 分隔，保留标签中的 /；开启后，| 和 / 都会拆分为多个标签。
+                                </div>
+                            </div>
+                            <input type="checkbox" x-model="settingsForm.automation_slash_is_tag_separator"
+                                class="w-5 h-5 accent-[var(--accent-main)]">
+                        </div>
+                    </div>
                 </div>
 
                 <!-- TAB 4: 维护与高级 (Maintenance) -->
@@ -834,6 +848,18 @@ iframe.remove();</pre>
                                     <li>需要 Discord 账号已加入类脑服务器并有访问权限</li>
                                 </ul>
                             </div>
+                        </div>
+
+                        <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4">
+                            <h4 class="font-bold text-emerald-400 mb-2">🏷️ 自动化标签分隔符</h4>
+                            <p class="text-[var(--text-dim)] text-xs mb-2">
+                                可在“连接与服务”中切换是否将 <code class="bg-[var(--bg-sub)] px-1 rounded">/</code> 当作分隔符。
+                            </p>
+                            <ul class="list-disc list-inside space-y-1 text-[var(--text-dim)] text-xs">
+                                <li><strong>关闭（默认）：</strong>只用 <code class="font-mono">|</code> 分隔，标签中的 <code class="font-mono">/</code> 会原样保留</li>
+                                <li><strong>开启：</strong><code class="font-mono">|</code> 与 <code class="font-mono">/</code> 都会拆分标签</li>
+                                <li>影响范围：规则集“添加/移除标签”、论坛标签抓取“排除标签/标签替换”、详情页标签 Tab 的自定义输入</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
