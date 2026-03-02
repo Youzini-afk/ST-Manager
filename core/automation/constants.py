@@ -2,6 +2,7 @@
 FIELD_MAP = {
     # 基础元数据
     "char_name": "char_name",
+    "filename": "filename",
     "description": "description",
     "creator": "creator",
     "char_version": "char_version",
@@ -49,6 +50,12 @@ ACT_MOVE = "move_folder"
 ACT_ADD_TAG = "add_tag"
 ACT_REMOVE_TAG = "remove_tag"
 ACT_SET_FAV = "set_favorite"
+
+# 名称/文件名同步动作
+ACT_SET_CHAR_NAME_FROM_FILENAME = "set_char_name_from_filename"
+ACT_SET_WI_NAME_FROM_FILENAME = "set_wi_name_from_filename"
+ACT_SET_FILENAME_FROM_CHAR_NAME = "set_filename_from_char_name"
+ACT_SET_FILENAME_FROM_WI_NAME = "set_filename_from_wi_name"
 
 # 论坛标签抓取动作
 ACT_FETCH_FORUM_TAGS = "fetch_forum_tags"

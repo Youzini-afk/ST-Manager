@@ -239,6 +239,7 @@
                                                             <select x-model="cond.field" class="auto-select w-32">
                                                                 <optgroup label="基础信息">
                                                                     <option value="char_name">角色名 (Name)</option>
+                                                                    <option value="filename">文件名 (Filename)</option>
                                                                     <option value="creator">创作者 (Creator)</option>
                                                                     <option value="char_version">版本 (Version)</option>
                                                                     <option value="tags">标签 (Tags)</option>
@@ -344,6 +345,10 @@
                                                     <option value="remove_tag">🗑️ 移除标签</option>
                                                     <option value="set_favorite">★ 设为收藏</option>
                                                     <option value="fetch_forum_tags">🌐 抓取论坛标签</option>
+                                                    <option value="set_char_name_from_filename">📝 文件名→角色名</option>
+                                                    <option value="set_wi_name_from_filename">📚 文件名→世界书名</option>
+                                                    <option value="set_filename_from_char_name">📄 角色名→文件名</option>
+                                                    <option value="set_filename_from_wi_name">📄 世界书名→文件名</option>
                                                 </select>
 
                                                 <div class="flex-1">
@@ -391,10 +396,16 @@
                                                      </template>
 
                                                     <!-- 其他动作类型的值输入 -->
-                                                    <template x-if="action.type !== 'set_favorite' && action.type !== 'fetch_forum_tags'">
+                                                    <template x-if="action.type !== 'set_favorite' && action.type !== 'fetch_forum_tags' && action.type !== 'set_char_name_from_filename' && action.type !== 'set_wi_name_from_filename' && action.type !== 'set_filename_from_char_name' && action.type !== 'set_filename_from_wi_name'">
                                                         <input type="text" x-model="action.value"
                                                             class="auto-input w-full"
                                                             :placeholder="action.type==='move_folder' ? '文件夹路径 (e.g. Race/Elf)' : '标签名称'">
+                                                    </template>
+
+                                                    <template x-if="action.type === 'set_char_name_from_filename' || action.type === 'set_wi_name_from_filename' || action.type === 'set_filename_from_char_name' || action.type === 'set_filename_from_wi_name'">
+                                                        <div class="text-xs text-[var(--text-dim)] px-2 py-1 bg-[var(--bg-sub)] border border-[var(--border-light)] rounded">
+                                                            无需填写参数，命中后自动执行
+                                                        </div>
                                                     </template>
                                                 </div>
 

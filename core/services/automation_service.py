@@ -3,7 +3,13 @@ from core.config import load_config
 from core.automation.manager import rule_manager
 from core.automation.engine import AutomationEngine
 from core.automation.executor import AutomationExecutor
-from core.automation.constants import ACT_FETCH_FORUM_TAGS
+from core.automation.constants import (
+    ACT_FETCH_FORUM_TAGS,
+    ACT_SET_CHAR_NAME_FROM_FILENAME,
+    ACT_SET_WI_NAME_FROM_FILENAME,
+    ACT_SET_FILENAME_FROM_CHAR_NAME,
+    ACT_SET_FILENAME_FROM_WI_NAME,
+)
 from core.context import ctx
 from core.data.ui_store import load_ui_data
 from core.services.card_service import resolve_ui_key
@@ -58,11 +64,15 @@ def auto_run_rules_on_card(card_id):
             'add_tags': set(),
             'remove_tags': set(),
             'favorite': None,
-            'fetch_forum_tags': None
+            'fetch_forum_tags': None,
+            'set_char_name_from_filename': False,
+            'set_wi_name_from_filename': False,
+            'set_filename_from_char_name': False,
+            'set_filename_from_wi_name': False,
         }
         for act in plan_raw['actions']:
             t = act['type']
-            v = act['value']
+            v = act.get('value')
             if t == 'move_folder':
                 exec_plan['move'] = v
             elif t == 'add_tag':
@@ -71,6 +81,14 @@ def auto_run_rules_on_card(card_id):
                 exec_plan['remove_tags'].add(v)
             elif t == 'set_favorite':
                 exec_plan['favorite'] = (str(v).lower() == 'true')
+            elif t == ACT_SET_CHAR_NAME_FROM_FILENAME:
+                exec_plan['set_char_name_from_filename'] = True
+            elif t == ACT_SET_WI_NAME_FROM_FILENAME:
+                exec_plan['set_wi_name_from_filename'] = True
+            elif t == ACT_SET_FILENAME_FROM_CHAR_NAME:
+                exec_plan['set_filename_from_char_name'] = True
+            elif t == ACT_SET_FILENAME_FROM_WI_NAME:
+                exec_plan['set_filename_from_wi_name'] = True
             elif t == ACT_FETCH_FORUM_TAGS:
                 # 导入时跳过论坛标签抓取，因为此时 URL 为空
                 # 此动作仅在用户更新来源链接时触发
@@ -126,7 +144,7 @@ def auto_run_forum_tags_on_link_update(card_id):
         fetch_forum_tags_config = None
         for act in plan_raw['actions']:
             if act['type'] == ACT_FETCH_FORUM_TAGS:
-                v = act['value']
+                v = act.get('value')
                 if isinstance(v, dict):
                     fetch_forum_tags_config = v
                 else:
@@ -142,7 +160,11 @@ def auto_run_forum_tags_on_link_update(card_id):
             'add_tags': set(),
             'remove_tags': set(),
             'favorite': None,
-            'fetch_forum_tags': fetch_forum_tags_config
+            'fetch_forum_tags': fetch_forum_tags_config,
+            'set_char_name_from_filename': False,
+            'set_wi_name_from_filename': False,
+            'set_filename_from_char_name': False,
+            'set_filename_from_wi_name': False,
         }
 
         # 执行

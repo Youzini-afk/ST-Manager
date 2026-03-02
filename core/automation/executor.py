@@ -1,5 +1,10 @@
 import logging
-from core.services.card_service import move_card_internal, modify_card_attributes_internal, resolve_ui_key
+from core.services.card_service import (
+    move_card_internal,
+    modify_card_attributes_internal,
+    resolve_ui_key,
+    sync_card_names_internal,
+)
 from core.automation.forum_tag_fetcher import get_tag_fetcher, TagProcessor
 from core.data.ui_store import load_ui_data
 from core.context import ctx
@@ -10,7 +15,17 @@ class AutomationExecutor:
     def apply_plan(self, card_id, plan, ui_data=None):
         """
         执行计划
-        plan 结构: { 'move': 'Target/Path' or None, 'add_tags': set(), 'remove_tags': set(), 'favorite': bool/None }
+        plan 结构:
+        {
+            'move': 'Target/Path' or None,
+            'add_tags': set(),
+            'remove_tags': set(),
+            'favorite': bool/None,
+            'set_char_name_from_filename': bool,
+            'set_wi_name_from_filename': bool,
+            'set_filename_from_char_name': bool,
+            'set_filename_from_wi_name': bool,
+        }
         返回: 执行结果摘要
         """
         result = {
@@ -18,6 +33,7 @@ class AutomationExecutor:
             "tags_added": [],
             "tags_removed": [],
             "fav_changed": False,
+            "name_sync": None,
             "forum_tags_fetched": None  # 论坛标签抓取结果
         }
         
@@ -49,6 +65,26 @@ class AutomationExecutor:
                 result["tags_added"] = add_tags
                 result["tags_removed"] = remove_tags
                 if fav is not None: result["fav_changed"] = True
+
+        # 1.5 同步名称/文件名（可能改变 ID）
+        sync_flags = {
+            'set_char_name_from_filename': bool(plan.get('set_char_name_from_filename')),
+            'set_wi_name_from_filename': bool(plan.get('set_wi_name_from_filename')),
+            'set_filename_from_char_name': bool(plan.get('set_filename_from_char_name')),
+            'set_filename_from_wi_name': bool(plan.get('set_filename_from_wi_name')),
+        }
+        if any(sync_flags.values()):
+            ok, new_id, msg, sync_details = sync_card_names_internal(current_id, **sync_flags)
+            sync_result = dict(sync_details or {})
+            sync_result['success'] = bool(ok)
+            sync_result['msg'] = msg
+            sync_result['new_id'] = new_id
+            result['name_sync'] = sync_result
+
+            if ok:
+                current_id = new_id
+            else:
+                logger.warning(f"Automation name sync failed for {card_id}: {msg}")
 
         # 2. 执行移动 (最后执行，因为会改变 ID)
         target_folder = plan.get('move')

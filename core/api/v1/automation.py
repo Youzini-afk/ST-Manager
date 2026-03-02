@@ -6,7 +6,14 @@ from flask import Blueprint, request, jsonify, send_file, make_response
 from core.automation.manager import rule_manager
 from core.automation.engine import AutomationEngine
 from core.automation.executor import AutomationExecutor
-from core.automation.constants import FIELD_MAP, ACT_FETCH_FORUM_TAGS
+from core.automation.constants import (
+    FIELD_MAP,
+    ACT_FETCH_FORUM_TAGS,
+    ACT_SET_CHAR_NAME_FROM_FILENAME,
+    ACT_SET_WI_NAME_FROM_FILENAME,
+    ACT_SET_FILENAME_FROM_CHAR_NAME,
+    ACT_SET_FILENAME_FROM_WI_NAME,
+)
 from core.context import ctx
 from core.services.card_service import resolve_ui_key
 from core.data.ui_store import load_ui_data
@@ -218,12 +225,16 @@ def execute_rules():
                 'add_tags': set(),
                 'remove_tags': set(),
                 'favorite': None,
-                'fetch_forum_tags': None
+                'fetch_forum_tags': None,
+                'set_char_name_from_filename': False,
+                'set_wi_name_from_filename': False,
+                'set_filename_from_char_name': False,
+                'set_filename_from_wi_name': False,
             }
             
             for act in plan_raw['actions']:
                 t = act['type']
-                v = act['value']
+                v = act.get('value')
                 if t == 'move_folder': exec_plan['move'] = v
                 elif t == 'add_tag':
                     tags = [tag.strip() for tag in str(v).split('|') if tag.strip()]
@@ -232,6 +243,14 @@ def execute_rules():
                     tags = [tag.strip() for tag in str(v).split('|') if tag.strip()]
                     exec_plan['remove_tags'].update(tags)
                 elif t == 'set_favorite': exec_plan['favorite'] = (str(v).lower() == 'true')
+                elif t == ACT_SET_CHAR_NAME_FROM_FILENAME:
+                    exec_plan['set_char_name_from_filename'] = True
+                elif t == ACT_SET_WI_NAME_FROM_FILENAME:
+                    exec_plan['set_wi_name_from_filename'] = True
+                elif t == ACT_SET_FILENAME_FROM_CHAR_NAME:
+                    exec_plan['set_filename_from_char_name'] = True
+                elif t == ACT_SET_FILENAME_FROM_WI_NAME:
+                    exec_plan['set_filename_from_wi_name'] = True
                 elif t == 'fetch_forum_tags':
                     if isinstance(v, dict):
                         exec_plan['fetch_forum_tags'] = v

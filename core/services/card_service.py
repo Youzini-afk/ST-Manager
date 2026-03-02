@@ -12,7 +12,7 @@ from urllib.parse import quote
 from core.config import CARDS_FOLDER, DEFAULT_DB_PATH, THUMB_FOLDER, BASE_DIR, load_config
 from core.context import ctx
 from core.data.db_session import get_db
-from core.data.ui_store import load_ui_data, save_ui_data
+from core.data.ui_store import load_ui_data, save_ui_data, VERSION_REMARKS_KEY
 
 # === 服务依赖 ===
 from core.services.cache_service import update_card_cache
@@ -662,6 +662,250 @@ def rename_folder_in_ui(ui_data, old_path, new_path):
         del ui_data[key]
         changed = True
     return changed
+
+def sync_card_names_internal(
+    card_id,
+    set_char_name_from_filename=False,
+    set_wi_name_from_filename=False,
+    set_filename_from_char_name=False,
+    set_filename_from_wi_name=False,
+):
+    """
+    同步角色卡名称 / 世界书名称 / 文件名。
+
+    支持动作：
+    - 文件名(去扩展) -> 角色名
+    - 文件名(去扩展) -> 世界书名称(character_book.name)
+    - 角色名 -> 文件名
+    - 世界书名称 -> 文件名
+
+    返回:
+        (success, new_id, message, details)
+    """
+    details = {
+        "char_name_updated": False,
+        "wi_name_updated": False,
+        "filename_updated": False,
+        "new_filename": None,
+    }
+
+    try:
+        if not card_id:
+            return False, card_id, "ID missing", details
+
+        full_path = os.path.join(CARDS_FOLDER, card_id.replace('/', os.sep))
+        if not os.path.exists(full_path) or os.path.isdir(full_path):
+            return False, card_id, "Source file not found", details
+
+        info = extract_card_info(full_path)
+        if not info or not isinstance(info, dict):
+            return False, card_id, "Failed to parse card metadata", details
+
+        suppress_fs_events(2.0)
+
+        old_id = card_id
+        old_full_path = full_path
+        old_filename = os.path.basename(old_full_path)
+        old_base_name, old_ext = os.path.splitext(old_filename)
+
+        data_block = info.get('data', info) if isinstance(info.get('data'), dict) else info
+        metadata_changed = False
+
+        # 1) 文件名 -> 角色名
+        if set_char_name_from_filename:
+            if str(data_block.get('name') or '').strip() != old_base_name:
+                data_block['name'] = old_base_name
+                # V2 兼容：保持 root.name 同步
+                info['name'] = old_base_name
+                metadata_changed = True
+                details['char_name_updated'] = True
+
+        # 2) 文件名 -> 世界书名称
+        if set_wi_name_from_filename:
+            character_book = data_block.get('character_book')
+
+            # 兼容 V2 list：转换为 dict 后可写入 name
+            if isinstance(character_book, list):
+                character_book = {
+                    'name': old_base_name,
+                    'entries': character_book,
+                }
+                data_block['character_book'] = character_book
+                metadata_changed = True
+                details['wi_name_updated'] = True
+            elif isinstance(character_book, dict):
+                if str(character_book.get('name') or '').strip() != old_base_name:
+                    character_book['name'] = old_base_name
+                    metadata_changed = True
+                    details['wi_name_updated'] = True
+
+        # 3) 角色名/世界书名称 -> 文件名（可同时勾选，后者优先）
+        desired_filename_source = None
+
+        if set_filename_from_char_name:
+            char_name = str(data_block.get('name') or '').strip()
+            if char_name:
+                desired_filename_source = char_name
+
+        if set_filename_from_wi_name:
+            character_book = data_block.get('character_book')
+            if isinstance(character_book, dict):
+                wi_name = str(character_book.get('name') or '').strip()
+                if wi_name:
+                    desired_filename_source = wi_name
+
+        new_id = old_id
+        new_full_path = old_full_path
+
+        if desired_filename_source:
+            safe_base = sanitize_filename(desired_filename_source)
+            if safe_base == 'undefined':
+                safe_base = old_base_name
+            if old_ext and safe_base.lower().endswith(old_ext.lower()):
+                safe_base = safe_base[:-len(old_ext)]
+            safe_base = safe_base.strip() or old_base_name
+
+            # 伴生图（仅 JSON 卡）
+            sidecar_src = find_sidecar_image(old_full_path) if old_ext.lower() == '.json' else None
+            sidecar_ext = os.path.splitext(sidecar_src)[1] if sidecar_src else None
+
+            parent_dir = os.path.dirname(old_full_path)
+
+            def _same_path(p1, p2):
+                return os.path.normcase(os.path.abspath(p1)) == os.path.normcase(os.path.abspath(p2))
+
+            counter = 0
+            final_filename = old_filename
+            final_main_path = old_full_path
+            final_sidecar_path = None
+
+            while True:
+                base_try = safe_base if counter == 0 else f"{safe_base}_{counter}"
+                candidate_filename = f"{base_try}{old_ext}"
+                candidate_main_path = os.path.join(parent_dir, candidate_filename)
+
+                conflict_main = os.path.exists(candidate_main_path) and not _same_path(candidate_main_path, old_full_path)
+
+                conflict_sidecar = False
+                candidate_sidecar_path = None
+                if sidecar_ext:
+                    candidate_sidecar_path = os.path.join(parent_dir, f"{base_try}{sidecar_ext}")
+                    conflict_sidecar = os.path.exists(candidate_sidecar_path) and not _same_path(candidate_sidecar_path, sidecar_src)
+
+                if not conflict_main and not conflict_sidecar:
+                    final_filename = candidate_filename
+                    final_main_path = candidate_main_path
+                    final_sidecar_path = candidate_sidecar_path
+                    break
+
+                counter += 1
+
+            # Windows 大小写不敏感，纯大小写变化一般不需要处理
+            if final_filename.lower() != old_filename.lower():
+                os.rename(old_full_path, final_main_path)
+
+                if sidecar_src and final_sidecar_path and os.path.exists(sidecar_src):
+                    if not _same_path(sidecar_src, final_sidecar_path):
+                        os.rename(sidecar_src, final_sidecar_path)
+
+                rel_dir = old_id.rsplit('/', 1)[0] if '/' in old_id else ''
+                new_id = f"{rel_dir}/{final_filename}" if rel_dir else final_filename
+                new_full_path = final_main_path
+                details['filename_updated'] = True
+                details['new_filename'] = final_filename
+
+        # 4) 写回元数据
+        if metadata_changed:
+            if not write_card_metadata(new_full_path, info):
+                return False, new_id, "Failed to write card metadata", details
+
+        # 5) 无变化直接返回
+        changed_any = metadata_changed or details['filename_updated']
+        if not changed_any:
+            return True, old_id, "No changes", details
+
+        # 6) 数据同步（DB / UI / Cache）
+        current_mtime = 0
+        try:
+            current_mtime = os.path.getmtime(new_full_path)
+        except Exception:
+            current_mtime = time.time()
+
+        update_card_cache(new_id, new_full_path, parsed_info=info, mtime=current_mtime)
+
+        cache_payload = {
+            'last_modified': current_mtime,
+            'filename': os.path.basename(new_full_path),
+        }
+        new_char_name = str(data_block.get('name') or '').strip()
+        if new_char_name:
+            cache_payload['char_name'] = new_char_name
+
+        if new_id != old_id:
+            # 清理旧索引
+            conn = get_db()
+            conn.execute("DELETE FROM card_metadata WHERE id = ?", (old_id,))
+            conn.commit()
+
+            # 迁移 ui_data 顶层 key + bundle 版本备注 key
+            ui_data = load_ui_data()
+            ui_changed = False
+
+            if old_id in ui_data:
+                ui_data[new_id] = ui_data[old_id]
+                del ui_data[old_id]
+                ui_changed = True
+
+            for key, entry in ui_data.items():
+                if not isinstance(entry, dict):
+                    continue
+                remarks = entry.get(VERSION_REMARKS_KEY)
+                if isinstance(remarks, dict) and old_id in remarks:
+                    remarks[new_id] = remarks[old_id]
+                    del remarks[old_id]
+                    ui_changed = True
+
+            if ui_changed:
+                save_ui_data(ui_data)
+
+            old_category = old_id.rsplit('/', 1)[0] if '/' in old_id else ''
+            old_cache_item = ctx.cache.id_map.get(old_id) if ctx.cache else None
+            if old_cache_item:
+                old_category = old_cache_item.get('category', old_category)
+
+            if ctx.cache:
+                ctx.cache.move_card_update(
+                    old_id,
+                    new_id,
+                    old_category,
+                    old_category,
+                    os.path.basename(new_full_path),
+                    new_full_path,
+                )
+
+                if old_cache_item and old_cache_item.get('is_bundle'):
+                    bundle_dir = old_cache_item.get('bundle_dir')
+                    if bundle_dir:
+                        ctx.cache.bundle_map[bundle_dir] = new_id
+
+                    # 维护 bundle versions 列表中的主版本 ID/文件名，避免短时间内显示旧值
+                    new_cache_item = ctx.cache.id_map.get(new_id)
+                    versions = new_cache_item.get('versions', []) if isinstance(new_cache_item, dict) else []
+                    for ver in versions:
+                        if ver.get('id') == old_id:
+                            ver['id'] = new_id
+                            ver['filename'] = os.path.basename(new_full_path)
+                            break
+
+                ctx.cache.update_card_data(new_id, cache_payload)
+        else:
+            if ctx.cache:
+                ctx.cache.update_card_data(new_id, cache_payload)
+
+        return True, new_id, "Success", details
+    except Exception as e:
+        logger.error(f"Sync card names error: {e}")
+        return False, card_id, str(e), details
 
 # 内部移动卡片逻辑
 def move_card_internal(card_id, target_category):
