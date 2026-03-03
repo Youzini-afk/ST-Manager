@@ -7,6 +7,33 @@ from core.utils.tag_parser import split_action_tags
 
 logger = logging.getLogger(__name__)
 
+_RULE_TEXT_PATTERN = re.compile(r'(.*?)(?:→|->|=>)([^|]+)(?:\||$)')
+
+
+def _parse_replace_rules_text(text, slash_as_separator=False):
+    parsed = {}
+    raw_text = str(text or '').strip()
+    if not raw_text:
+        return parsed
+
+    for m in _RULE_TEXT_PATTERN.finditer(raw_text):
+        left = str(m.group(1) or '').strip()
+        right = str(m.group(2) or '').strip()
+
+        if not left or not right:
+            continue
+
+        from_items = split_action_tags(left, slash_as_separator=slash_as_separator)
+        to_items = split_action_tags(right, slash_as_separator=slash_as_separator)
+        if not from_items or not to_items:
+            continue
+
+        target = to_items[0]
+        for from_tag in from_items:
+            parsed[from_tag] = target
+
+    return parsed
+
 
 def get_discord_config():
     """从配置读取Discord认证信息"""
@@ -329,15 +356,20 @@ class TagProcessor:
         self.exclude_tags = set(split_action_tags(exclude_tags or [], slash_as_separator=self.slash_as_separator))
 
         parsed_replace_rules = {}
-        for key, value in (replace_rules or {}).items():
-            from_items = split_action_tags(key, slash_as_separator=self.slash_as_separator)
-            to_items = split_action_tags(value, slash_as_separator=self.slash_as_separator)
+        if isinstance(replace_rules, str):
+            parsed_replace_rules.update(
+                _parse_replace_rules_text(replace_rules, slash_as_separator=self.slash_as_separator)
+            )
+        elif isinstance(replace_rules, dict):
+            for key, value in (replace_rules or {}).items():
+                from_items = split_action_tags(key, slash_as_separator=self.slash_as_separator)
+                to_items = split_action_tags(value, slash_as_separator=self.slash_as_separator)
 
-            if not from_items or not to_items:
-                continue
+                if not from_items or not to_items:
+                    continue
 
-            for from_tag in from_items:
-                parsed_replace_rules[from_tag] = to_items[0]
+                for from_tag in from_items:
+                    parsed_replace_rules[from_tag] = to_items[0]
 
         self.replace_rules = parsed_replace_rules
     

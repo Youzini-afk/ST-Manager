@@ -17,12 +17,14 @@ from core.automation.constants import (
 )
 from core.context import ctx
 from core.services.card_service import resolve_ui_key
+from core.services.card_service import modify_card_attributes_internal
 from core.data.ui_store import load_ui_data
 from core.data.db_session import get_db
 from core.config import CARDS_FOLDER, load_config
 from core.utils.image import extract_card_info
 from core.utils.text import calculate_token_count
 from core.utils.tag_parser import split_action_tags
+from core.automation.tag_merge import apply_merge_actions_to_tags
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('automation', __name__)
@@ -236,6 +238,7 @@ def execute_rules():
                 'set_filename_from_char_name': False,
                 'set_filename_from_wi_name': False,
             }
+            merge_actions = []
             
             for act in plan_raw['actions']:
                 t = act['type']
@@ -262,11 +265,30 @@ def execute_rules():
                     else:
                         exec_plan['fetch_forum_tags'] = {}
                 elif t == ACT_MERGE_TAGS:
-                    # 标签合并只在“手动打标”流程触发，手动执行规则时跳过
-                    continue
+                    merge_actions.append(act)
             
             # 4. 执行
             res = executor.apply_plan(cid, exec_plan, ui_data)
+
+            # 5. 执行标签合并（在规则集执行场景下同样生效）
+            if merge_actions:
+                final_id = res.get('final_id') or cid
+                card_after = ctx.cache.id_map.get(final_id) if ctx.cache else None
+                current_tags = list((card_after or {}).get('tags') or [])
+
+                merge_result = apply_merge_actions_to_tags(
+                    current_tags,
+                    merge_actions,
+                    slash_as_separator=slash_as_separator
+                )
+
+                if merge_result.get('changed'):
+                    merged_tags = list(merge_result.get('tags') or [])
+                    remove_tags = [t for t in current_tags if t not in merged_tags]
+                    add_tags = [t for t in merged_tags if t not in current_tags]
+                    if add_tags or remove_tags:
+                        modify_card_attributes_internal(final_id, add_tags=add_tags, remove_tags=remove_tags)
+                    summary['tag_changes'] += 1
             
             processed_count += 1
             if res['moved_to']: summary['moves'] += 1

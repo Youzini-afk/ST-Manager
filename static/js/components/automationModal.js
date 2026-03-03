@@ -196,6 +196,30 @@ export default function automationModal() {
 
             const slashAsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
             const listSplitPattern = slashAsSeparator ? /[,|/]/ : /[,|]/;
+            const parseReplaceRulesText = (text) => {
+                const out = {};
+                const raw = (text || '').toString().trim();
+                if (!raw) return out;
+
+                const rulePattern = /(.*?)(?:→|->|=>)([^|]+)(?:\||$)/g;
+                let match;
+                while ((match = rulePattern.exec(raw)) !== null) {
+                    const left = (match[1] || '').trim();
+                    const right = (match[2] || '').trim();
+                    if (!left || !right) continue;
+
+                    const fromTags = left.split(listSplitPattern).map(s => s.trim()).filter(s => s);
+                    const toTags = right.split(listSplitPattern).map(s => s.trim()).filter(s => s);
+                    if (!fromTags.length || !toTags.length) continue;
+
+                    const target = toTags[0];
+                    fromTags.forEach(from => {
+                        out[from] = target;
+                    });
+                }
+
+                return out;
+            };
 
             // 深拷贝规则，避免修改原始数据
             const rulesToSave = JSON.parse(JSON.stringify(this.editingRules));
@@ -215,17 +239,7 @@ export default function automationModal() {
 
                             // 解析替换规则（支持逗号/管道符，且可按设置支持斜杠分隔）
                             if (config.replace_rules_text) {
-                                const rules = config.replace_rules_text.split(listSplitPattern);
-                                rules.forEach(rule => {
-                                    const parts = rule.split('→');
-                                    if (parts.length === 2) {
-                                        const from = parts[0].trim();
-                                        const to = parts[1].trim();
-                                        if (from && to) {
-                                            valueObj.replace_rules[from] = to;
-                                        }
-                                    }
-                                });
+                                valueObj.replace_rules = parseReplaceRulesText(config.replace_rules_text);
                             }
                             
                             // 替换 value 为配置对象

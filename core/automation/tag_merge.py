@@ -1,8 +1,11 @@
 import logging
+import re
 
 from core.utils.tag_parser import split_action_tags
 
 logger = logging.getLogger(__name__)
+
+_RULE_TEXT_PATTERN = re.compile(r'(.*?)(?:→|->|=>)([^|]+)(?:\||$)')
 
 
 def _normalize_tag_list(tags):
@@ -25,6 +28,30 @@ def _normalize_tag_list(tags):
 def _parse_rule_entries(rule_data, slash_as_separator=False):
     parsed = {}
 
+    def _apply_text_rules(text):
+        local = {}
+        raw_text = str(text or '').strip()
+        if not raw_text:
+            return local
+
+        for m in _RULE_TEXT_PATTERN.finditer(raw_text):
+            left = str(m.group(1) or '').strip()
+            right = str(m.group(2) or '').strip()
+
+            if not left or not right:
+                continue
+
+            from_tags = split_action_tags(left, slash_as_separator=slash_as_separator)
+            to_tags = split_action_tags(right, slash_as_separator=slash_as_separator)
+            if not from_tags or not to_tags:
+                continue
+
+            target = to_tags[0]
+            for from_tag in from_tags:
+                local[from_tag] = target
+
+        return local
+
     if isinstance(rule_data, dict):
         items = rule_data.items()
     elif isinstance(rule_data, (list, tuple, set)):
@@ -33,7 +60,7 @@ def _parse_rule_entries(rule_data, slash_as_separator=False):
             if isinstance(entry, str):
                 items.append((entry, None))
     elif isinstance(rule_data, str):
-        items = [(entry, None) for entry in split_action_tags(rule_data, slash_as_separator=slash_as_separator)]
+        return _apply_text_rules(rule_data)
     else:
         return parsed
 
@@ -42,21 +69,8 @@ def _parse_rule_entries(rule_data, slash_as_separator=False):
         to_tags = []
 
         if raw_to is None and isinstance(raw_from, str):
-            text = raw_from.strip()
-            splitter = None
-            if '→' in text:
-                splitter = '→'
-            elif '->' in text:
-                splitter = '->'
-            elif '=>' in text:
-                splitter = '=>'
-
-            if not splitter:
-                continue
-
-            left, right = text.split(splitter, 1)
-            from_tags = split_action_tags(left, slash_as_separator=slash_as_separator)
-            to_tags = split_action_tags(right, slash_as_separator=slash_as_separator)
+            parsed.update(_apply_text_rules(raw_from))
+            continue
         else:
             from_tags = split_action_tags(raw_from, slash_as_separator=slash_as_separator)
             to_tags = split_action_tags(raw_to, slash_as_separator=slash_as_separator)

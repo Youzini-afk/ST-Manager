@@ -755,13 +755,8 @@ def sync_card_names_internal(
                     metadata_changed = True
                     details['wi_name_updated'] = True
 
-        # 3) 角色名/世界书名称 -> 文件名（可同时勾选，后者优先）
+        # 3) 角色名/世界书名称 -> 文件名（可同时勾选，角色名优先）
         desired_filename_source = None
-
-        if set_filename_from_char_name:
-            char_name = str(data_block.get('name') or '').strip()
-            if char_name:
-                desired_filename_source = char_name
 
         if set_filename_from_wi_name:
             character_book = data_block.get('character_book')
@@ -769,6 +764,11 @@ def sync_card_names_internal(
                 wi_name = str(character_book.get('name') or '').strip()
                 if wi_name:
                     desired_filename_source = wi_name
+
+        if set_filename_from_char_name:
+            char_name = str(data_block.get('name') or '').strip()
+            if char_name:
+                desired_filename_source = char_name
 
         new_id = old_id
         new_full_path = old_full_path
