@@ -538,10 +538,15 @@ export function initState() {
         getTagChipStyle(tag) {
             const color = this.getTagColor(tag);
             const opacity = this.getCategoryOpacity(this.getTagCategory(tag));
-            const bgAlpha = 100 - opacity;
-            const borderAlpha = Math.max(20, 100 - Math.round(opacity * 0.58));
-            const textMix = Math.max(10, Math.min(45, Math.round(opacity * 1.35)));
-            return `--tag-cat-color:${color};--tag-cat-opacity:${opacity};--tag-cat-bg:color-mix(in srgb, ${color}, transparent ${bgAlpha}%);--tag-cat-border:color-mix(in srgb, ${color}, transparent ${borderAlpha}%);--tag-cat-text:color-mix(in srgb, ${color}, #ffffff ${textMix}%);`;
+            const bgColorWeight = Math.max(8, Math.min(62, Math.round(opacity * 0.62)));
+            const borderColorWeight = Math.max(18, Math.min(76, Math.round(opacity * 0.82)));
+            const textColorWeight = Math.max(8, Math.min(34, Math.round(opacity * 0.32)));
+
+            const bgBaseWeight = 100 - bgColorWeight;
+            const borderBaseWeight = 100 - borderColorWeight;
+            const textBaseWeight = 100 - textColorWeight;
+
+            return `--tag-cat-color:${color};--tag-cat-opacity:${opacity};--tag-cat-bg:color-mix(in srgb, var(--bg-tag, var(--bg-sub)) ${bgBaseWeight}%, ${color} ${bgColorWeight}%);--tag-cat-border:color-mix(in srgb, var(--border-light) ${borderBaseWeight}%, ${color} ${borderColorWeight}%);--tag-cat-text:color-mix(in srgb, var(--text-main) ${textBaseWeight}%, ${color} ${textColorWeight}%);`;
         },
 
         groupTagsByTaxonomy(tags) {
