@@ -12,6 +12,11 @@ logger = logging.getLogger(__name__)
 
 VERSION_REMARKS_KEY = '_version_remarks'
 IMPORT_TIME_KEY = 'import_time'
+TAG_TAXONOMY_KEY = '_tag_taxonomy_v1'
+
+DEFAULT_TAG_CATEGORY = '未分类'
+DEFAULT_TAG_CATEGORY_COLOR = '#64748b'
+DEFAULT_TAG_CATEGORY_OPACITY = 16
 
 
 def _normalize_timestamp(value):
@@ -27,6 +32,212 @@ def _normalize_timestamp(value):
     if ts <= 0:
         return None
     return ts
+
+
+def _normalize_hex_color(value, fallback=DEFAULT_TAG_CATEGORY_COLOR):
+    """规范化 16 进制颜色值，非法值回退到 fallback。"""
+    fallback_color = fallback if isinstance(fallback, str) and fallback else DEFAULT_TAG_CATEGORY_COLOR
+
+    if not isinstance(value, str):
+        return fallback_color
+
+    color = value.strip()
+    if not color:
+        return fallback_color
+
+    if not color.startswith('#'):
+        color = f'#{color}'
+
+    short_hex = color[1:]
+    if len(short_hex) == 3 and all(ch in '0123456789abcdefABCDEF' for ch in short_hex):
+        return '#' + ''.join(ch * 2 for ch in short_hex).lower()
+
+    if len(short_hex) == 6 and all(ch in '0123456789abcdefABCDEF' for ch in short_hex):
+        return color.lower()
+
+    return fallback_color
+
+
+def _normalize_opacity(value, fallback=DEFAULT_TAG_CATEGORY_OPACITY):
+    """规范化透明度百分比，范围 0~100。"""
+    fallback_value = fallback
+    try:
+        fallback_value = int(float(fallback))
+    except (TypeError, ValueError):
+        fallback_value = DEFAULT_TAG_CATEGORY_OPACITY
+
+    fallback_value = max(0, min(100, fallback_value))
+
+    if isinstance(value, bool):
+        return fallback_value
+
+    try:
+        normalized = int(float(value))
+    except (TypeError, ValueError):
+        return fallback_value
+
+    return max(0, min(100, normalized))
+
+
+def _normalize_category_name(value):
+    if value is None:
+        return ''
+    return str(value).strip()
+
+
+def _normalize_tag_taxonomy(raw):
+    """规范化标签分类配置结构。"""
+    source = raw if isinstance(raw, dict) else {}
+
+    default_category = _normalize_category_name(source.get('default_category')) or DEFAULT_TAG_CATEGORY
+
+    categories = {}
+    raw_categories = source.get('categories')
+    if isinstance(raw_categories, dict):
+        for raw_name, raw_cfg in raw_categories.items():
+            category_name = _normalize_category_name(raw_name)
+            if not category_name:
+                continue
+
+            color = DEFAULT_TAG_CATEGORY_COLOR
+            opacity = DEFAULT_TAG_CATEGORY_OPACITY
+            if isinstance(raw_cfg, dict):
+                color = _normalize_hex_color(raw_cfg.get('color'), DEFAULT_TAG_CATEGORY_COLOR)
+                opacity = _normalize_opacity(raw_cfg.get('opacity'), DEFAULT_TAG_CATEGORY_OPACITY)
+            elif isinstance(raw_cfg, str):
+                color = _normalize_hex_color(raw_cfg, DEFAULT_TAG_CATEGORY_COLOR)
+
+            categories[category_name] = {
+                'color': color,
+                'opacity': opacity,
+            }
+
+    if default_category not in categories:
+        categories[default_category] = {
+            'color': DEFAULT_TAG_CATEGORY_COLOR,
+            'opacity': DEFAULT_TAG_CATEGORY_OPACITY,
+        }
+
+    category_order = []
+    seen_categories = set()
+    raw_order = source.get('category_order')
+    if isinstance(raw_order, list):
+        for item in raw_order:
+            category_name = _normalize_category_name(item)
+            if not category_name or category_name in seen_categories:
+                continue
+            if category_name not in categories:
+                continue
+            seen_categories.add(category_name)
+            category_order.append(category_name)
+
+    if default_category not in seen_categories:
+        category_order.insert(0, default_category)
+        seen_categories.add(default_category)
+
+    for category_name in sorted(categories.keys(), key=lambda x: x.lower()):
+        if category_name in seen_categories:
+            continue
+        category_order.append(category_name)
+        seen_categories.add(category_name)
+
+    tag_to_category = {}
+    raw_tag_to_category = source.get('tag_to_category')
+    if isinstance(raw_tag_to_category, dict):
+        for raw_tag, raw_category in raw_tag_to_category.items():
+            tag = str(raw_tag).strip()
+            if not tag:
+                continue
+
+            category_name = _normalize_category_name(raw_category)
+            if category_name not in categories:
+                category_name = default_category
+            tag_to_category[tag] = category_name
+
+    updated_at = 0
+    try:
+        updated_at = int(source.get('updated_at') or 0)
+    except (TypeError, ValueError):
+        updated_at = 0
+
+    if updated_at < 0:
+        updated_at = 0
+
+    return {
+        'default_category': default_category,
+        'category_order': category_order,
+        'categories': categories,
+        'tag_to_category': tag_to_category,
+        'updated_at': updated_at,
+    }
+
+
+def _is_tag_taxonomy_equal(left, right):
+    """比较标签分类配置是否一致（忽略 updated_at）。"""
+    left_norm = _normalize_tag_taxonomy(left)
+    right_norm = _normalize_tag_taxonomy(right)
+
+    return (
+        left_norm.get('default_category') == right_norm.get('default_category')
+        and left_norm.get('category_order') == right_norm.get('category_order')
+        and left_norm.get('categories') == right_norm.get('categories')
+        and left_norm.get('tag_to_category') == right_norm.get('tag_to_category')
+    )
+
+
+def get_tag_taxonomy(ui_data):
+    """获取标签分类配置（自动回退默认值）。"""
+    if not isinstance(ui_data, dict):
+        return _normalize_tag_taxonomy({})
+    return _normalize_tag_taxonomy(ui_data.get(TAG_TAXONOMY_KEY))
+
+
+def set_tag_taxonomy(ui_data, taxonomy_payload):
+    """保存标签分类配置。"""
+    if not isinstance(ui_data, dict):
+        return False
+
+    previous_raw = ui_data.get(TAG_TAXONOMY_KEY)
+    previous_norm = _normalize_tag_taxonomy(previous_raw)
+    next_norm = _normalize_tag_taxonomy(taxonomy_payload)
+
+    if _is_tag_taxonomy_equal(previous_norm, next_norm) and isinstance(previous_raw, dict):
+        return False
+
+    next_norm['updated_at'] = int(time.time())
+    ui_data[TAG_TAXONOMY_KEY] = next_norm
+    return True
+
+
+def remove_tags_from_tag_taxonomy(ui_data, tags):
+    """从标签分类映射中移除指定标签。"""
+    if not isinstance(ui_data, dict):
+        return False
+
+    if not isinstance(tags, (list, tuple, set)):
+        return False
+
+    taxonomy = get_tag_taxonomy(ui_data)
+    current_map = taxonomy.get('tag_to_category', {})
+    if not isinstance(current_map, dict):
+        current_map = {}
+
+    next_map = dict(current_map)
+    changed = False
+
+    for raw_tag in tags:
+        tag = str(raw_tag).strip()
+        if not tag:
+            continue
+        if tag in next_map:
+            del next_map[tag]
+            changed = True
+
+    if not changed:
+        return False
+
+    taxonomy['tag_to_category'] = next_map
+    return set_tag_taxonomy(ui_data, taxonomy)
 
 
 def get_import_time(ui_data, ui_key, fallback=None):

@@ -680,13 +680,15 @@
 
                                 <div class="detail-taglist">
                                     <template x-for="(tag, index) in editingData.tags" :key="tag + '-' + index">
-                                        <button type="button" class="detail-tag" :draggable="isEditMode"
+                                        <button type="button" class="detail-tag detail-tag-categorized" :draggable="isEditMode"
                                             @click="if (!isEditMode) toggleTag(tag)"
                                             @dragstart="onDetailTagDragStart($event, index)"
                                             @dragover="onDetailTagDragOver($event)"
                                             @drop="onDetailTagDrop($event, index)"
                                             @dragend="onDetailTagDragEnd()"
-                                            :class="isEditMode && detailTagDragIndex === index ? 'detail-tag-dragging' : ''">
+                                            :class="isEditMode && detailTagDragIndex === index ? 'detail-tag-dragging' : ''"
+                                            :style="getTagChipStyle(tag)"
+                                            :title="`分类：${getTagCategory(tag)}`">
                                             <span x-show="isEditMode" class="detail-tag-handle" title="拖拽排序">☰</span>
                                             <span x-text="tag"></span>
                                             <span x-show="isEditMode" class="detail-tag-x" @click.stop="removeTagAt(index)">✕</span>
@@ -712,17 +714,70 @@
                                             class="detail-inline-add" title="清空搜索">✕</button>
                                     </div>
 
-                                    <div class="detail-tag-library-cloud custom-scrollbar">
-                                        <template x-for="tag in filteredTagLibraryPool" :key="'pool-' + tag">
-                                            <button type="button" class="tag-chip-btn" @click="toggleTag(tag)"
-                                                :class="editingData.tags && editingData.tags.includes(tag) ? 'tag-chip-selected-purple' : 'tag-chip-unselected'">
-                                                <span x-text="tag"></span>
-                                                <span x-show="editingData.tags && editingData.tags.includes(tag)"
-                                                    style="margin-left: 0.4rem; font-weight: bold;">+</span>
+                                    <div class="detail-tag-category-filter-row">
+                                        <button type="button" class="detail-tag-category-filter-pill"
+                                            :class="isDetailCategoryFilterAllMixed ? 'active-mixed' : ''"
+                                            @click="showAllDetailCategoriesMixed()"
+                                            title="显示全部分类（混合显示）">
+                                            全部（混合）
+                                        </button>
+                                        <template x-for="name in detailFilterCategoryNames" :key="'detail-fcat-' + name">
+                                            <button type="button" class="detail-tag-category-filter-pill"
+                                                :class="{
+                                                    'active-included': getDetailCategoryFilterState(name) === 'included',
+                                                    'active-excluded': getDetailCategoryFilterState(name) === 'excluded'
+                                                }"
+                                                :style="`--tag-cat-color:${getCategoryColor(name)};`"
+                                                @click="toggleDetailCategoryFilter(name, $event)"
+                                                :title="getDetailCategoryFilterState(name) === 'included' ? `分类：${name}（已包含，点击改为排除）` : (getDetailCategoryFilterState(name) === 'excluded' ? `分类：${name}（已排除，点击取消）` : `分类：${name}（点击包含，Shift+点击直接排除）`)">
+                                                <span class="detail-tag-category-filter-dot"></span>
+                                                <span x-text="name"></span>
                                             </button>
                                         </template>
+                                    </div>
 
-                                        <div x-show="filteredTagLibraryPool.length===0" class="detail-muted">
+                                    <div class="detail-tag-library-cloud custom-scrollbar detail-tag-library-cloud-grouped"
+                                        :class="mixedCategoryView ? 'is-mixed-view' : ''">
+                                        <div class="detail-tag-mode-wrap">
+                                            <template x-if="mixedCategoryView">
+                                                <template x-for="tag in detailFilteredMixedTagsPool" :key="'pool-mixed-' + tag">
+                                                    <button type="button" class="tag-chip-btn tag-chip-categorized" @click="toggleTag(tag)"
+                                                        :class="editingData.tags && editingData.tags.includes(tag) ? 'tag-chip-selected-purple' : 'tag-chip-unselected'"
+                                                        :style="(!editingData.tags || !editingData.tags.includes(tag)) ? getTagChipStyle(tag) : ''"
+                                                        :title="`分类：${getTagCategory(tag)}`">
+                                                        <span x-text="tag"></span>
+                                                        <span x-show="editingData.tags && editingData.tags.includes(tag)"
+                                                            style="margin-left: 0.4rem; font-weight: bold;">+</span>
+                                                    </button>
+                                                </template>
+                                            </template>
+
+                                            <template x-if="!mixedCategoryView">
+                                                <template x-for="group in filteredTagLibraryGroups" :key="'detail-group-' + group.category">
+                                                    <div class="detail-tag-group-block">
+                                                        <div class="detail-tag-group-head">
+                                                            <span class="detail-tag-group-dot" :style="`background:${group.color};`"></span>
+                                                            <span class="detail-tag-group-title" x-text="group.category"></span>
+                                                            <span class="detail-tag-group-count" x-text="group.tags.length + ' 个'"></span>
+                                                        </div>
+                                                        <div class="detail-tag-group-cloud">
+                                                            <template x-for="tag in group.tags" :key="'pool-' + tag">
+                                                                <button type="button" class="tag-chip-btn tag-chip-categorized" @click="toggleTag(tag)"
+                                                                    :class="editingData.tags && editingData.tags.includes(tag) ? 'tag-chip-selected-purple' : 'tag-chip-unselected'"
+                                                                    :style="(!editingData.tags || !editingData.tags.includes(tag)) ? getTagChipStyle(tag) : ''"
+                                                                    :title="`分类：${getTagCategory(tag)}`">
+                                                                    <span x-text="tag"></span>
+                                                                    <span x-show="editingData.tags && editingData.tags.includes(tag)"
+                                                                        style="margin-left: 0.4rem; font-weight: bold;">+</span>
+                                                                </button>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </template>
+                                        </div>
+
+                                        <div x-show="detailFilteredVisibleTagCount===0" class="detail-muted">
                                             没有找到匹配标签...
                                         </div>
                                     </div>

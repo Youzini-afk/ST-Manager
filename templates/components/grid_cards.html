@@ -24,7 +24,8 @@
                     :data-card-id="card.id"
                     :class="{'selected': selectedIds.includes(card.id), 'is-favorite': card.is_favorite, 'card-highlight-anim': highlightId === card.id, 'is-flipped': isCardFlipped(card.id), 'is-corner-peel': isCornerPeelPreview(card.id)}"
                     x-effect="if(highlightId === card.id) $el.scrollIntoView({ behavior: 'smooth', block: 'center' })"
-                    @click.stop="handleCardClick($event, card)" @mousemove="handleCardMouseMove($event, card.id)"
+                    @click.stop="handleCardClick($event, card)" @mouseenter="handleCardMouseEnter(card.id)"
+                    @mousemove="handleCardMouseMove($event, card.id)"
                     @mouseleave="handleCardMouseLeave(card.id)" draggable="true" @dragstart="dragStart($event, card)">
 
                     <button @click.stop="toggleCardFav(card)" @mouseenter="handleImageHoverEnd(card.id)"
@@ -99,6 +100,7 @@
                                                     'is-included': $store.global.viewState.filterTags.includes(tag),
                                                     'is-excluded': $store.global.viewState.excludedTags.includes(tag)
                                                 }"
+                                                :style="(!$store.global.viewState.filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag)) ? $store.global.getTagChipStyle(tag) : ''"
                                                 :title="$store.global.viewState.filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（点击加入筛选，Shift+点击可直接排除）`)">
                                                 <span x-text="tag"></span>
                                             </button>
@@ -149,10 +151,20 @@
     </div>
 
     <!-- 底部翻页栏 (Fixed in Cards Mode) -->
-    <div class="pagination-bar" x-show="filteredCards.length>0" style="flex-shrink: 0;">
-        <span style="font-size: 0.75rem; color: var(--text-dim);">共 <span x-text="totalItems"></span>
+    <div class="pagination-bar card-pagination-bar" x-show="filteredCards.length>0" style="flex-shrink: 0;">
+        <span class="card-pagination-total" style="font-size: 0.75rem; color: var(--text-dim);">共 <span x-text="totalItems"></span>
             张</span>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
+
+        <div class="card-flip-toolbar" x-show="paginatedCards.length > 0">
+            <button @click="toggleBulkFlipMode()" class="btn-secondary card-flip-all-btn"
+                :title="bulkBackMode ? '将当前页全部翻回正面（并关闭背面模式）' : '将当前页全部翻到背面（并保持背面模式）'">
+                <span x-show="!bulkBackMode">一键翻到背面</span>
+                <span x-show="bulkBackMode">一键翻回正面</span>
+            </button>
+            <span class="card-flip-count" x-text="`背面 ${visibleFlippedCount}/${paginatedCards.length}`"></span>
+        </div>
+
+        <div class="card-pagination-controls" style="display: flex; align-items: center; gap: 0.5rem;">
             <button @click="changePage(currentPage-1)" :disabled="currentPage===1" class="btn-secondary"
                 style="padding: 0.25rem 0.5rem;">上一页</button>
             <span

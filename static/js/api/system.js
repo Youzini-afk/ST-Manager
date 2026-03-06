@@ -131,6 +131,20 @@ export async function saveTagOrder(payload) {
     return res.json();
 }
 
+export async function getTagTaxonomy() {
+    const res = await fetch('/api/tag_taxonomy');
+    return res.json();
+}
+
+export async function saveTagTaxonomy(payload) {
+    const res = await fetch('/api/tag_taxonomy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    return res.json();
+}
+
 // === 备份与快照 ===
 
 export async function listBackups(payload) {

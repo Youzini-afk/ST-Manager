@@ -5,7 +5,8 @@
             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem;">
             <div class="flex items-center gap-4">
                 <h3 style="font-size: 1.25rem; font-weight: bold;">
-                    <span x-show="!isDeleteMode">标签库筛选</span>
+                    <span x-show="!isDeleteMode && !showCategoryMode">标签库筛选</span>
+                    <span x-show="showCategoryMode && !isDeleteMode" class="text-amber-300">批量分类标签</span>
                     <span x-show="isDeleteMode" class="text-red-400">永久删除标签</span>
                 </h3>
                 <span x-show="!isDeleteMode" class="text-xs px-2 py-1 rounded-full"
@@ -25,6 +26,11 @@
                     <span x-show="!isDeleteMode">🗑️ 切换到删除模式</span>
                     <span x-show="isDeleteMode">↩ 返回筛选模式</span>
                 </button>
+                <button @click="toggleCategoryMode()" class="btn-toggle-delete"
+                    :class="showCategoryMode ? 'btn-toggle-mode-delete' : 'btn-toggle-mode-normal'">
+                    <span x-show="!showCategoryMode">🎨 批量分类模式</span>
+                    <span x-show="showCategoryMode">↩ 返回筛选模式</span>
+                </button>
             </div>
             <button @click="requestCloseModal()"
                 style="color: var(--text-dim); font-size: 1.5rem; background: none; border: none; cursor: pointer;">✕</button>
@@ -37,25 +43,173 @@
         <div x-show="customOrderEnabled && !isSortMode" class="text-xs mb-2" style="color: var(--text-dim);">
             当前使用自定义排序，可点击“恢复字符排序”回退到原始字母序。
         </div>
-        <div class="tag-cloud-container custom-scrollbar">
-            <template x-if="!isSortMode">
-                <template x-for="tag in filteredTagsPool" :key="tag">
-                    <button @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : toggleFilterTag(tag, $event)"
-                        class="tag-chip-btn flex items-center" :class="{
-                                'tag-chip-selected': !isDeleteMode && filterTags.includes(tag),
-                                'tag-chip-excluded': !isDeleteMode && $store.global.viewState.excludedTags.includes(tag),
-                                'tag-chip-unselected': !isDeleteMode && !filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag),
-                                
-                                'tag-chip-delete-selected': isDeleteMode && selectedTagsForDeletion.includes(tag),
-                                'tag-chip-delete-unselected': isDeleteMode && !selectedTagsForDeletion.includes(tag)
-                            }"
-                        :title="!isDeleteMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（点击加入筛选，Shift+点击可直接排除）`)) : ''">
-                        
-                        <span x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)" class="mr-1 font-bold">✓</span>
-                        <span class="tag-chip-label" x-text="tag" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                        
+        <div x-show="!isSortMode" class="tag-category-filter-row">
+            <button type="button" class="tag-category-filter-pill"
+                :class="isCategoryFilterAllMixed ? 'active-mixed' : ''"
+                @click="showAllCategoriesMixed()"
+                title="显示全部分类（混合显示）">
+                全部（混合）
+            </button>
+            <template x-for="name in filterCategoryNames" :key="'fcat-' + name">
+                <button type="button" class="tag-category-filter-pill"
+                    :class="{
+                        'active-included': getCategoryFilterState(name) === 'included',
+                        'active-excluded': getCategoryFilterState(name) === 'excluded'
+                    }"
+                    :style="`--tag-cat-color:${getCategoryColor(name)};`"
+                    @click="toggleCategoryFilter(name, $event)"
+                    :title="getCategoryFilterState(name) === 'included' ? `分类：${name}（已包含，点击改为排除）` : (getCategoryFilterState(name) === 'excluded' ? `分类：${name}（已排除，点击取消）` : `分类：${name}（点击包含，Shift+点击直接排除）`)">
+                    <span class="tag-category-filter-dot"></span>
+                    <span x-text="name"></span>
+                </button>
+            </template>
+        </div>
+        <div x-show="showCategoryMode && !isSortMode" class="tag-category-editor">
+            <div class="tag-category-editor-row">
+                <span class="text-xs" style="color: var(--text-dim);">已选择 <span class="text-accent font-bold"
+                        x-text="categorySelectionCount"></span> 个标签，点击标签可增减选择。</span>
+                <button type="button" @click="selectedCategoryTags=[]" class="tag-category-clear">清空选择</button>
+            </div>
+            <div class="tag-category-editor-row tag-category-editor-row-main">
+                <input type="text" x-model="categoryDraftName" placeholder="分类名称（例如：角色 / 题材）" class="form-input"
+                    style="font-size: 0.82rem; padding: 0.45rem 0.6rem;">
+                <input type="color" x-model="categoryDraftColor" class="tag-category-color-input" title="分类颜色">
+                <div class="tag-opacity-control" title="分类透明度（0-100）">
+                    <span class="tag-opacity-label">透明度</span>
+                    <input type="range" min="0" max="100" step="1" x-model.number="categoryDraftOpacity"
+                        class="tag-opacity-slider">
+                    <input type="number" min="0" max="100" step="1" x-model.number="categoryDraftOpacity"
+                        class="tag-opacity-number">
+                </div>
+                <button type="button" @click="saveCategoryBatch()" :disabled="!canSaveCategoryBatch"
+                    class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                    :style="canSaveCategoryBatch ? '' : 'opacity: 0.55; cursor: not-allowed;'">
+                    保存分类
+                </button>
+            </div>
+            <div class="tag-category-quick-list">
+                <template x-for="name in availableCategoryNames" :key="'cat-opt-' + name">
+                    <button type="button" class="tag-category-quick-btn" @click="setCategoryDraft(name)"
+                        :class="categoryDraftName === name ? 'active' : ''"
+                        :style="`--tag-cat-color:${getCategoryColor(name)};`">
+                        <span class="tag-category-quick-dot"></span>
+                        <span x-text="name"></span>
+                        <span class="tag-category-quick-opacity" x-text="getCategoryOpacity(name) + '%'" title="当前透明度"></span>
                     </button>
                 </template>
+            </div>
+        </div>
+        <div x-show="showCategoryManager && !isSortMode" class="tag-category-manager-panel">
+            <div class="tag-category-editor-row tag-category-editor-row-main">
+                <input type="text" x-model="categoryManagerDraftName" placeholder="新增分类名称" class="form-input"
+                    style="font-size: 0.82rem; padding: 0.42rem 0.6rem;">
+                <input type="color" x-model="categoryManagerDraftColor" class="tag-category-color-input" title="分类颜色">
+                <div class="tag-opacity-control" title="分类透明度（0-100）">
+                    <span class="tag-opacity-label">透明度</span>
+                    <input type="range" min="0" max="100" step="1" x-model.number="categoryManagerDraftOpacity"
+                        class="tag-opacity-slider">
+                    <input type="number" min="0" max="100" step="1" x-model.number="categoryManagerDraftOpacity"
+                        class="tag-opacity-number">
+                </div>
+                <button type="button" @click="addCategoryFromManager()"
+                    class="text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-white font-bold shadow-md">
+                    新增/更新
+                </button>
+            </div>
+            <div class="tag-category-manager-list custom-scrollbar">
+                <template x-for="item in categoryManagerItems" :key="'mgr-' + item.name">
+                    <div class="tag-category-manager-item">
+                        <div class="tag-category-manager-main">
+                            <span class="tag-category-manager-dot" :style="`background:${item.color};`"></span>
+                            <span class="tag-category-manager-name" x-text="item.name"></span>
+                            <span class="tag-category-manager-opacity-pill" x-text="item.opacity + '%'" title="当前透明度"></span>
+                            <span x-show="item.isDefault" class="tag-category-manager-default">默认</span>
+                            <span class="tag-category-manager-count" x-text="item.count + ' 个标签'"></span>
+                        </div>
+                        <div class="tag-category-manager-actions">
+                            <input type="color" :value="item.color" class="tag-category-manager-color"
+                                @change="setCategoryColor(item.name, $event.target.value)" title="修改分类颜色">
+                            <div class="tag-category-manager-opacity-wrap" title="修改分类透明度（0-100）">
+                                <input type="range" min="0" max="100" step="1" :value="getCategoryOpacity(item.name)"
+                                    @change="setCategoryOpacity(item.name, $event.target.value)"
+                                    class="tag-category-manager-opacity-slider">
+                                <span class="tag-category-manager-opacity-text" x-text="getCategoryOpacity(item.name)"></span>
+                            </div>
+                            <button type="button" class="tag-category-manager-btn" @click="setDefaultCategory(item.name)"
+                                :disabled="item.isDefault"
+                                :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''">设为默认</button>
+                            <button type="button" class="tag-category-manager-btn" @click="moveCategory(item.name, -1)"
+                                :disabled="item.index===0"
+                                :style="item.index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''">上移</button>
+                            <button type="button" class="tag-category-manager-btn" @click="moveCategory(item.name, 1)"
+                                :disabled="item.index===categoryManagerItems.length-1"
+                                :style="item.index===categoryManagerItems.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''">下移</button>
+                            <button type="button" class="tag-category-manager-btn" @click="renameCategory(item.name)">重命名</button>
+                            <button type="button" class="tag-category-manager-btn danger" @click="deleteCategory(item.name)"
+                                :disabled="item.isDefault"
+                                :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''">删除</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+        <div class="tag-cloud-container custom-scrollbar">
+            <template x-if="!isSortMode">
+                <div class="tag-cloud-mode-wrap">
+                    <template x-if="mixedCategoryView">
+                        <template x-for="tag in filteredMixedTagsPool" :key="'mixed-' + tag">
+                            <button
+                                @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : toggleFilterTag(tag, $event))"
+                                class="tag-chip-btn flex items-center" :class="{
+                                        'tag-chip-selected': !isDeleteMode && !showCategoryMode && filterTags.includes(tag),
+                                        'tag-chip-excluded': !isDeleteMode && !showCategoryMode && $store.global.viewState.excludedTags.includes(tag),
+                                        'tag-chip-unselected tag-chip-categorized': !isDeleteMode && !showCategoryMode && !filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag),
+                                        'tag-chip-delete-selected': isDeleteMode && selectedTagsForDeletion.includes(tag),
+                                        'tag-chip-delete-unselected': isDeleteMode && !selectedTagsForDeletion.includes(tag),
+                                        'tag-chip-category-selected': showCategoryMode && selectedCategoryTags.includes(tag),
+                                        'tag-chip-category-unselected tag-chip-categorized': showCategoryMode && !selectedCategoryTags.includes(tag)
+                                    }"
+                                :style="(!isDeleteMode && (($store.global.viewState.filterTags || []).indexOf(tag) === -1) && (($store.global.viewState.excludedTags || []).indexOf(tag) === -1)) ? getTagChipStyle(tag) : ''"
+                                :title="!isDeleteMode && !showCategoryMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : '')">
+                                <span x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)" class="mr-1 font-bold">✓</span>
+                                <span x-show="showCategoryMode && selectedCategoryTags.includes(tag)" class="mr-1 font-bold">✓</span>
+                                <span class="tag-chip-label" x-text="tag" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                            </button>
+                        </template>
+                    </template>
+                    <template x-if="!mixedCategoryView">
+                        <template x-for="group in filteredTagGroups" :key="'group-' + group.category">
+                            <div class="tag-group-block">
+                                <div class="tag-group-head">
+                                    <span class="tag-group-dot" :style="`background:${group.color};`"></span>
+                                    <span class="tag-group-title" x-text="group.category"></span>
+                                    <span class="tag-group-count" x-text="group.tags.length + ' 个'"></span>
+                                </div>
+                                <div class="tag-group-cloud">
+                                    <template x-for="tag in group.tags" :key="tag">
+                                        <button
+                                            @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : toggleFilterTag(tag, $event))"
+                                            class="tag-chip-btn flex items-center" :class="{
+                                                    'tag-chip-selected': !isDeleteMode && !showCategoryMode && filterTags.includes(tag),
+                                                    'tag-chip-excluded': !isDeleteMode && !showCategoryMode && $store.global.viewState.excludedTags.includes(tag),
+                                                    'tag-chip-unselected tag-chip-categorized': !isDeleteMode && !showCategoryMode && !filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag),
+                                                    'tag-chip-delete-selected': isDeleteMode && selectedTagsForDeletion.includes(tag),
+                                                    'tag-chip-delete-unselected': isDeleteMode && !selectedTagsForDeletion.includes(tag),
+                                                    'tag-chip-category-selected': showCategoryMode && selectedCategoryTags.includes(tag),
+                                                    'tag-chip-category-unselected tag-chip-categorized': showCategoryMode && !selectedCategoryTags.includes(tag)
+                                                }"
+                                            :style="(!isDeleteMode && (($store.global.viewState.filterTags || []).indexOf(tag) === -1) && (($store.global.viewState.excludedTags || []).indexOf(tag) === -1)) ? getTagChipStyle(tag) : ''"
+                                            :title="!isDeleteMode && !showCategoryMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : '')">
+                                            <span x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)" class="mr-1 font-bold">✓</span>
+                                            <span x-show="showCategoryMode && selectedCategoryTags.includes(tag)" class="mr-1 font-bold">✓</span>
+                                            <span class="tag-chip-label" x-text="tag" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </template>
+                </div>
             </template>
 
             <template x-if="isSortMode">
@@ -73,7 +227,7 @@
                     </button>
                 </template>
             </template>
-            <div x-show="!isSortMode && filteredTagsPool.length === 0"
+            <div x-show="!isSortMode && filteredVisibleTagCount === 0"
                 style="width: 100%; text-align: center; color: var(--text-dim); margin-top: 2rem;">无匹配标签</div>
             <div x-show="isSortMode && sortModeTagsPool.length === 0"
                 style="width: 100%; text-align: center; color: var(--text-dim); margin-top: 2rem;">暂无可排序标签</div>
@@ -83,7 +237,7 @@
             <div class="flex items-center gap-4">
                 <span class="text-sm" style="color: var(--text-dim);">已选 <span x-text="filterTags.length + $store.global.viewState.excludedTags.length"
                         class="text-accent font-bold"></span> 个标签</span>
-                <button @click="deleteFilterTags()" x-show="(filterTags.length > 0 || $store.global.viewState.excludedTags.length > 0) && !isDeleteMode && !isSortMode"
+                <button @click="deleteFilterTags()" x-show="(filterTags.length > 0 || $store.global.viewState.excludedTags.length > 0) && !isDeleteMode && !isSortMode && !showCategoryMode"
                     class="text-xs bg-red-600 hover:bg-red-500 px-2 py-1 rounded text-white">
                     从当前视图移除选中标签
                 </button>
@@ -93,11 +247,14 @@
                     class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md">
                     保存排序
                 </button>
+                <button @click="toggleCategoryManager()" x-show="!isSortMode"
+                    class="text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                    x-text="showCategoryManager ? '收起分类管理' : '分类管理'"></button>
                 <button @click="deleteSelectedTags()" x-show="isDeleteMode && selectedTagsForDeletion.length > 0"
                     class="text-xs bg-red-700 hover:bg-red-600 px-3 py-1 rounded text-white font-bold shadow-md">
                     永久删除选中标签
                 </button>
-                <button @click="filterTags=[]; $store.global.viewState.excludedTags=[]" x-show="!isSortMode"
+                <button @click="filterTags=[]; $store.global.viewState.excludedTags=[]" x-show="!isSortMode && !showCategoryMode"
                     style="color: #f87171; background: none; border: none; cursor: pointer; font-size: 0.875rem;">清除所有选择</button>
             </div>
         </div>

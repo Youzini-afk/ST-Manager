@@ -23,6 +23,13 @@ from core.data.ui_store import (
     set_version_remark,
     get_import_time,
     ensure_import_time,
+    get_tag_taxonomy,
+    set_tag_taxonomy,
+    remove_tags_from_tag_taxonomy,
+    DEFAULT_TAG_CATEGORY,
+    DEFAULT_TAG_CATEGORY_COLOR,
+    DEFAULT_TAG_CATEGORY_OPACITY,
+    _normalize_tag_taxonomy,
 )
 from core.data.cache import GlobalMetadataCache
 from core.consts import SIDECAR_EXTENSIONS
@@ -74,6 +81,97 @@ def _normalize_tag_list(tags):
         seen.add(tag)
         out.append(tag)
     return out
+
+
+def _build_tag_groups(tags, taxonomy):
+    """Build grouped tag structure for UI display."""
+    tag_list = _normalize_tag_list(tags)
+    if not tag_list:
+        return []
+
+    taxonomy_data = _normalize_tag_taxonomy(taxonomy)
+    default_category = str(taxonomy_data.get('default_category') or DEFAULT_TAG_CATEGORY).strip() or DEFAULT_TAG_CATEGORY
+
+    raw_categories = taxonomy_data.get('categories')
+    categories = raw_categories if isinstance(raw_categories, dict) else {}
+
+    raw_tag_to_category = taxonomy_data.get('tag_to_category')
+    tag_to_category = raw_tag_to_category if isinstance(raw_tag_to_category, dict) else {}
+
+    category_order_raw = taxonomy_data.get('category_order')
+    category_order = category_order_raw if isinstance(category_order_raw, list) else []
+
+    normalized_categories = {}
+    for raw_name, raw_cfg in categories.items():
+        category_name = str(raw_name).strip()
+        if not category_name:
+            continue
+
+        color = DEFAULT_TAG_CATEGORY_COLOR
+        opacity = DEFAULT_TAG_CATEGORY_OPACITY
+        if isinstance(raw_cfg, dict):
+            color = str(raw_cfg.get('color') or '').strip() or DEFAULT_TAG_CATEGORY_COLOR
+            try:
+                opacity = int(float(raw_cfg.get('opacity', DEFAULT_TAG_CATEGORY_OPACITY)))
+            except (TypeError, ValueError):
+                opacity = DEFAULT_TAG_CATEGORY_OPACITY
+            opacity = max(0, min(100, opacity))
+        elif isinstance(raw_cfg, str):
+            color = raw_cfg.strip() or DEFAULT_TAG_CATEGORY_COLOR
+
+        normalized_categories[category_name] = {
+            'color': color,
+            'opacity': opacity,
+        }
+
+    if default_category not in normalized_categories:
+        normalized_categories[default_category] = {
+            'color': DEFAULT_TAG_CATEGORY_COLOR,
+            'opacity': DEFAULT_TAG_CATEGORY_OPACITY,
+        }
+
+    grouped = {}
+    for tag in tag_list:
+        category_name = str(tag_to_category.get(tag) or '').strip()
+        if category_name not in normalized_categories:
+            category_name = default_category
+        grouped.setdefault(category_name, []).append(tag)
+
+    ordered_categories = []
+    seen = set()
+    for raw_name in category_order:
+        category_name = str(raw_name).strip()
+        if not category_name or category_name in seen:
+            continue
+        if category_name not in grouped:
+            continue
+        ordered_categories.append(category_name)
+        seen.add(category_name)
+
+    for category_name in sorted(grouped.keys(), key=lambda x: x.lower()):
+        if category_name in seen:
+            continue
+        ordered_categories.append(category_name)
+        seen.add(category_name)
+
+    result = []
+    for category_name in ordered_categories:
+        cfg = normalized_categories.get(category_name, {})
+        color = cfg.get('color') or DEFAULT_TAG_CATEGORY_COLOR
+        opacity = cfg.get('opacity', DEFAULT_TAG_CATEGORY_OPACITY)
+        try:
+            opacity = int(float(opacity))
+        except (TypeError, ValueError):
+            opacity = DEFAULT_TAG_CATEGORY_OPACITY
+        opacity = max(0, min(100, opacity))
+        result.append({
+            'category': category_name,
+            'color': color,
+            'opacity': opacity,
+            'tags': grouped.get(category_name, []),
+        })
+
+    return result
 
 
 def _get_tag_order(ui_data):
@@ -478,6 +576,10 @@ def api_list_cards():
         sidebar_tags = sorted(list(sidebar_tags_set), key=lambda x: str(x).lower())
         global_tags = sorted(list(ctx.cache.global_tags or []), key=lambda x: str(x).lower())
 
+    tag_taxonomy = get_tag_taxonomy(ui_data_for_order)
+    sidebar_tag_groups = _build_tag_groups(sidebar_tags, tag_taxonomy)
+    global_tag_groups = _build_tag_groups(global_tags, tag_taxonomy)
+
     if search_scope != 'full':
         if fav_filter == 'included':
             candidates = [c for c in candidates if c.get('is_favorite')]
@@ -546,7 +648,10 @@ def api_list_cards():
     return jsonify({
         "cards": paginated,
         "global_tags": global_tags,
-        "sidebar_tags": sidebar_tags,              
+        "sidebar_tags": sidebar_tags,
+        "tag_taxonomy": tag_taxonomy,
+        "global_tag_groups": global_tag_groups,
+        "sidebar_tag_groups": sidebar_tag_groups,
         "all_folders": [f['path'] for f in sorted([{'path': p} for p in safe_folders], key=lambda x: x['path'])],
         "category_counts": ctx.cache.category_counts,
         "total_count": total_count,
@@ -587,6 +692,47 @@ def api_save_tag_order():
             'success': True,
             'order': _get_tag_order(ui_data),
             'enabled': _is_tag_order_enabled(ui_data)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/tag_taxonomy', methods=['GET'])
+def api_get_tag_taxonomy():
+    try:
+        ui_data = load_ui_data()
+        return jsonify({
+            'success': True,
+            'taxonomy': get_tag_taxonomy(ui_data),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/tag_taxonomy', methods=['POST'])
+def api_save_tag_taxonomy():
+    try:
+        payload = request.json or {}
+        taxonomy_payload = payload.get('taxonomy', payload)
+        if not isinstance(taxonomy_payload, dict):
+            return jsonify({'success': False, 'msg': '无效的分类配置'}), 400
+
+        raw_categories = taxonomy_payload.get('categories')
+        if isinstance(raw_categories, dict) and len(raw_categories) > 200:
+            return jsonify({'success': False, 'msg': '分类数量过多'}), 400
+
+        raw_tag_to_category = taxonomy_payload.get('tag_to_category')
+        if isinstance(raw_tag_to_category, dict) and len(raw_tag_to_category) > 20000:
+            return jsonify({'success': False, 'msg': '标签分类映射数量过多'}), 400
+
+        ui_data = load_ui_data()
+        changed = set_tag_taxonomy(ui_data, taxonomy_payload)
+        if changed:
+            save_ui_data(ui_data)
+
+        return jsonify({
+            'success': True,
+            'taxonomy': get_tag_taxonomy(ui_data),
         })
     except Exception as e:
         return jsonify({'success': False, 'msg': str(e)})
@@ -2747,6 +2893,8 @@ def api_get_card_detail():
             card_data['source_link'] = ui_info.get('link', '')
             card_data['resource_folder'] = ui_info.get('resource_folder', '')
 
+        card_data['tag_taxonomy'] = get_tag_taxonomy(ui_data)
+
         return jsonify({"success": True, "card": card_data})
     except Exception as e:
         return jsonify({"success": False, "msg": str(e)})
@@ -2863,6 +3011,8 @@ def api_delete_tags():
         next_order = [t for t in current_order if t not in tags_to_delete_set]
         if next_order != current_order:
             _set_tag_order(ui_data, next_order)
+
+        remove_tags_from_tag_taxonomy(ui_data, tags_to_delete_set)
 
         # 如果你有 ui_data['all_tags'] 这种历史字段，可以保留原逻辑；没有也不会影响
         if isinstance(ui_data, dict) and 'all_tags' in ui_data and isinstance(ui_data['all_tags'], list):

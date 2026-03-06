@@ -274,6 +274,25 @@
     text-decoration: line-through
 }
 
+.sidebar-tag-chip {
+    --tag-cat-color: var(--accent-main);
+    --tag-cat-bg: var(--bg-tag);
+    --tag-cat-border: var(--border-light);
+    --tag-cat-text: var(--text-sub);
+}
+
+.sidebar-tag-chip:not(.active):not(.excluded) {
+    background: var(--tag-cat-bg);
+    border-color: var(--tag-cat-border);
+    color: var(--tag-cat-text);
+}
+
+.sidebar-tag-chip:not(.active):not(.excluded):hover {
+    background: color-mix(in srgb, var(--tag-cat-color), transparent 75%);
+    border-color: color-mix(in srgb, var(--tag-cat-color), transparent 40%);
+    color: color-mix(in srgb, var(--tag-cat-color), #ffffff 16%);
+}
+
 .pagination-bar {
     background-color: color-mix(in srgb, var(--bg-panel), transparent 10%);
     backdrop-filter: blur(10px);

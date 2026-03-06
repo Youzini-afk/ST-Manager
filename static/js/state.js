@@ -26,6 +26,59 @@ const THEME_PRESETS = {
     pink:   { main: '#db2777', hover: '#be185d', light: '#f472b6', faint: 'rgba(219, 39, 119, 0.3)' },
 };
 
+const DEFAULT_TAG_CATEGORY = '未分类';
+const DEFAULT_TAG_CATEGORY_COLOR = '#64748b';
+const DEFAULT_TAG_CATEGORY_OPACITY = 16;
+
+function buildDefaultTagTaxonomy() {
+    return {
+        default_category: DEFAULT_TAG_CATEGORY,
+        category_order: [DEFAULT_TAG_CATEGORY],
+        categories: {
+            [DEFAULT_TAG_CATEGORY]: {
+                color: DEFAULT_TAG_CATEGORY_COLOR,
+                opacity: DEFAULT_TAG_CATEGORY_OPACITY,
+            },
+        },
+        tag_to_category: {},
+        updated_at: 0,
+    };
+}
+
+function normalizeHexColor(value, fallback = DEFAULT_TAG_CATEGORY_COLOR) {
+    const fallbackColor = typeof fallback === 'string' && fallback ? fallback : DEFAULT_TAG_CATEGORY_COLOR;
+    if (typeof value !== 'string') return fallbackColor;
+
+    let color = value.trim();
+    if (!color) return fallbackColor;
+
+    if (!color.startsWith('#')) {
+        color = `#${color}`;
+    }
+
+    const hex = color.slice(1);
+    if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+        return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`.toLowerCase();
+    }
+
+    if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+        return color.toLowerCase();
+    }
+
+    return fallbackColor;
+}
+
+function normalizeOpacity(value, fallback = DEFAULT_TAG_CATEGORY_OPACITY) {
+    const fallbackNum = Number.isFinite(Number(fallback))
+        ? Math.max(0, Math.min(100, Math.round(Number(fallback))))
+        : DEFAULT_TAG_CATEGORY_OPACITY;
+
+    const raw = Number(value);
+    if (!Number.isFinite(raw)) return fallbackNum;
+
+    return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
 export function initState() {
     Alpine.store('global', {
         // === 状态属性 ===
@@ -58,8 +111,13 @@ export function initState() {
         allTagsPool: [],
         sidebarTagsPool: [],
         globalTagsPool: [],
+        sidebarTagGroups: [],
+        globalTagGroups: [],
+        tagTaxonomy: buildDefaultTagTaxonomy(),
         categoryCounts: {},
         libraryTotal: 0,
+        allFoldersList: [],
+        showTagFilterModal: false,
 
         // 分页配置
         itemsPerPage: 20,
@@ -350,6 +408,189 @@ export function initState() {
                 
                 this.itemsPerPage = Math.max(20, Math.floor(cols * rows * 1.5));
             }
+        },
+
+        normalizeTagTaxonomy(raw) {
+            const fallback = buildDefaultTagTaxonomy();
+            if (!raw || typeof raw !== 'object') return fallback;
+
+            const defaultCategory = String(raw.default_category || '').trim() || DEFAULT_TAG_CATEGORY;
+
+            const categories = {};
+            const rawCategories = raw.categories;
+            if (rawCategories && typeof rawCategories === 'object' && !Array.isArray(rawCategories)) {
+                Object.entries(rawCategories).forEach(([rawName, rawCfg]) => {
+                    const name = String(rawName || '').trim();
+                    if (!name) return;
+
+                    let color = DEFAULT_TAG_CATEGORY_COLOR;
+                    let opacity = DEFAULT_TAG_CATEGORY_OPACITY;
+                    if (rawCfg && typeof rawCfg === 'object' && !Array.isArray(rawCfg)) {
+                        color = normalizeHexColor(rawCfg.color, DEFAULT_TAG_CATEGORY_COLOR);
+                        opacity = normalizeOpacity(rawCfg.opacity, DEFAULT_TAG_CATEGORY_OPACITY);
+                    } else if (typeof rawCfg === 'string') {
+                        color = normalizeHexColor(rawCfg, DEFAULT_TAG_CATEGORY_COLOR);
+                    }
+
+                    categories[name] = {
+                        color,
+                        opacity,
+                    };
+                });
+            }
+
+            if (!categories[defaultCategory]) {
+                categories[defaultCategory] = {
+                    color: DEFAULT_TAG_CATEGORY_COLOR,
+                    opacity: DEFAULT_TAG_CATEGORY_OPACITY,
+                };
+            }
+
+            const categoryOrder = [];
+            const seen = new Set();
+            const rawOrder = Array.isArray(raw.category_order) ? raw.category_order : [];
+            rawOrder.forEach((item) => {
+                const name = String(item || '').trim();
+                if (!name || seen.has(name) || !categories[name]) return;
+                seen.add(name);
+                categoryOrder.push(name);
+            });
+
+            if (!seen.has(defaultCategory)) {
+                categoryOrder.unshift(defaultCategory);
+                seen.add(defaultCategory);
+            }
+
+            Object.keys(categories)
+                .sort((a, b) => a.localeCompare(b, 'zh-CN', { sensitivity: 'base' }))
+                .forEach((name) => {
+                    if (seen.has(name)) return;
+                    seen.add(name);
+                    categoryOrder.push(name);
+                });
+
+            const tagToCategory = {};
+            const rawMap = raw.tag_to_category;
+            if (rawMap && typeof rawMap === 'object' && !Array.isArray(rawMap)) {
+                Object.entries(rawMap).forEach(([rawTag, rawCategory]) => {
+                    const tag = String(rawTag || '').trim();
+                    if (!tag) return;
+
+                    let category = String(rawCategory || '').trim();
+                    if (!category || !categories[category]) {
+                        category = defaultCategory;
+                    }
+                    tagToCategory[tag] = category;
+                });
+            }
+
+            let updatedAt = parseInt(raw.updated_at, 10);
+            if (Number.isNaN(updatedAt) || updatedAt < 0) updatedAt = 0;
+
+            return {
+                default_category: defaultCategory,
+                category_order: categoryOrder,
+                categories,
+                tag_to_category: tagToCategory,
+                updated_at: updatedAt,
+            };
+        },
+
+        setTagTaxonomy(raw) {
+            this.tagTaxonomy = this.normalizeTagTaxonomy(raw);
+            this.rebuildTagGroups();
+            return this.tagTaxonomy;
+        },
+
+        getCategoryColor(category) {
+            const taxonomy = this.tagTaxonomy || buildDefaultTagTaxonomy();
+            const categories = taxonomy.categories || {};
+            const cfg = categories[category] || {};
+            return normalizeHexColor(cfg.color, DEFAULT_TAG_CATEGORY_COLOR);
+        },
+
+        getCategoryOpacity(category) {
+            const taxonomy = this.tagTaxonomy || buildDefaultTagTaxonomy();
+            const categories = taxonomy.categories || {};
+            const cfg = categories[category] || {};
+            return normalizeOpacity(cfg.opacity, DEFAULT_TAG_CATEGORY_OPACITY);
+        },
+
+        getTagCategory(tag) {
+            const taxonomy = this.tagTaxonomy || buildDefaultTagTaxonomy();
+            const defaultCategory = taxonomy.default_category || DEFAULT_TAG_CATEGORY;
+            const tagToCategory = taxonomy.tag_to_category || {};
+
+            const key = String(tag || '').trim();
+            if (!key) return defaultCategory;
+
+            const category = String(tagToCategory[key] || '').trim();
+            if (!category || !taxonomy.categories || !taxonomy.categories[category]) {
+                return defaultCategory;
+            }
+            return category;
+        },
+
+        getTagColor(tag) {
+            return this.getCategoryColor(this.getTagCategory(tag));
+        },
+
+        getTagChipStyle(tag) {
+            const color = this.getTagColor(tag);
+            const opacity = this.getCategoryOpacity(this.getTagCategory(tag));
+            const bgAlpha = 100 - opacity;
+            const borderAlpha = Math.max(20, 100 - Math.round(opacity * 0.58));
+            const textMix = Math.max(10, Math.min(45, Math.round(opacity * 1.35)));
+            return `--tag-cat-color:${color};--tag-cat-opacity:${opacity};--tag-cat-bg:color-mix(in srgb, ${color}, transparent ${bgAlpha}%);--tag-cat-border:color-mix(in srgb, ${color}, transparent ${borderAlpha}%);--tag-cat-text:color-mix(in srgb, ${color}, #ffffff ${textMix}%);`;
+        },
+
+        groupTagsByTaxonomy(tags) {
+            const tagList = Array.isArray(tags) ? tags : [];
+            if (tagList.length === 0) return [];
+
+            const taxonomy = this.tagTaxonomy || buildDefaultTagTaxonomy();
+            const order = Array.isArray(taxonomy.category_order) ? taxonomy.category_order : [];
+            const grouped = new Map();
+
+            tagList.forEach((rawTag) => {
+                const tag = String(rawTag || '').trim();
+                if (!tag) return;
+
+                const category = this.getTagCategory(tag);
+                if (!grouped.has(category)) {
+                    grouped.set(category, []);
+                }
+                grouped.get(category).push(tag);
+            });
+
+            const orderedCategories = [];
+            const seen = new Set();
+            order.forEach((rawCategory) => {
+                const category = String(rawCategory || '').trim();
+                if (!category || seen.has(category) || !grouped.has(category)) return;
+                seen.add(category);
+                orderedCategories.push(category);
+            });
+
+            Array.from(grouped.keys())
+                .sort((a, b) => a.localeCompare(b, 'zh-CN', { sensitivity: 'base' }))
+                .forEach((category) => {
+                    if (seen.has(category)) return;
+                    seen.add(category);
+                    orderedCategories.push(category);
+                });
+
+            return orderedCategories.map((category) => ({
+                category,
+                color: this.getCategoryColor(category),
+                opacity: this.getCategoryOpacity(category),
+                tags: grouped.get(category) || [],
+            }));
+        },
+
+        rebuildTagGroups() {
+            this.globalTagGroups = this.groupTagsByTaxonomy(this.globalTagsPool || []);
+            this.sidebarTagGroups = this.groupTagsByTaxonomy(this.sidebarTagsPool || []);
         },
 
         // 显示 Toast 通知

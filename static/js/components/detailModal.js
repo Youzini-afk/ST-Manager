@@ -63,7 +63,10 @@ export default function detailModal() {
         saveOldCoverOnSwap: false,      // 皮肤换封时是否保留旧图
         dragOverUpdate: false,
         dragOverResource: false,
-        showHelpModal: false, 
+        showHelpModal: false,
+        mixedCategoryView: true,
+        detailCategoryFilterInclude: [],
+        detailCategoryFilterExclude: [],
         
         // 编辑器状态 (V3 规范扁平化数据)
         editingData: {
@@ -320,6 +323,127 @@ export default function detailModal() {
             return pool.filter(tag => String(tag).toLowerCase().includes(keyword));
         },
 
+        get detailBaseTagGroups() {
+            const store = this.$store?.global;
+            if (!store || typeof store.groupTagsByTaxonomy !== 'function') return [];
+            return store.groupTagsByTaxonomy(this.filteredTagLibraryPool || []);
+        },
+
+        get detailFilterCategoryNames() {
+            return (this.detailBaseTagGroups || []).map(group => group.category);
+        },
+
+        get isDetailCategoryFilterAllMixed() {
+            return this.mixedCategoryView
+                && this.detailCategoryFilterInclude.length === 0
+                && this.detailCategoryFilterExclude.length === 0;
+        },
+
+        get detailFilteredTagLibraryGroups() {
+            const includeSet = new Set(this.detailCategoryFilterInclude || []);
+            const excludeSet = new Set(this.detailCategoryFilterExclude || []);
+            const groups = this.detailBaseTagGroups || [];
+
+            return groups.filter((group) => {
+                const category = String(group.category || '').trim();
+                if (!category) return false;
+                if (excludeSet.has(category)) return false;
+                if (includeSet.size > 0 && !includeSet.has(category)) return false;
+                return true;
+            });
+        },
+
+        get detailFilteredMixedTagsPool() {
+            const includeSet = new Set(this.detailCategoryFilterInclude || []);
+            const excludeSet = new Set(this.detailCategoryFilterExclude || []);
+            const pool = this.filteredTagLibraryPool || [];
+
+            if (includeSet.size === 0 && excludeSet.size === 0) {
+                return pool;
+            }
+
+            return pool.filter((tag) => {
+                const category = this.getTagCategory(tag);
+                if (excludeSet.has(category)) return false;
+                if (includeSet.size > 0 && !includeSet.has(category)) return false;
+                return true;
+            });
+        },
+
+        get detailFilteredVisibleTagCount() {
+            if (this.mixedCategoryView) return this.detailFilteredMixedTagsPool.length;
+            return this.detailFilteredTagLibraryGroups.reduce((acc, group) => acc + (group.tags || []).length, 0);
+        },
+
+        get filteredTagLibraryGroups() {
+            return this.detailFilteredTagLibraryGroups;
+        },
+
+        getTagChipStyle(tag) {
+            const store = this.$store?.global;
+            if (!store || typeof store.getTagChipStyle !== 'function') return '';
+            return store.getTagChipStyle(tag);
+        },
+
+        getTagCategory(tag) {
+            const store = this.$store?.global;
+            if (!store || typeof store.getTagCategory !== 'function') return '未分类';
+            return store.getTagCategory(tag);
+        },
+
+        getCategoryColor(category) {
+            const store = this.$store?.global;
+            if (!store || typeof store.getCategoryColor !== 'function') return '#64748b';
+            return store.getCategoryColor(category);
+        },
+
+        getDetailCategoryFilterState(category) {
+            if (this.detailCategoryFilterInclude.includes(category)) return 'included';
+            if (this.detailCategoryFilterExclude.includes(category)) return 'excluded';
+            return 'none';
+        },
+
+        toggleDetailCategoryFilter(category, event = null) {
+            const name = String(category || '').trim();
+            if (!name) return;
+
+            const forceExclude = !!(event && event.shiftKey);
+            const include = [...(this.detailCategoryFilterInclude || [])];
+            const exclude = [...(this.detailCategoryFilterExclude || [])];
+
+            const inInclude = include.indexOf(name);
+            const inExclude = exclude.indexOf(name);
+
+            this.mixedCategoryView = false;
+
+            if (forceExclude) {
+                if (inInclude > -1) include.splice(inInclude, 1);
+                if (inExclude === -1) exclude.push(name);
+            } else if (inInclude > -1) {
+                include.splice(inInclude, 1);
+                if (inExclude === -1) exclude.push(name);
+            } else if (inExclude > -1) {
+                exclude.splice(inExclude, 1);
+            } else {
+                include.push(name);
+            }
+
+            this.detailCategoryFilterInclude = include;
+            this.detailCategoryFilterExclude = exclude;
+        },
+
+        showAllDetailCategoriesMixed() {
+            this.detailCategoryFilterInclude = [];
+            this.detailCategoryFilterExclude = [];
+            this.mixedCategoryView = true;
+        },
+
+        sanitizeDetailCategoryFilterState() {
+            const valid = new Set(this.detailFilterCategoryNames || []);
+            this.detailCategoryFilterInclude = (this.detailCategoryFilterInclude || []).filter(name => valid.has(name));
+            this.detailCategoryFilterExclude = (this.detailCategoryFilterExclude || []).filter(name => valid.has(name));
+        },
+
         // === 初始化 ===
         init() {
             // 监听打开详情页事件
@@ -340,6 +464,9 @@ export default function detailModal() {
                     this.isEditMode = false; // 重置编辑模式
                     this.showTagLibrary = true;
                     this.tagLibrarySearch = '';
+                    this.mixedCategoryView = true;
+                    this.detailCategoryFilterInclude = [];
+                    this.detailCategoryFilterExclude = [];
                 }
             });
         },
@@ -642,6 +769,9 @@ export default function detailModal() {
             this.tab = 'basic';
             this.showTagLibrary = true;
             this.tagLibrarySearch = '';
+            this.mixedCategoryView = true;
+            this.detailCategoryFilterInclude = [];
+            this.detailCategoryFilterExclude = [];
 
             // 深拷贝并清洗数据 (Flatten & Sanitize)
             let rawData = JSON.parse(JSON.stringify(c));
@@ -733,6 +863,11 @@ export default function detailModal() {
                     
                     // 更新标签（从后端重新加载，确保显示最新标签）
                     this.editingData.tags = safeCard.tags || [];
+
+                    if (safeCard.tag_taxonomy) {
+                        this.$store.global.setTagTaxonomy(safeCard.tag_taxonomy);
+                        this.sanitizeDetailCategoryFilterState();
+                    }
                     
                     this.editingData.alternate_greetings = Array.isArray(safeCard.alternate_greetings)
                         ? safeCard.alternate_greetings

@@ -136,6 +136,25 @@
     text-decoration: line-through
 }
 
+.card-tag-filter {
+    --tag-cat-color: var(--accent-main);
+    --tag-cat-bg: var(--bg-sub);
+    --tag-cat-border: var(--border-light);
+    --tag-cat-text: var(--text-sub);
+}
+
+.card-tag-filter:not(.is-included):not(.is-excluded) {
+    background: var(--tag-cat-bg);
+    border-color: var(--tag-cat-border);
+    color: var(--tag-cat-text);
+}
+
+.card-tag-filter:not(.is-included):not(.is-excluded):hover {
+    background: color-mix(in srgb, var(--tag-cat-color), transparent 74%);
+    border-color: color-mix(in srgb, var(--tag-cat-color), transparent 38%);
+    color: color-mix(in srgb, var(--tag-cat-color), #ffffff 18%);
+}
+
 .card-tag-empty {
     opacity: 0.65;
     font-style: italic
@@ -208,24 +227,35 @@
 }
 
 .st-card {
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-main);
+    background:
+        radial-gradient(140% 120% at 100% 0%, rgba(125, 211, 252, 0.14), rgba(125, 211, 252, 0) 48%),
+        radial-gradient(120% 115% at 0% 100%, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0) 56%),
+        linear-gradient(165deg, rgba(var(--bg-panel-rgb), 0.56), rgba(var(--bg-panel-rgb), 0.34));
+    border: 1px solid color-mix(in srgb, var(--border-light), #ffffff 18%);
     border-radius: 0.75rem;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     cursor: pointer;
     position: relative;
-    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease, background 0.24s ease;
     height: var(--card-height);
-    box-shadow: 0 4px 6px -1px var(--shadow-color);
+    box-shadow:
+        0 10px 24px -16px rgba(15, 23, 42, 0.9),
+        0 6px 16px -12px rgba(2, 6, 23, 0.75),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(12px) saturate(130%);
+    -webkit-backdrop-filter: blur(12px) saturate(130%);
     perspective: 1200px
 }
 
 .st-card:hover {
-    border-color: var(--accent-main);
-    transform: translateY(-3px);
-    box-shadow: 0 10px 15px -3px var(--shadow-color)
+    border-color: color-mix(in srgb, var(--accent-light), #ffffff 24%);
+    transform: translateY(-4px);
+    box-shadow:
+        0 18px 28px -18px rgba(14, 29, 55, 0.95),
+        0 10px 20px -12px rgba(2, 6, 23, 0.75),
+        inset 0 1px 0 rgba(255, 255, 255, 0.16)
 }
 
 .card-info {
@@ -234,7 +264,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    background: var(--bg-panel);
+    background: linear-gradient(180deg, rgba(var(--bg-panel-rgb), 0.48), rgba(var(--bg-panel-rgb), 0.6));
     overflow: hidden;
     justify-content: flex-start
 }
@@ -251,7 +281,7 @@
     inset: 0;
     display: flex;
     flex-direction: column;
-    background: var(--bg-panel);
+    background: linear-gradient(180deg, rgba(var(--bg-panel-rgb), 0.5), rgba(var(--bg-panel-rgb), 0.62));
     border-radius: inherit
 }
 
@@ -390,8 +420,8 @@
 
 .card-back-header {
     padding: 0.6rem 0.75rem 0.35rem;
-    border-bottom: 1px solid var(--border-light);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-sub), transparent 35%), transparent)
+    border-bottom: 1px solid color-mix(in srgb, var(--border-light), #ffffff 12%);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-sub), transparent 22%), transparent)
 }
 
 .card-back-title {
@@ -566,11 +596,102 @@
     min-height: 0;
     white-space: pre-wrap;
     word-break: break-all;
-    border: 1px solid var(--border-light);
-    background: var(--bg-sub);
+    border: 1px solid color-mix(in srgb, var(--border-light), #ffffff 12%);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-sub), #ffffff 4%), color-mix(in srgb, var(--bg-sub), #000000 6%));
     display: block;
     text-align: left;
     transition: background 0.2s
+}
+
+.card-pagination-bar {
+    gap: 0.85rem;
+    flex-wrap: wrap
+}
+
+.card-flip-toolbar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-sub), transparent 14%);
+    border: 1px solid color-mix(in srgb, var(--border-light), #ffffff 14%)
+}
+
+.card-flip-all-btn {
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: color-mix(in srgb, var(--text-main), #ffffff 8%);
+    border-color: color-mix(in srgb, var(--accent-main), transparent 42%);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent-main), #ffffff 12%), color-mix(in srgb, var(--accent-main), #000000 8%))
+}
+
+.card-flip-all-btn:hover {
+    color: #ffffff;
+    border-color: color-mix(in srgb, var(--accent-light), #ffffff 18%);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent-main), #ffffff 20%), color-mix(in srgb, var(--accent-hover), #000000 2%))
+}
+
+.card-flip-count {
+    font-size: 0.7rem;
+    color: var(--text-sub);
+    line-height: 1
+}
+
+html.light-mode .st-card {
+    background:
+        radial-gradient(140% 120% at 100% 0%, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0) 48%),
+        radial-gradient(120% 110% at 0% 100%, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0) 56%),
+        linear-gradient(165deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.58));
+    border-color: color-mix(in srgb, var(--border-light), #ffffff 34%);
+    box-shadow:
+        0 14px 30px -20px rgba(59, 130, 246, 0.35),
+        0 10px 22px -18px rgba(15, 23, 42, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px) saturate(115%);
+    -webkit-backdrop-filter: blur(12px) saturate(115%)
+}
+
+html.light-mode .st-card:hover {
+    border-color: color-mix(in srgb, var(--accent-main), #ffffff 42%);
+    box-shadow:
+        0 20px 34px -22px rgba(59, 130, 246, 0.4),
+        0 12px 20px -16px rgba(15, 23, 42, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.82)
+}
+
+html.light-mode .card-face,
+html.light-mode .card-info {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.74))
+}
+
+html.light-mode .card-flip-toolbar {
+    background: color-mix(in srgb, var(--bg-sub), #ffffff 42%);
+    border-color: color-mix(in srgb, var(--border-light), #ffffff 36%)
+}
+
+html.light-mode .card-flip-count {
+    color: color-mix(in srgb, var(--text-sub), #000000 8%)
+}
+
+@supports not ((backdrop-filter: blur(2px))) {
+    .st-card {
+        background: var(--bg-panel)
+    }
+
+    .card-face,
+    .card-info {
+        background: var(--bg-panel)
+    }
+
+    html.light-mode .st-card,
+    html.light-mode .card-face,
+    html.light-mode .card-info {
+        background: var(--bg-panel)
+    }
 }
 
 .drag-over-main-overlay {
@@ -726,6 +847,30 @@ html.light-mode .btn-note-preview.card-back-note-btn:hover {
 }
 
 @media (max-width: 768px) {
+    .card-pagination-bar {
+        display: grid;
+        grid-template-columns: 1fr;
+        justify-items: stretch;
+        gap: 0.5rem
+    }
+
+    .card-pagination-total {
+        justify-self: center
+    }
+
+    .card-flip-toolbar {
+        justify-content: space-between;
+        padding: 0.35rem 0.45rem
+    }
+
+    .card-flip-count {
+        font-size: 0.68rem
+    }
+
+    .card-pagination-controls {
+        justify-content: center
+    }
+
     .st-card {
         height: 12rem
     }

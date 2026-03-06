@@ -28,15 +28,71 @@
             <div style="margin-top:1.5rem;">
                 <h4 class="text-sm font-bold text-purple-300 mb-2">从现有标签池选择（多选）</h4>
                 <input type="text" x-model="batchTagPickerSearch" placeholder="搜索标签…" class="form-input mb-2">
-                <div class="tag-cloud-container custom-scrollbar"
-                    style="border:1px solid var(--border-light); padding:0.75rem; background: var(--bg-sub);">
-                    <template x-for="tag in filteredBatchTagPool" :key="tag">
-                        <button @click="toggleBatchSelectTag(tag)" class="tag-chip-btn"
-                            :class="batchSelectedTags.includes(tag) ? 'tag-chip-selected-purple' : 'tag-chip-unselected'">
-                            <span x-text="tag"></span><span x-show="batchSelectedTags.includes(tag)"
-                                style="margin-left:4px;font-size:0.75rem;">✓</span>
+                <div class="tag-category-filter-row" style="margin-bottom: 0.45rem;">
+                    <button type="button" class="tag-category-filter-pill"
+                        :class="isBatchCategoryFilterAllMixed ? 'active-mixed' : ''"
+                        @click="showAllBatchCategoriesMixed()"
+                        title="显示全部分类（混合显示）">
+                        全部（混合）
+                    </button>
+                    <button type="button" class="tag-category-filter-pill"
+                        :class="mixedCategoryView ? '' : 'active-mixed'"
+                        @click="toggleBatchCategoryView()"
+                        :title="mixedCategoryView ? '切换为分组显示' : '切换为混合显示'"
+                        x-text="mixedCategoryView ? '切换分组显示' : '切换混合显示'"></button>
+                    <template x-for="name in batchFilterCategoryNames" :key="'batch-fcat-' + name">
+                        <button type="button" class="tag-category-filter-pill"
+                            :class="{
+                                'active-included': getBatchCategoryFilterState(name) === 'included',
+                                'active-excluded': getBatchCategoryFilterState(name) === 'excluded'
+                            }"
+                            :style="`--tag-cat-color:${getCategoryColor(name)};`"
+                            @click="toggleBatchCategoryFilter(name, $event)"
+                            :title="getBatchCategoryFilterState(name) === 'included' ? `分类：${name}（已包含，点击改为排除）` : (getBatchCategoryFilterState(name) === 'excluded' ? `分类：${name}（已排除，点击取消）` : `分类：${name}（点击包含，Shift+点击直接排除）`)">
+                            <span class="tag-category-filter-dot"></span>
+                            <span x-text="name"></span>
                         </button>
                     </template>
+                </div>
+                <div class="tag-cloud-container custom-scrollbar"
+                    style="border:1px solid var(--border-light); padding:0.75rem; background: var(--bg-sub);">
+                    <div class="tag-cloud-mode-wrap">
+                        <template x-if="mixedCategoryView">
+                            <template x-for="tag in batchFilteredMixedTagPool" :key="'batch-mixed-' + tag">
+                                <button @click="toggleBatchSelectTag(tag)" class="tag-chip-btn"
+                                    :class="batchSelectedTags.includes(tag) ? 'tag-chip-selected-purple' : 'tag-chip-unselected tag-chip-categorized'"
+                                    :style="!batchSelectedTags.includes(tag) ? getTagChipStyle(tag) : ''"
+                                    :title="`分类：${getTagCategory(tag)}`">
+                                    <span x-text="tag"></span><span x-show="batchSelectedTags.includes(tag)"
+                                        style="margin-left:4px;font-size:0.75rem;">✓</span>
+                                </button>
+                            </template>
+                        </template>
+                        <template x-if="!mixedCategoryView">
+                            <template x-for="group in batchFilteredTagGroups" :key="'batch-group-' + group.category">
+                                <div class="tag-group-block">
+                                    <div class="tag-group-head">
+                                        <span class="tag-group-dot" :style="`background:${group.color};`"></span>
+                                        <span class="tag-group-title" x-text="group.category"></span>
+                                        <span class="tag-group-count" x-text="group.tags.length + ' 个'"></span>
+                                    </div>
+                                    <div class="tag-group-cloud">
+                                        <template x-for="tag in group.tags" :key="tag">
+                                            <button @click="toggleBatchSelectTag(tag)" class="tag-chip-btn"
+                                                :class="batchSelectedTags.includes(tag) ? 'tag-chip-selected-purple' : 'tag-chip-unselected tag-chip-categorized'"
+                                                :style="!batchSelectedTags.includes(tag) ? getTagChipStyle(tag) : ''"
+                                                :title="`分类：${getTagCategory(tag)}`">
+                                                <span x-text="tag"></span><span x-show="batchSelectedTags.includes(tag)"
+                                                    style="margin-left:4px;font-size:0.75rem;">✓</span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+                    <div x-show="batchVisibleTagCount === 0"
+                        style="width: 100%; text-align: center; color: var(--text-dim); margin-top: 1rem;">无匹配标签</div>
                 </div>
             </div>
         </div>

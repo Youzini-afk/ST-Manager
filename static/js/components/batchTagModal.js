@@ -17,6 +17,11 @@ export default function batchTagModal() {
         
         // 批量选择器状态 (从池中选)
         batchSelectedTags: [],
+
+        // 分类筛选与显示
+        batchCategoryFilterInclude: [],
+        batchCategoryFilterExclude: [],
+        mixedCategoryView: true,
         
         // 目标卡片 IDs
         targetIds: [],
@@ -40,7 +45,11 @@ export default function batchTagModal() {
                 // 重置表单
                 this.batchTagInputAdd = "";
                 this.batchTagInputRemove = "";
+                this.batchTagPickerSearch = "";
                 this.batchSelectedTags = [];
+                this.batchCategoryFilterInclude = [];
+                this.batchCategoryFilterExclude = [];
+                this.mixedCategoryView = true;
                 this.showBatchTagModal = true;
             });
         },
@@ -52,7 +61,114 @@ export default function batchTagModal() {
             return pool.filter(t => t.toLowerCase().includes(this.batchTagPickerSearch.toLowerCase()));
         },
 
+        get batchBaseTagGroups() {
+            const store = this.$store?.global;
+            if (!store || typeof store.groupTagsByTaxonomy !== 'function') return [];
+            return store.groupTagsByTaxonomy(this.filteredBatchTagPool || []);
+        },
+
+        get batchFilterCategoryNames() {
+            return (this.batchBaseTagGroups || []).map(group => group.category);
+        },
+
+        get batchFilteredTagGroups() {
+            const includeSet = new Set(this.batchCategoryFilterInclude || []);
+            const excludeSet = new Set(this.batchCategoryFilterExclude || []);
+            const groups = this.batchBaseTagGroups || [];
+
+            return groups.filter((group) => {
+                const category = String(group.category || '').trim();
+                if (!category) return false;
+                if (excludeSet.has(category)) return false;
+                if (includeSet.size > 0 && !includeSet.has(category)) return false;
+                return true;
+            });
+        },
+
+        get batchFilteredMixedTagPool() {
+            const includeSet = new Set(this.batchCategoryFilterInclude || []);
+            const excludeSet = new Set(this.batchCategoryFilterExclude || []);
+            const pool = this.filteredBatchTagPool || [];
+
+            if (includeSet.size === 0 && excludeSet.size === 0) {
+                return pool;
+            }
+
+            return pool.filter((tag) => {
+                const category = this.getTagCategory(tag);
+                if (excludeSet.has(category)) return false;
+                if (includeSet.size > 0 && !includeSet.has(category)) return false;
+                return true;
+            });
+        },
+
+        get batchVisibleTagCount() {
+            if (this.mixedCategoryView) return this.batchFilteredMixedTagPool.length;
+            return this.batchFilteredTagGroups.reduce((acc, group) => acc + (group.tags || []).length, 0);
+        },
+
+        get isBatchCategoryFilterAllMixed() {
+            return this.mixedCategoryView
+                && this.batchCategoryFilterInclude.length === 0
+                && this.batchCategoryFilterExclude.length === 0;
+        },
+
         // === 选择器操作 ===
+
+        getTagChipStyle(tag) {
+            return this.$store.global.getTagChipStyle(tag);
+        },
+
+        getTagCategory(tag) {
+            return this.$store.global.getTagCategory(tag);
+        },
+
+        getCategoryColor(category) {
+            return this.$store.global.getCategoryColor(category);
+        },
+
+        getBatchCategoryFilterState(category) {
+            if (this.batchCategoryFilterInclude.includes(category)) return 'included';
+            if (this.batchCategoryFilterExclude.includes(category)) return 'excluded';
+            return 'none';
+        },
+
+        toggleBatchCategoryFilter(category, event = null) {
+            const name = String(category || '').trim();
+            if (!name) return;
+
+            const forceExclude = !!(event && event.shiftKey);
+            const include = [...(this.batchCategoryFilterInclude || [])];
+            const exclude = [...(this.batchCategoryFilterExclude || [])];
+
+            const inInclude = include.indexOf(name);
+            const inExclude = exclude.indexOf(name);
+
+            if (forceExclude) {
+                if (inInclude > -1) include.splice(inInclude, 1);
+                if (inExclude === -1) exclude.push(name);
+            } else if (inInclude > -1) {
+                include.splice(inInclude, 1);
+                if (inExclude === -1) exclude.push(name);
+            } else if (inExclude > -1) {
+                exclude.splice(inExclude, 1);
+            } else {
+                include.push(name);
+            }
+
+            this.batchCategoryFilterInclude = include;
+            this.batchCategoryFilterExclude = exclude;
+        },
+
+        showAllBatchCategoriesMixed() {
+            this.batchCategoryFilterInclude = [];
+            this.batchCategoryFilterExclude = [];
+            this.mixedCategoryView = true;
+        },
+
+        toggleBatchCategoryView() {
+            this.mixedCategoryView = !this.mixedCategoryView;
+        },
 
         toggleBatchSelectTag(tag) {
             const i = this.batchSelectedTags.indexOf(tag);
