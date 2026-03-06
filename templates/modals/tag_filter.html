@@ -129,7 +129,7 @@
                         <div class="tag-category-manager-actions">
                             <input type="color" :value="item.color" class="tag-category-manager-color"
                                 @change="setCategoryColor(item.name, $event.target.value)" title="修改分类颜色">
-                            <div class="tag-category-manager-opacity-wrap" title="修改分类透明度（0-100）">
+                            <div class="tag-category-manager-opacity-wrap" title="修改分类不透明度（0-100）">
                                 <input type="range" min="0" max="100" step="1" :value="getCategoryOpacity(item.name)"
                                     @change="setCategoryOpacity(item.name, $event.target.value)"
                                     class="tag-category-manager-opacity-slider">
