@@ -75,6 +75,7 @@
 }
 
 @keyframes cornerPeelPulse {
+
     0%,
     100% {
         transform: rotate(-8deg) skewX(-4deg) scale(1.04)
@@ -113,7 +114,11 @@
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    --tag-cat-color: var(--accent-main);
+    --tag-cat-bg: var(--bg-sub);
+    --tag-cat-border: var(--border-light);
+    --tag-cat-text: var(--text-sub)
 }
 
 .card-tag-filter:hover {
@@ -140,30 +145,23 @@
 .card-tag-filter.is-excluded {
     background-color: rgba(220, 38, 38, 0.2) !important;
     color: #fca5a5 !important;
-    border-color: #ef4444 !important;
+    border-color: #ef4444 !important
 }
 
 .card-tag-filter.is-excluded span {
     text-decoration: line-through
 }
 
-.card-tag-filter {
-    --tag-cat-color: var(--accent-main);
-    --tag-cat-bg: var(--bg-sub);
-    --tag-cat-border: var(--border-light);
-    --tag-cat-text: var(--text-sub);
-}
-
 .card-tag-filter:not(.is-included):not(.is-excluded) {
     background: var(--tag-cat-bg);
     border-color: var(--tag-cat-border);
-    color: var(--tag-cat-text);
+    color: var(--tag-cat-text)
 }
 
 .card-tag-filter:not(.is-included):not(.is-excluded):hover {
     background: color-mix(in srgb, var(--tag-cat-color), transparent 74%);
     border-color: color-mix(in srgb, var(--tag-cat-color), transparent 38%);
-    color: color-mix(in srgb, var(--tag-cat-color), #ffffff 18%);
+    color: color-mix(in srgb, var(--tag-cat-color), #ffffff 18%)
 }
 
 .card-tag-empty {
@@ -201,7 +199,7 @@
     white-space: nowrap
 }
 
-.card-front-meta-row > .card-meta-chip:nth-child(n + 4) {
+.card-front-meta-row>.card-meta-chip:nth-child(n + 4) {
     display: none
 }
 
@@ -249,7 +247,6 @@
     border-color: rgba(226, 232, 240, 0.36)
 }
 
-/* Keep top/bottom bars truly translucent in all modes */
 .card-front-topbar,
 .card-bottom-toolbar {
     background: rgba(2, 6, 23, 0.42) !important;
@@ -532,10 +529,7 @@ html.light-mode .card-bottom-toolbar {
 }
 
 .st-card {
-    background:
-        radial-gradient(140% 120% at 100% 0%, rgba(125, 211, 252, 0.14), rgba(125, 211, 252, 0) 48%),
-        radial-gradient(120% 115% at 0% 100%, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0) 56%),
-        linear-gradient(165deg, rgba(var(--bg-panel-rgb), 0.56), rgba(var(--bg-panel-rgb), 0.34));
+    background: radial-gradient(140% 120% at 100% 0%, rgba(125, 211, 252, 0.14), rgba(125, 211, 252, 0) 48%), radial-gradient(120% 115% at 0% 100%, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0) 56%), linear-gradient(165deg, rgba(var(--bg-panel-rgb), 0.56), rgba(var(--bg-panel-rgb), 0.34));
     border: 1px solid color-mix(in srgb, var(--border-light), #ffffff 18%);
     border-radius: 0.75rem;
     overflow: hidden;
@@ -545,10 +539,7 @@ html.light-mode .card-bottom-toolbar {
     position: relative;
     transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease, background 0.24s ease;
     height: var(--card-height);
-    box-shadow:
-        0 10px 24px -16px rgba(15, 23, 42, 0.9),
-        0 6px 16px -12px rgba(2, 6, 23, 0.75),
-        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 24px -16px rgba(15, 23, 42, 0.9), 0 6px 16px -12px rgba(2, 6, 23, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.12);
     backdrop-filter: blur(12px) saturate(130%);
     -webkit-backdrop-filter: blur(12px) saturate(130%);
     perspective: 1200px
@@ -557,10 +548,7 @@ html.light-mode .card-bottom-toolbar {
 .st-card:hover {
     border-color: color-mix(in srgb, var(--accent-light), #ffffff 24%);
     transform: translateY(-4px);
-    box-shadow:
-        0 18px 28px -18px rgba(14, 29, 55, 0.95),
-        0 10px 20px -12px rgba(2, 6, 23, 0.75),
-        inset 0 1px 0 rgba(255, 255, 255, 0.16)
+    box-shadow: 0 18px 28px -18px rgba(14, 29, 55, 0.95), 0 10px 20px -12px rgba(2, 6, 23, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.16)
 }
 
 .card-info {
@@ -858,13 +846,11 @@ html.light-mode .card-bottom-toolbar {
     opacity: 1;
     transform: rotate(-9deg) skewX(-5deg) scale(1.05);
     filter: drop-shadow(-1px -1px 2px rgba(0, 0, 0, 0.5));
-    animation: cornerPeelSpring 260ms cubic-bezier(0.2, 0.85, 0.25, 1) 1,
-        cornerPeelPulse 1.9s ease-in-out infinite 260ms
+    animation: cornerPeelSpring 260ms cubic-bezier(0.2, 0.85, 0.25, 1) 1, cornerPeelPulse 1.9s ease-in-out infinite 260ms
 }
 
 .st-card.is-flipped .card-flip-corner:hover {
-    animation: cornerPeelSpring 260ms cubic-bezier(0.2, 0.85, 0.25, 1) 1,
-        cornerPeelPulse 1.45s ease-in-out infinite 260ms
+    animation: cornerPeelSpring 260ms cubic-bezier(0.2, 0.85, 0.25, 1) 1, cornerPeelPulse 1.45s ease-in-out infinite 260ms
 }
 
 .card-flip-corner:hover::after {
@@ -883,11 +869,7 @@ html.light-mode .card-bottom-toolbar {
 .st-card.is-flipped .card-fav-btn,
 .st-card.is-flipped .card-select-indicator {
     opacity: 0 !important;
-    pointer-events: none !important
-}
-
-.st-card.is-flipped .card-fav-btn,
-.st-card.is-flipped .card-select-indicator {
+    pointer-events: none !important;
     transform: scale(0.92)
 }
 
@@ -947,25 +929,16 @@ html.light-mode .card-bottom-toolbar {
 }
 
 html.light-mode .st-card {
-    background:
-        radial-gradient(140% 120% at 100% 0%, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0) 48%),
-        radial-gradient(120% 110% at 0% 100%, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0) 56%),
-        linear-gradient(165deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.58));
+    background: radial-gradient(140% 120% at 100% 0%, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0) 48%), radial-gradient(120% 110% at 0% 100%, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0) 56%), linear-gradient(165deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.58));
     border-color: color-mix(in srgb, var(--border-light), #ffffff 34%);
-    box-shadow:
-        0 14px 30px -20px rgba(59, 130, 246, 0.35),
-        0 10px 22px -18px rgba(15, 23, 42, 0.22),
-        inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    box-shadow: 0 14px 30px -20px rgba(59, 130, 246, 0.35), 0 10px 22px -18px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.7);
     backdrop-filter: blur(12px) saturate(115%);
     -webkit-backdrop-filter: blur(12px) saturate(115%)
 }
 
 html.light-mode .st-card:hover {
     border-color: color-mix(in srgb, var(--accent-main), #ffffff 42%);
-    box-shadow:
-        0 20px 34px -22px rgba(59, 130, 246, 0.4),
-        0 12px 20px -16px rgba(15, 23, 42, 0.2),
-        inset 0 1px 0 rgba(255, 255, 255, 0.82)
+    box-shadow: 0 20px 34px -22px rgba(59, 130, 246, 0.4), 0 12px 20px -16px rgba(15, 23, 42, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.82)
 }
 
 html.light-mode .card-face,
@@ -1078,37 +1051,6 @@ html.light-mode .card-flip-count {
     color: color-mix(in srgb, var(--text-sub), #000000 8%)
 }
 
-@supports not ((backdrop-filter: blur(2px))) {
-    .st-card {
-        background: var(--bg-panel)
-    }
-
-    .card-face,
-    .card-info {
-        background: var(--bg-panel)
-    }
-
-    html.light-mode .st-card,
-    html.light-mode .card-face,
-    html.light-mode .card-info {
-        background: var(--bg-panel)
-    }
-
-    .card-image-tags-wrap .card-tag {
-        box-shadow: none
-    }
-
-    .card-front-topbar,
-    .card-bottom-toolbar {
-        background: rgba(2, 6, 23, 0.82) !important
-    }
-
-    html.light-mode .card-front-topbar,
-    html.light-mode .card-bottom-toolbar {
-        background: rgba(255, 255, 255, 0.86) !important
-    }
-}
-
 .drag-over-main-overlay {
     position: absolute;
     inset: 0;
@@ -1214,28 +1156,54 @@ html.light-mode .btn-note-preview:hover {
     mix-blend-mode: screen
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .card-front,
-    .card-back,
-    .card-image-media,
-    .card-image-container,
-    .st-card,
-    .card-flip-corner,
-    .card-source-link-fab,
-    .btn-note-preview,
-    .card-fav-btn,
-    .card-select-indicator,
-    .card-image-overlay {
-        transition-duration: 0.01ms !important;
-        animation: none !important
+@media not ((backdrop-filter: blur(2px))) {
+    .st-card {
+        background: var(--bg-panel)
     }
 
+    .card-face,
+    .card-info {
+        background: var(--bg-panel)
+    }
+
+    .card-image-tags-wrap .card-tag {
+        box-shadow: none
+    }
+
+    .card-front-topbar,
+    .card-bottom-toolbar {
+        background: rgba(2, 6, 23, 0.82) !important
+    }
+
+    html.light-mode .card-front-topbar,
+    html.light-mode .card-bottom-toolbar {
+        background: rgba(255, 255, 255, 0.86) !important
+    }
+
+    html.light-mode .st-card,
+    html.light-mode .card-face,
+    html.light-mode .card-info {
+        background: var(--bg-panel)
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
     .card-front {
         transform: none !important
     }
 
     .card-back {
         transform: none !important
+    }
+
+    .card-flip-corner:hover {
+        transform: none !important;
+        filter: none !important;
+        animation: none !important
+    }
+
+    .card-flip-corner.is-active {
+        animation: none !important
     }
 
     .card-flip-inner.is-flipped .card-front {
@@ -1251,16 +1219,18 @@ html.light-mode .btn-note-preview:hover {
         transition: none !important
     }
 
-    .card-flip-corner:hover {
-        transform: none !important;
-        filter: none !important
-    }
-
-    .card-flip-corner.is-active {
-        animation: none !important
-    }
-
-    .card-flip-corner:hover {
+    .card-front,
+    .card-back,
+    .card-image-media,
+    .card-image-container,
+    .st-card,
+    .card-flip-corner,
+    .card-source-link-fab,
+    .btn-note-preview,
+    .card-fav-btn,
+    .card-select-indicator,
+    .card-image-overlay {
+        transition-duration: 0.01ms !important;
         animation: none !important
     }
 }
@@ -1354,16 +1324,6 @@ html.light-mode .btn-note-preview:hover {
         padding: 0.34rem 0.36rem 0.3rem
     }
 
-    .card-image-tags-wrap .card-tags-row {
-        min-height: 1.45rem;
-        max-height: 1.45rem;
-        align-content: center
-    }
-
-    .card-tags-row .card-tag:nth-child(n + 4) {
-        display: none
-    }
-
     .card-tags-more {
         display: none
     }
@@ -1412,11 +1372,21 @@ html.light-mode .btn-note-preview:hover {
         transform-origin: 100% 100%
     }
 
+    .card-image-container::after {
+        height: 6.4rem
+    }
+
+    .card-image-tags-wrap .card-tags-row {
+        min-height: 1.45rem;
+        max-height: 1.45rem;
+        align-content: center
+    }
+
     .card-flip-inner.is-flipped .card-front {
         transform: translate3d(-8px, -2px, 0) rotateZ(-3deg) rotateX(6deg) rotateY(-178deg)
     }
 
-    .card-image-container::after {
-        height: 6.4rem
+    .card-tags-row .card-tag:nth-child(n + 4) {
+        display: none
     }
 }

@@ -506,7 +506,6 @@ html.light-mode .detail-thumb-label {
 }
 
 .detail-section-fill .detail-card {
-    /* min-height: 0; */
     display: flex;
     flex-direction: column
 }
@@ -610,11 +609,11 @@ html.light-mode .detail-thumb-label {
 .detail-tag-handle {
     font-size: 10px;
     opacity: 0.75;
-    cursor: grab;
+    cursor: grab
 }
 
 .detail-tag-dragging {
-    opacity: 0.55;
+    opacity: 0.55
 }
 
 .detail-tag:hover {
@@ -635,12 +634,12 @@ html.light-mode .detail-thumb-label {
 .detail-tag-categorized {
     background: var(--tag-cat-bg, rgba(124, 58, 237, 0.18));
     border-color: var(--tag-cat-border, rgba(124, 58, 237, 0.35));
-    color: var(--tag-cat-text, var(--text-main));
+    color: var(--tag-cat-text, var(--text-main))
 }
 
 .detail-tag-categorized:hover {
     border-color: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 30%);
-    background: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 74%);
+    background: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 74%)
 }
 
 .detail-inline-input {
@@ -716,7 +715,7 @@ html.light-mode .detail-thumb-label {
 .detail-tag-category-filter-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: 0.4rem
 }
 
 .detail-tag-category-filter-pill {
@@ -730,37 +729,37 @@ html.light-mode .detail-thumb-label {
     cursor: pointer;
     font-size: 0.7rem;
     padding: 0.15rem 0.5rem;
-    transition: all 0.15s ease;
+    transition: all 0.15s ease
 }
 
 .detail-tag-category-filter-pill:hover {
     border-color: var(--text-sub);
-    color: var(--text-main);
+    color: var(--text-main)
 }
 
 .detail-tag-category-filter-pill.active-mixed {
     border-color: color-mix(in srgb, var(--accent-main), transparent 45%);
     background: color-mix(in srgb, var(--accent-main), transparent 85%);
-    color: var(--accent-light);
+    color: var(--accent-light)
 }
 
 .detail-tag-category-filter-pill.active-included {
     border-color: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 36%);
     background: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 82%);
-    color: color-mix(in srgb, var(--tag-cat-color, #ffffff), #ffffff 22%);
+    color: color-mix(in srgb, var(--tag-cat-color, #ffffff), #ffffff 22%)
 }
 
 .detail-tag-category-filter-pill.active-excluded {
     border-color: #ef4444;
     background: rgba(220, 38, 38, 0.18);
-    color: #fca5a5;
+    color: #fca5a5
 }
 
 .detail-tag-category-filter-dot {
     width: 0.42rem;
     height: 0.42rem;
     border-radius: 999px;
-    background: var(--tag-cat-color, var(--accent-main));
+    background: var(--tag-cat-color, var(--accent-main))
 }
 
 .detail-tag-library-cloud {
@@ -784,13 +783,13 @@ html.light-mode .detail-thumb-label {
     flex-direction: column;
     flex-wrap: nowrap;
     align-content: stretch;
-    gap: 10px;
+    gap: 10px
 }
 
 .detail-tag-library-cloud-grouped.is-mixed-view {
     flex-direction: row;
     flex-wrap: wrap;
-    align-content: flex-start;
+    align-content: flex-start
 }
 
 .detail-tag-mode-wrap {
@@ -798,42 +797,42 @@ html.light-mode .detail-thumb-label {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    align-content: flex-start;
+    align-content: flex-start
 }
 
 .detail-tag-group-block {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 6px
 }
 
 .detail-tag-group-head {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 6px
 }
 
 .detail-tag-group-dot {
     width: 8px;
     height: 8px;
-    border-radius: 999px;
+    border-radius: 999px
 }
 
 .detail-tag-group-title {
     font-size: 11px;
     font-weight: 700;
-    color: var(--text-main);
+    color: var(--text-main)
 }
 
 .detail-tag-group-count {
     font-size: 10px;
-    color: var(--text-dim);
+    color: var(--text-dim)
 }
 
 .detail-tag-group-cloud {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 8px
 }
 
 .detail-manage-grid {
@@ -890,7 +889,6 @@ html.light-mode .detail-thumb-label {
 
 .detail-section-fill .detail-tab-scroll>.detail-card {
     flex: 1 1 0;
-    /* min-height: 0; */
     display: flex;
     flex-direction: column
 }

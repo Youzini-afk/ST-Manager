@@ -249,7 +249,11 @@
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap
+    white-space: nowrap;
+    --tag-cat-color: var(--accent-main);
+    --tag-cat-bg: var(--bg-tag);
+    --tag-cat-border: var(--border-light);
+    --tag-cat-text: var(--text-sub)
 }
 
 .sidebar-tag-chip:hover {
@@ -274,23 +278,16 @@
     text-decoration: line-through
 }
 
-.sidebar-tag-chip {
-    --tag-cat-color: var(--accent-main);
-    --tag-cat-bg: var(--bg-tag);
-    --tag-cat-border: var(--border-light);
-    --tag-cat-text: var(--text-sub);
-}
-
 .sidebar-tag-chip:not(.active):not(.excluded) {
     background: var(--tag-cat-bg);
     border-color: var(--tag-cat-border);
-    color: var(--tag-cat-text);
+    color: var(--tag-cat-text)
 }
 
 .sidebar-tag-chip:not(.active):not(.excluded):hover {
     background: color-mix(in srgb, var(--tag-cat-color), transparent 75%);
     border-color: color-mix(in srgb, var(--tag-cat-color), transparent 40%);
-    color: color-mix(in srgb, var(--tag-cat-color), #ffffff 16%);
+    color: color-mix(in srgb, var(--tag-cat-color), #ffffff 16%)
 }
 
 .pagination-bar {
@@ -841,10 +838,6 @@
         border-color: #ef4444
     }
 
-    .mobile-filter-chip.excluded .chip-label {
-        text-decoration: line-through
-    }
-
     .mobile-filter-chip:active {
         transform: scale(0.95);
         opacity: 0.8
@@ -1099,6 +1092,10 @@
     .sidebar-tag-chip {
         font-size: 0.6875rem;
         padding: 0.125rem 0.375rem
+    }
+
+    .mobile-filter-chip.excluded .chip-label {
+        text-decoration: line-through
     }
 
     .toggle-switch.on .toggle-dot {

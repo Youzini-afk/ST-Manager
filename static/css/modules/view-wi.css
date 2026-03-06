@@ -202,7 +202,7 @@ html.light-mode .wi-status-constant {
   font-weight: bold;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px)
 }
 
 .wi-badge.global {
