@@ -1527,7 +1527,7 @@ export default function detailModal() {
 
         sendToST() {
             const btn = document.getElementById('btn-send-st');
-            if (btn) btn.innerText = '发送中...';
+            if (btn) btn.innerText = '🚀 发送中...';
             
             sendToSillyTavern(this.activeCard.id)
                 .then(res => {
