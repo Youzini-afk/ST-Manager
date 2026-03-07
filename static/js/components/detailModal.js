@@ -24,7 +24,6 @@ import {
 } from '../api/system.js';
 
 import { 
-    listSkins,
     setSkinAsCover,
     deleteResourceFile,
     uploadCardResource,
@@ -116,6 +115,7 @@ export default function detailModal() {
         originalDataJson: '', // 基准快照
 
         showSetResourceFolderModal: false,
+        resourceFolderCreationPromise: null,
 
         formatDate,
         estimateTokens,
@@ -470,49 +470,107 @@ export default function detailModal() {
         },
 
         // === 新增：处理资源 Tab 的文件拖拽 ===
-        handleResourceDrop(e) {
+        async handleResourceDrop(e) {
             this.dragOverResource = false;
-            const files = e.dataTransfer.files;
-            if (!files || files.length === 0) return;
+            const files = Array.from(e?.dataTransfer?.files || []);
+            if (files.length === 0) return;
 
-            // 检查是否已设置资源目录
-            if (!this.editingData.resource_folder) {
-                alert("请先在'管理'页签或顶部栏创建/设置资源目录，才能上传资源文件。");
-                return;
+            try {
+                await this.ensureResourceFolder({ silent: true, auto: true });
+                const results = await Promise.all(files.map(file => this.uploadSingleResource(file)));
+
+                if (this.editingData.resource_folder) {
+                    this.fetchResourceFiles(this.editingData.resource_folder);
+                }
+
+                if (results.some(res => res && res.is_lorebook)) {
+                    window.dispatchEvent(new CustomEvent('refresh-wi-list'));
+                }
+            } catch (error) {
+                const msg = error?.message || error;
+                alert(`资源导入失败: ${msg}`);
             }
-
-            // 逐个上传
-            Array.from(files).forEach(file => {
-                this.uploadSingleResource(file);
-            });
         },
 
-        uploadSingleResource(file) {
+        async handleResourceInputChange(e) {
+            const input = e.target;
+
+            try {
+                await this.handleResourceDrop({ dataTransfer: { files: input.files } });
+            } finally {
+                input.value = '';
+            }
+        },
+
+        async uploadSingleResource(file) {
             const formData = new FormData();
             formData.append('card_id', this.editingData.id);
             formData.append('file', file);
 
             this.$store.global.showToast(`⏳ 正在上传: ${file.name}...`, 2000);
 
-            uploadCardResource(formData).then(res => {
+            try {
+                const res = await uploadCardResource(formData);
                 if (res.success) {
+                    if (res.resource_folder) {
+                        this.editingData.resource_folder = res.resource_folder;
+                        this.activeCard.resource_folder = res.resource_folder;
+                    }
                     this.$store.global.showToast(`✅ ${file.name} 上传成功`);
-                    
-                    // 上传成功后，刷新整个资源列表
-                    if (this.editingData.resource_folder) {
-                        this.fetchResourceFiles(this.editingData.resource_folder);
-                    }
-                    
-                    // 如果是世界书，还需要刷新全局的世界书侧边栏缓存
-                    if (res.is_lorebook) {
-                        window.dispatchEvent(new CustomEvent('refresh-wi-list'));
-                    }
+                    return res;
                 } else {
                     alert(`上传 ${file.name} 失败: ${res.msg}`);
                 }
-            }).catch(e => {
+            } catch (e) {
                 alert(`网络错误: ${e}`);
-            });
+            }
+
+            return null;
+        },
+
+        async ensureResourceFolder(options = {}) {
+            const {
+                silent = false,
+                auto = false
+            } = options;
+
+            if (this.editingData.resource_folder) {
+                return this.editingData.resource_folder;
+            }
+
+            if (this.resourceFolderCreationPromise) {
+                return this.resourceFolderCreationPromise;
+            }
+
+            this.resourceFolderCreationPromise = apiCreateResourceFolder({ card_id: this.editingData.id })
+                .then(res => {
+                    if (!res.success) {
+                        throw new Error(res.msg || '创建资源目录失败');
+                    }
+
+                    this.editingData.resource_folder = res.resource_folder;
+                    this.activeCard.resource_folder = res.resource_folder;
+                    this.fetchResourceFiles(res.resource_folder);
+
+                    if (auto) {
+                        this.$store.global.showToast('📁 已自动创建资源目录', 1800);
+                    } else if (!silent) {
+                        this.$store.global.showToast('📁 资源目录已创建', 1800);
+                    }
+
+                    return res.resource_folder;
+                })
+                .catch(err => {
+                    if (!silent) {
+                        alert('创建资源目录失败: ' + (err?.message || err));
+                    }
+                    throw err;
+                })
+                .finally(() => {
+                    this.resourceFolderCreationPromise = null;
+                });
+
+            return this.resourceFolderCreationPromise;
         },
 
         // 获取资源目录下的所有文件
@@ -1137,8 +1195,8 @@ export default function detailModal() {
                     window.dispatchEvent(new CustomEvent('refresh-card-list'));
                     
                     // 刷新皮肤列表 (如果保存了旧图，皮肤列表会增加)
-                    if (this.saveOldCoverOnSwap) {
-                        this.fetchSkins(this.editingData.resource_folder);
+                    if (this.editingData.resource_folder) {
+                        this.fetchResourceFiles(this.editingData.resource_folder);
                     }
                     
                     // 退出皮肤预览模式，显示主图
@@ -1449,23 +1507,22 @@ export default function detailModal() {
             }).then(res => {
                 if (res.success) {
                     // 更新 activeCard 以同步视图
+                    this.editingData.resource_folder = res.resource_folder;
                     this.activeCard.resource_folder = res.resource_folder;
-                    alert("设置成功");
+                    this.fetchResourceFiles(res.resource_folder);
+                    this.$store.global.showToast('📁 资源目录已设置', 1800);
                 } else {
                     alert(res.msg);
                 }
             });
         },
 
-        createResourceFolder() {
-            apiCreateResourceFolder({ card_id: this.editingData.id })
-                .then(res => {
-                    if (res.success) {
-                        this.editingData.resource_folder = res.resource_folder;
-                        this.activeCard.resource_folder = res.resource_folder;
-                        alert("创建成功");
-                    } else alert(res.msg);
-                });
+        async createResourceFolder(options = {}) {
+            try {
+                return await this.ensureResourceFolder(options);
+            } catch (_) {
+                return null;
+            }
         },
 
         sendToST() {

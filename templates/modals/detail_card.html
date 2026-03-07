@@ -1179,61 +1179,6 @@
                                     </div>
                                 </div>
 
-                                <div class="detail-manage-box" style="border-color: var(--accent-light);"
-                                    x-show="currentSkinIndex >= 0">
-                                    <div class="detail-manage-label flex items-center gap-2">
-                                        <span>🖼️ 皮肤换封</span>
-                                        <span
-                                            class="text-[10px] bg-[var(--accent-main)] text-white px-1.5 rounded">Selected</span>
-                                    </div>
-                                    <div class="detail-muted truncate" :title="skinImages[currentSkinIndex]">
-                                        当前选中: <span class="font-mono text-[var(--text-main)]"
-                                            x-text="skinImages[currentSkinIndex]"></span>
-                                    </div>
-
-                                    <div class="detail-manage-actions flex-col items-stretch gap-2">
-                                        <!-- 选项：保留原图 -->
-                                        <label
-                                            class="flex items-center gap-2 cursor-pointer select-none p-1 rounded hover:bg-[var(--bg-sub)] transition-colors border border-transparent hover:border-[var(--border-light)]">
-                                            <input type="checkbox" x-model="saveOldCoverOnSwap"
-                                                class="accent-[var(--accent-main)] w-3.5 h-3.5">
-                                            <span class="text-xs text-[var(--text-dim)]">将当前封面归档至资源目录</span>
-                                        </label>
-
-                                        <!-- 按钮 -->
-                                        <div class="flex gap-2">
-                                            <!-- 设为封面按钮 -->
-                                            <button @click="setSkinAsCover(skinImages[currentSkinIndex])"
-                                                class="btn-secondary flex-1 justify-center font-bold text-[var(--accent-main)] border-[var(--accent-main)] hover:bg-[var(--accent-main)] hover:text-white transition-all shadow-sm">
-                                                ✨ 设为封面
-                                            </button>
-
-                                            <!-- 删除皮肤按钮 (新增) -->
-                                            <button @click="deleteCurrentSkin()"
-                                                class="btn-secondary w-10 flex items-center justify-center text-red-400 border-red-400/50 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all shadow-sm"
-                                                title="删除此皮肤文件">
-                                                🗑️
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- 状态 B: 当未选中皮肤 (Main 或 Bundle Version) 时显示占位 -->
-                                <div class="detail-manage-box opacity-60 grayscale" style="border-style: dashed;"
-                                    x-show="currentSkinIndex === -1">
-                                    <div class="detail-manage-label text-[var(--text-dim)]">皮肤换封</div>
-                                    <div class="detail-muted">
-                                        <span x-show="skinImages.length > 0">请先在左侧列表选择一张皮肤</span>
-                                        <span x-show="skinImages.length === 0">当前无可用皮肤资源</span>
-                                    </div>
-                                    <div class="detail-manage-actions">
-                                        <button disabled
-                                            class="btn-secondary w-full justify-center cursor-not-allowed opacity-50 text-xs">
-                                            🚫 需先选图
-                                        </button>
-                                    </div>
-                                </div>
-
                                 <div class="detail-manage-box">
                                     <div class="detail-manage-label">发送到 SillyTavern</div>
                                     <div class="detail-muted">通过配置的 ST 地址发送当前卡</div>
@@ -1279,58 +1224,49 @@
                     <section x-show="tab==='resources'" x-transition.opacity class="detail-section detail-section-fill">
                         <div class="detail-tab-scroll custom-scrollbar p-4">
 
-                            <!-- 状态 A: 未设置资源目录 -->
-                            <template x-if="!editingData.resource_folder">
-                                <div
-                                    class="flex flex-col items-center justify-center h-64 text-[var(--text-dim)] border-2 border-dashed border-[var(--border-light)] rounded-xl bg-[var(--bg-sub)]">
-                                    <div class="text-4xl mb-2 opacity-50">📂</div>
-                                    <p class="text-sm font-bold">未设置资源目录</p>
-                                    <p class="text-xs mt-1 mb-4 opacity-70">需要先关联一个文件夹才能存放资源</p>
-                                    <button @click="createResourceFolder()"
-                                        class="btn-primary px-4 py-2 rounded shadow-lg">
-                                        ✨ 立即自动创建
-                                    </button>
-                                </div>
-                            </template>
+                            <div class="flex flex-col gap-4 h-full">
 
-                            <!-- 状态 B: 已设置资源目录 -->
-                            <template x-if="editingData.resource_folder">
-                                <div class="flex flex-col gap-4 h-full">
+                                <!-- 1. 拖拽上传区 -->
+                                <div class="relative flex-shrink-0 group transition-all duration-300"
+                                    :class="dragOverResource ? 'bg-blue-500/10 border-blue-500' : 'bg-[var(--bg-sub)] border-[var(--border-light)] hover:border-[var(--accent-main)]'"
+                                    style="border-width: 2px; border-style: dashed; border-radius: 0.75rem; min-height: 8rem; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer;"
+                                    @dragover.prevent="dragOverResource = true"
+                                    @dragleave.prevent="dragOverResource = false"
+                                    @drop.prevent="handleResourceDrop($event)"
+                                    @click="$refs.resourceFileInput.click()">
 
-                                    <!-- 1. 拖拽上传区 -->
-                                    <div class="relative flex-shrink-0 group transition-all duration-300"
-                                        :class="dragOverResource ? 'bg-blue-500/10 border-blue-500' : 'bg-[var(--bg-sub)] border-[var(--border-light)] hover:border-[var(--accent-main)]'"
-                                        style="border-width: 2px; border-style: dashed; border-radius: 0.75rem; min-height: 8rem; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer;"
-                                        @dragover.prevent="dragOverResource = true"
-                                        @dragleave.prevent="dragOverResource = false"
-                                        @drop.prevent="handleResourceDrop($event)"
-                                        @click="$refs.resourceFileInput.click()">
+                                    <input type="file" x-ref="resourceFileInput" multiple style="display: none;"
+                                        @change="handleResourceInputChange($event)">
 
-                                        <input type="file" x-ref="resourceFileInput" multiple style="display: none;"
-                                            @change="handleResourceDrop({dataTransfer: {files: $event.target.files}})">
-
-                                        <div class="flex items-center gap-3 pointer-events-none">
-                                            <div class="text-3xl transition-transform duration-300"
-                                                :class="dragOverResource ? 'scale-110' : 'grayscale opacity-50 group-hover:grayscale-0 group-hover:opacity-100'">
-                                                📥
-                                            </div>
-                                            <div class="text-left">
-                                                <h4 class="font-bold text-sm"
-                                                    :class="dragOverResource ? 'text-blue-400' : 'text-[var(--text-main)]'">
-                                                    点击或拖拽文件上传
-                                                </h4>
-                                                <div class="text-[10px] text-[var(--text-dim)] mt-0.5 leading-tight">
-                                                    <span class="text-green-400">图片</span>(Skins)
-                                                    <span class="text-orange-400">世界书</span>
-                                                    <span class="text-blue-400">正则</span>
-                                                    <span class="text-purple-400">脚本</span>
-                                                    <br>会自动归类到对应文件夹
-                                                </div>
+                                    <div class="flex items-center gap-3 pointer-events-none px-4 py-3">
+                                        <div class="text-3xl transition-transform duration-300"
+                                            :class="dragOverResource ? 'scale-110' : 'grayscale opacity-50 group-hover:grayscale-0 group-hover:opacity-100'">
+                                            📥
+                                        </div>
+                                        <div class="text-left">
+                                            <h4 class="font-bold text-sm"
+                                                :class="dragOverResource ? 'text-blue-400' : 'text-[var(--text-main)]'"
+                                                x-text="editingData.resource_folder ? '点击或拖拽文件上传' : '点击或拖拽导入首个资源'"></h4>
+                                            <div class="text-[10px] text-[var(--text-dim)] mt-0.5 leading-tight">
+                                                <span class="text-green-400">图片</span>(Skins)
+                                                <span class="text-orange-400">世界书</span>
+                                                <span class="text-blue-400">正则</span>
+                                                <span class="text-purple-400">脚本</span>
+                                                <br>
+                                                <span x-show="editingData.resource_folder">会自动归类到对应文件夹</span>
+                                                <span x-show="!editingData.resource_folder">首次导入时会自动创建资源目录并完成归类</span>
                                             </div>
                                         </div>
                                     </div>
+                                </div>
 
-                                    <!-- 2. 资源列表 (左右分栏) -->
+                                <div x-show="!editingData.resource_folder"
+                                    class="rounded-xl border border-dashed border-[var(--border-light)] bg-[var(--bg-sub)]/60 px-4 py-3 text-xs text-[var(--text-dim)]">
+                                    当前还没有资源目录，先把第一个资源拖进来或点上面的导入框即可。创建完成后，下方会自动出现皮肤与其他资源面板。
+                                </div>
+
+                                <!-- 2. 资源列表 (左右分栏，仅目录存在后显示) -->
+                                <template x-if="editingData.resource_folder">
                                     <div class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 gap-4">
 
                                         <!-- 左栏：皮肤 (图片) -->
@@ -1370,6 +1306,52 @@
                                                 <div x-show="skinImages.length === 0"
                                                     class="h-full flex items-center justify-center text-[var(--text-dim)] text-xs italic">
                                                     暂无图片
+                                                </div>
+                                            </div>
+
+                                            <div class="border-t border-[var(--border-light)] p-3 space-y-3 bg-[var(--bg-sub)]/50">
+                                                <div class="flex items-center justify-between gap-2">
+                                                    <div class="text-xs font-bold text-[var(--text-main)]">皮肤换封</div>
+                                                    <span x-show="currentSkinIndex >= 0"
+                                                        class="text-[10px] bg-[var(--accent-main)] text-white px-1.5 py-0.5 rounded">Selected</span>
+                                                </div>
+
+                                                <div class="text-[11px] text-[var(--text-dim)] min-h-[2.5rem] leading-relaxed">
+                                                    <template x-if="currentSkinIndex >= 0">
+                                                        <div class="truncate" :title="skinImages[currentSkinIndex]">
+                                                            当前选中: <span class="font-mono text-[var(--text-main)]"
+                                                                x-text="skinImages[currentSkinIndex]"></span>
+                                                        </div>
+                                                    </template>
+                                                    <template x-if="currentSkinIndex === -1">
+                                                        <div>
+                                                            <span x-show="skinImages.length > 0">请先从上方皮肤列表选择一张图片</span>
+                                                            <span x-show="skinImages.length === 0">导入图片后即可在这里换肤或删除皮肤</span>
+                                                        </div>
+                                                    </template>
+                                                </div>
+
+                                                <label
+                                                    class="flex items-center gap-2 cursor-pointer select-none p-2 rounded border border-transparent hover:bg-[var(--bg-body)] hover:border-[var(--border-light)] transition-colors"
+                                                    :class="currentSkinIndex === -1 ? 'opacity-50 cursor-not-allowed' : ''">
+                                                    <input type="checkbox" x-model="saveOldCoverOnSwap"
+                                                        :disabled="currentSkinIndex === -1"
+                                                        class="accent-[var(--accent-main)] w-3.5 h-3.5">
+                                                    <span class="text-xs text-[var(--text-dim)]">将当前封面归档至资源目录</span>
+                                                </label>
+
+                                                <div class="flex gap-2">
+                                                    <button @click="setSkinAsCover(skinImages[currentSkinIndex])"
+                                                        :disabled="currentSkinIndex === -1"
+                                                        class="btn-secondary flex-1 justify-center font-bold text-[var(--accent-main)] border-[var(--accent-main)] hover:bg-[var(--accent-main)] hover:text-white transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[var(--accent-main)]">
+                                                        ✨ 设为封面
+                                                    </button>
+                                                    <button @click="deleteCurrentSkin()"
+                                                        :disabled="currentSkinIndex === -1"
+                                                        class="btn-secondary w-10 flex items-center justify-center text-red-400 border-red-400/50 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-red-400"
+                                                        title="删除此皮肤文件">
+                                                        🗑️
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1523,8 +1505,8 @@
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </template>
+                                </template>
+                            </div>
                         </div>
                     </section>
                     <div style="height: 1rem;"></div>

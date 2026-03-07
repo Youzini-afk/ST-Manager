@@ -10,16 +10,17 @@ from core.config import (
     CARDS_FOLDER, DATA_DIR, BASE_DIR, 
     load_config, THUMB_FOLDER, TRASH_FOLDER
 )
+from core.consts import RESERVED_RESOURCE_NAMES
 from core.context import ctx
 
 # === 工具函数 ===
 from core.utils.image import (
-    find_sidecar_image, get_default_card_image_path
+    extract_card_info, find_sidecar_image, get_default_card_image_path
 )
 from core.utils.filesystem import safe_move_to_trash, sanitize_filename, save_json_atomic
 
 from core.services.card_service import resolve_ui_key
-from core.data.ui_store import load_ui_data
+from core.data.ui_store import load_ui_data, save_ui_data
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,61 @@ def _is_safe_filename(name: str) -> bool:
     if '..' in name.replace('\\', '/'):
         return False
     return True
+
+def _get_resource_root() -> str:
+    """返回资源根目录绝对路径。"""
+    cfg = load_config()
+    res_dir_conf = cfg.get('resources_dir', 'data/assets/card_assets')
+    return res_dir_conf if os.path.isabs(res_dir_conf) else os.path.join(BASE_DIR, res_dir_conf)
+
+def _build_unique_resource_folder_name(resource_root: str, preferred_name: str) -> str:
+    """基于角色名生成安全且不重名的资源目录名。"""
+    base_name = sanitize_filename(preferred_name or 'untitled').strip() or 'untitled'
+    if base_name.lower() in RESERVED_RESOURCE_NAMES:
+        base_name = f'card_{base_name}'
+
+    candidate = base_name
+    counter = 1
+    while os.path.exists(os.path.join(resource_root, candidate)):
+        candidate = f'{base_name}_{counter}'
+        counter += 1
+    return candidate
+
+def _ensure_card_resource_folder(card_id: str):
+    """确保角色卡已绑定资源目录；若未绑定则自动创建。"""
+    ui_data = load_ui_data()
+    ui_key = resolve_ui_key(card_id)
+    existing_folder = ui_data.get(ui_key, {}).get('resource_folder')
+    if existing_folder:
+        return existing_folder, False, None
+
+    card_path = os.path.join(CARDS_FOLDER, card_id.replace('/', os.sep))
+    info = extract_card_info(card_path)
+    if not info:
+        return None, False, '未找到角色卡，无法自动创建资源目录'
+
+    data_block = info.get('data', {}) if isinstance(info.get('data'), dict) else info
+    char_name = (
+        info.get('name')
+        or data_block.get('name')
+        or os.path.splitext(os.path.basename(card_path))[0]
+    )
+
+    resource_root = _get_resource_root()
+    os.makedirs(resource_root, exist_ok=True)
+
+    resource_folder_name = _build_unique_resource_folder_name(resource_root, char_name)
+    os.makedirs(os.path.join(resource_root, resource_folder_name), exist_ok=True)
+
+    if ui_key not in ui_data:
+        ui_data[ui_key] = {}
+    ui_data[ui_key]['resource_folder'] = resource_folder_name
+    save_ui_data(ui_data)
+
+    target_id = ctx.cache.bundle_map.get(ui_key, card_id) if ui_key in ctx.cache.bundle_map else card_id
+    ctx.cache.update_card_data(target_id, {'resource_folder': resource_folder_name})
+
+    return resource_folder_name, True, None
 
 @bp.route('/cards_file/<path:filename>')
 def serve_card_image(filename):
@@ -197,8 +253,7 @@ def api_delete_resource_file():
         if not res_folder_name:
             return jsonify({"success": False, "msg": "该卡片未设置资源目录"})
 
-        cfg = load_config()
-        res_root = os.path.join(BASE_DIR, cfg.get('resources_dir', 'data/assets/card_assets'))
+        res_root = _get_resource_root()
         
         # 确定完整路径
         if os.path.isabs(res_folder_name):
@@ -238,16 +293,12 @@ def api_upload_card_resource():
         if not card_id or not file:
             return jsonify({"success": False, "msg": "参数缺失"})
 
-        # 1. 获取资源目录路径
-        ui_data = load_ui_data()
-        ui_key = resolve_ui_key(card_id)
-        res_folder_name = ui_data.get(ui_key, {}).get('resource_folder')
-        
+        # 1. 获取或自动创建资源目录
+        res_folder_name, folder_created, error_msg = _ensure_card_resource_folder(card_id)
         if not res_folder_name:
-            return jsonify({"success": False, "msg": "该卡片尚未设置资源目录，请先在'管理'页创建。"})
+            return jsonify({"success": False, "msg": error_msg or "资源目录创建失败"})
 
-        cfg = load_config()
-        res_root = os.path.join(BASE_DIR, cfg.get('resources_dir', 'data/assets/card_assets'))
+        res_root = _get_resource_root()
         
         # 处理绝对路径/相对路径
         if os.path.isabs(res_folder_name):
@@ -330,7 +381,9 @@ def api_upload_card_resource():
             "filename": os.path.basename(save_path),
             "is_lorebook": is_lorebook,
             "is_preset": is_preset,
-            "category": sub_dir
+            "category": sub_dir,
+            "resource_folder": res_folder_name,
+            "resource_folder_created": folder_created
         })
 
     except Exception as e:
@@ -394,9 +447,8 @@ def api_list_resource_files():
         if not folder_name:
             return jsonify({"success": False, "msg": "folder_name is required"})
 
-        cfg = load_config()
         # 资源根目录
-        res_root = os.path.join(BASE_DIR, cfg.get('resources_dir', 'data/assets/card_assets'))
+        res_root = _get_resource_root()
         
         # 目标资源目录 (支持绝对路径或相对路径)
         if os.path.isabs(folder_name):

@@ -29,7 +29,7 @@ from core.services.st_client import refresh_st_client
 
 # === 工具函数 ===
 from core.utils.filesystem import (
-    cleanup_old_snapshots, write_snapshot_file
+    cleanup_old_snapshots, sanitize_filename, write_snapshot_file
 )
 from core.utils.image import extract_card_info, write_card_metadata, find_sidecar_image
 
@@ -52,7 +52,7 @@ def _resolve_allowed_roots():
     raw_wi = cfg.get('world_info_dir', 'lorebooks')
     wi_root = raw_wi if os.path.isabs(raw_wi) else os.path.join(BASE_DIR, raw_wi)
 
-    raw_res = cfg.get('resources_dir', 'resources')
+    raw_res = cfg.get('resources_dir', 'data/assets/card_assets')
     res_root = raw_res if os.path.isabs(raw_res) else os.path.join(BASE_DIR, raw_res)
 
     roots = [
@@ -106,7 +106,7 @@ def _is_valid_lorebook_path(path: str) -> bool:
     raw_wi = cfg.get('world_info_dir', 'lorebooks')
     wi_root = raw_wi if os.path.isabs(raw_wi) else os.path.join(BASE_DIR, raw_wi)
 
-    raw_res = cfg.get('resources_dir', 'resources')
+    raw_res = cfg.get('resources_dir', 'data/assets/card_assets')
     res_root = raw_res if os.path.isabs(raw_res) else os.path.join(BASE_DIR, raw_res)
 
     if _is_under_base(path, wi_root):
@@ -146,8 +146,8 @@ def api_save_settings():
                 return jsonify({"success": False, "msg": f"路径不存在且无法创建: {str(e)}"})
 
         # 处理资源目录配置
-        resources_dir = new_config.get('resources_dir', 'resources')
-        resources_path = os.path.join(BASE_DIR, resources_dir)
+        resources_dir = new_config.get('resources_dir', 'data/assets/card_assets')
+        resources_path = resources_dir if os.path.isabs(resources_dir) else os.path.join(BASE_DIR, resources_dir)
         if not os.path.exists(resources_path):
             try:
                 os.makedirs(resources_path)
@@ -413,7 +413,8 @@ def api_smart_auto_snapshot():
 
         # 2. 确定备份目录 (复用之前的逻辑)
         cfg = load_config()
-        res_base = os.path.join(BASE_DIR, cfg.get('resources_dir', 'resources'))
+        raw_res = cfg.get('resources_dir', 'data/assets/card_assets')
+        res_base = raw_res if os.path.isabs(raw_res) else os.path.join(BASE_DIR, raw_res)
         backups_root = ""
         filename = ""
         
@@ -801,15 +802,27 @@ def api_create_resource_folder():
         card_id = data.get('card_id')
         if not card_id:
             return jsonify({"success": False, "msg": "角色卡ID缺失"})
-        
+
+        ui_data = load_ui_data()
+        key = resolve_ui_key(card_id)
+        existing_folder = ui_data.get(key, {}).get('resource_folder')
+
         # 获取资源目录配置
         config = load_config()
-        resources_dir_name = config.get('resources_dir', 'resources')
-        resources_dir = os.path.join(BASE_DIR, resources_dir_name)
+        resources_dir_name = config.get('resources_dir', 'data/assets/card_assets')
+        resources_dir = resources_dir_name if os.path.isabs(resources_dir_name) else os.path.join(BASE_DIR, resources_dir_name)
         
         # 确保资源目录存在
         if not os.path.exists(resources_dir):
             os.makedirs(resources_dir)
+
+        if existing_folder:
+            resource_path = existing_folder if os.path.isabs(existing_folder) else os.path.join(resources_dir, existing_folder)
+            return jsonify({
+                "success": True,
+                "resource_folder": existing_folder,
+                "resource_path": resource_path
+            })
         
         # 获取角色卡信息
         card_path = os.path.join(CARDS_FOLDER, card_id.replace('/', os.sep))
@@ -822,14 +835,16 @@ def api_create_resource_folder():
         char_name = info.get('name') or data_block.get('name') or os.path.splitext(os.path.basename(card_path))[0]
         
         # 创建资源目录（与角色卡同名）
-        resource_folder_name = char_name
+        resource_folder_name = sanitize_filename(char_name or 'untitled').strip() or 'untitled'
+        if resource_folder_name.lower() in RESERVED_RESOURCE_NAMES:
+            resource_folder_name = f"card_{resource_folder_name}"
         resource_folder_path = os.path.join(resources_dir, resource_folder_name)
         
         # 处理重名情况
         counter = 1
-        original_path = resource_folder_path
+        base_folder_name = resource_folder_name
         while os.path.exists(resource_folder_path):
-            resource_folder_name = f"{char_name}_{counter}"
+            resource_folder_name = sanitize_filename(f"{base_folder_name}_{counter}").strip() or f"untitled_{counter}"
             resource_folder_path = os.path.join(resources_dir, resource_folder_name)
             counter += 1
         
@@ -837,9 +852,6 @@ def api_create_resource_folder():
         os.makedirs(resource_folder_path)
         
         # 更新ui_data
-        ui_data = load_ui_data()
-        key = resolve_ui_key(card_id) # 使用智能 Key 解析
-
         if key not in ui_data:
             ui_data[key] = {}
         ui_data[key]['resource_folder'] = resource_folder_name
@@ -877,8 +889,8 @@ def api_set_resource_folder():
         
         # 获取资源目录配置
         config = load_config()
-        resources_dir_name = config.get('resources_dir', 'resources')
-        resources_dir = os.path.join(BASE_DIR, resources_dir_name)
+        resources_dir_name = config.get('resources_dir', 'data/assets/card_assets')
+        resources_dir = resources_dir_name if os.path.isabs(resources_dir_name) else os.path.join(BASE_DIR, resources_dir_name)
         
         # 确保资源目录存在
         if not os.path.exists(resources_dir):
@@ -888,15 +900,15 @@ def api_set_resource_folder():
         if os.path.isabs(resource_path):
             # 绝对路径，直接使用
             final_path = resource_path
-            resource_folder_name = os.path.basename(resource_path)
+            resource_folder_name = resource_path
+            check_name = os.path.basename(os.path.normpath(resource_path))
         else:
             # 相对路径，相对于resources目录
             final_path = os.path.join(resources_dir, resource_path)
             resource_folder_name = resource_path
+            check_name = resource_path.replace('\\', '/').split('/')[0]
         
         # 检查保留字
-        # 统一取第一层目录名进行检查
-        check_name = resource_path.replace('\\', '/').split('/')[0] if 'resource_path' in locals() else resource_folder_name
         if check_name.lower() in RESERVED_RESOURCE_NAMES:
             return jsonify({"success": False, "msg": f"无法使用 '{check_name}' 作为资源目录，这是系统保留名称。"})
 
@@ -939,8 +951,8 @@ def api_open_resource_folder():
         
         # 获取资源目录配置
         config = load_config()
-        resources_dir_name = config.get('resources_dir', 'resources')
-        resources_dir = os.path.join(BASE_DIR, resources_dir_name)
+        resources_dir_name = config.get('resources_dir', 'data/assets/card_assets')
+        resources_dir = resources_dir_name if os.path.isabs(resources_dir_name) else os.path.join(BASE_DIR, resources_dir_name)
         
         # 获取角色卡资源目录
         ui_data = load_ui_data()
@@ -1112,7 +1124,8 @@ def api_list_resource_skins():
 
         # 获取配置的资源根目录
         cfg = load_config()
-        res_base = os.path.join(BASE_DIR, cfg.get('resources_dir', 'resources'))
+        raw_res = cfg.get('resources_dir', 'data/assets/card_assets')
+        res_base = raw_res if os.path.isabs(raw_res) else os.path.join(BASE_DIR, raw_res)
         target_dir = os.path.join(res_base, folder_name)
 
         if not os.path.exists(target_dir):
