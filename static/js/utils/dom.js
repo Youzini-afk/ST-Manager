@@ -1,11 +1,39 @@
 /**
  * static/js/utils/dom.js
- * DOM 操作与渲染工具 (修复版)
+ * DOM 操作与渲染工具
  */
 
-import { clearIsolatedHtml, renderIsolatedHtml } from '../runtime/renderRuntime.js';
-
 const htmlComponentRenderCache = new WeakMap();
+let renderRuntimeModule = null;
+let renderRuntimeModulePromise = null;
+
+function loadRenderRuntimeModule() {
+    if (renderRuntimeModule) {
+        return Promise.resolve(renderRuntimeModule);
+    }
+
+    if (!renderRuntimeModulePromise) {
+        renderRuntimeModulePromise = import('../runtime/renderRuntime.js')
+            .then((module) => {
+                renderRuntimeModule = module;
+                return module;
+            })
+            .catch((error) => {
+                renderRuntimeModulePromise = null;
+                console.warn('Failed to load render runtime module:', error);
+                throw error;
+            });
+    }
+
+    return renderRuntimeModulePromise;
+}
+
+export function clearInlineIsolatedHtml(el, options = {}) {
+    if (!el || !renderRuntimeModule?.clearIsolatedHtml) {
+        return;
+    }
+    renderRuntimeModule.clearIsolatedHtml(el, options);
+}
 
 function buildHtmlComponentSignature(content, options = {}) {
     return JSON.stringify({
@@ -76,7 +104,7 @@ export function updateInlineRenderContent(el, content, options = {}) {
 
     if (!trimmed) {
         htmlComponentRenderCache.delete(el);
-        clearIsolatedHtml(el);
+        clearInlineIsolatedHtml(el);
         if (el.shadowRoot) {
             el.shadowRoot.innerHTML = `<div>${emptyHtml}</div>`;
         } else {
@@ -99,7 +127,7 @@ export function updateInlineRenderContent(el, content, options = {}) {
     }
 
     htmlComponentRenderCache.delete(el);
-    clearIsolatedHtml(el);
+    clearInlineIsolatedHtml(el);
 
     const rendered = mode === 'markdown'
         ? renderMarkdown(rawContent)
@@ -140,23 +168,20 @@ export function updateInlineRenderContent(el, content, options = {}) {
     el.innerHTML = rendered;
 }
 
-// === [核心修复] 智能渲染内容 ===
 export function updateShadowContent(el, content, options = {}) {
-    // 确保 Shadow Root 存在
     if (!el.shadowRoot) {
         el.attachShadow({ mode: 'open' });
     }
 
     const shadow = el.shadowRoot;
     const minHeight = Number.parseInt(options.minHeight, 10);
-    const hostMinHeight = Number.isFinite(minHeight) ? `${Math.max(160, minHeight)}px` : '240px';
+    const hostMinHeight = Number.isFinite(minHeight) ? `${Math.max(0, minHeight)}px` : '0px';
     const maxHeight = Number.parseInt(options.maxHeight, 10);
-    const hostMaxHeight = Number.isFinite(maxHeight) ? `${Math.max(220, maxHeight)}px` : '560px';
+    const hostMaxHeight = Number.isFinite(maxHeight) ? `${Math.max(0, maxHeight)}px` : 'none';
 
-    // 修复问题1：如果内容为空或为null（即关闭预览时），清空并返回
     if (content === null || content === undefined) {
         htmlComponentRenderCache.delete(el);
-        clearIsolatedHtml(el);
+        clearInlineIsolatedHtml(el);
         shadow.innerHTML = '';
         return;
     }
@@ -164,39 +189,26 @@ export function updateShadowContent(el, content, options = {}) {
     let rawContent = content || "";
     const trimmedContent = rawContent.trim();
 
-    // ============================================================
-    // 0. HTML 片段智能前置检测
-    // ============================================================
-    // 如果内容显然是一个 HTML 组件代码块（以 < 开头，且包含特定标签），
-    // 强制绕过 Markdown 解析，防止 parser 将缩进的 <style> 识别为代码块。
     const htmlFragmentRegex = /^\s*<(?:div|style|details|section|article|main|link|table|script|iframe|svg|html|body|head|canvas)/i;
     let forceHtmlMode = false;
 
-    // 如果是以 < 开头，并且不是 Markdown 的引用块 (>) 或 HTML 实体 (&)
     if (htmlFragmentRegex.test(trimmedContent)) {
         forceHtmlMode = true;
     }
 
-    // ============================================================
-    // 1. 智能提取逻辑 (多块识别增强版)
-    // ============================================================
-
     let htmlPayload = "";
     let markdownCommentary = "";
 
-    // 正则：循环查找有效代码块
     const codeBlockRegex = /```(?:html|xml|text|js|css|json)?\s*([\s\S]*?)```/gi;
     let match;
     let foundPayload = false;
 
     while ((match = codeBlockRegex.exec(rawContent)) !== null) {
         const blockContent = match[1];
-        // 特征识别：如果是HTML结构
         if (blockContent.includes('<!DOCTYPE') ||
             blockContent.includes('<html') ||
             blockContent.includes('<script') ||
             blockContent.includes('export default') ||
-            // 新增：识别复杂的 div/style 结构
             (blockContent.includes('<div') && blockContent.includes('<style'))) {
 
             htmlPayload = blockContent;
@@ -206,9 +218,7 @@ export function updateShadowContent(el, content, options = {}) {
         }
     }
 
-    // 兜底逻辑：如果没找到代码块标记，尝试直接识别
     if (!foundPayload) {
-        // 如果命中了强制 HTML 模式，或者是完整网页结构
         if (forceHtmlMode || rawContent.includes('<!DOCTYPE') || rawContent.includes('<html') || rawContent.includes('<script')) {
             htmlPayload = rawContent;
             markdownCommentary = "";
@@ -217,17 +227,11 @@ export function updateShadowContent(el, content, options = {}) {
         }
     }
 
-    // 清理 ST 的特殊标签
     markdownCommentary = markdownCommentary.replace(/<open>|<\/open>/gi, "").trim();
-
-    // ============================================================
-    // 2. 渲染逻辑 (布局与样式隔离)
-    // ============================================================
 
     const hasPayload = !!htmlPayload;
 
     if (hasPayload) {
-        // --- 2.2 准备 Markdown 内容 ---
         let renderedMd = "";
         if (markdownCommentary) {
             const looksLikeTrustedHtml = /^\s*<(?:[a-z][\w:-]*|!doctype|!--)/i.test(markdownCommentary);
@@ -239,19 +243,24 @@ export function updateShadowContent(el, content, options = {}) {
                 renderedMd = `<p>${markdownCommentary.replace(/\n/g, "<br>")}</p>`;
             }
         }
-        renderIsolatedHtml(el, {
-            htmlPayload,
-            noteHtml: renderedMd,
-            minHeight: Number.parseInt(options.minHeight, 10),
-            maxHeight: Number.parseInt(options.maxHeight, 10),
-            assetBase: options.assetBase || '',
-        });
+        loadRenderRuntimeModule()
+            .then((module) => {
+                module.renderIsolatedHtml(el, {
+                    htmlPayload,
+                    noteHtml: renderedMd,
+                    minHeight: Number.parseInt(options.minHeight, 10),
+                    maxHeight: Number.parseInt(options.maxHeight, 10),
+                    assetBase: options.assetBase || '',
+                });
+            })
+            .catch(() => {
+                shadow.innerHTML = `<div class="scroll-wrapper markdown-body">运行时模块加载失败，无法渲染 HTML 预览。</div>`;
+            });
         return;
     }
 
-    clearIsolatedHtml(el);
+    clearInlineIsolatedHtml(el);
 
-    // 3. 纯文本 Markdown 模式 (保持上下滚动)
     const style = `
                 <style>
                     :host {
@@ -259,7 +268,7 @@ export function updateShadowContent(el, content, options = {}) {
                         min-height: ${hostMinHeight};
                         max-height: ${hostMaxHeight};
                         width: 100%;
-                        overflow: hidden;
+                        overflow: visible;
                         background-color: transparent;
                         color: var(--text-main, #e5e7eb);
                         font-family: ui-sans-serif, system-ui, sans-serif;
@@ -270,7 +279,7 @@ export function updateShadowContent(el, content, options = {}) {
                         min-height: ${hostMinHeight};
                         max-height: ${hostMaxHeight};
                         width: 100%;
-                        overflow-y: auto;
+                        overflow: visible;
                         padding: 1rem;
                         box-sizing: border-box;
                     }

@@ -58,7 +58,17 @@ export default function largeEditor() {
             });
         },
 
+        ensurePreviewState() {
+            if (typeof this.markdownPreview !== 'boolean') {
+                this.markdownPreview = false;
+            }
+            if (!this.largeRenderMode) {
+                this.largeRenderMode = 'markdown';
+            }
+        },
+
         openLargeEditor(field, title, isArray = false, index = 0, editingData) {
+            this.ensurePreviewState();
             this.largeEditorTitle = title;
             this.largeEditorField = field;
             this.largeEditorIsArray = isArray;
@@ -147,6 +157,7 @@ export default function largeEditor() {
         // === 预览功能 ===
 
         openMarkdownView(content) {
+            this.ensurePreviewState();
             if (!content) return;
             this.markdownModalContent = content;
             this.showMarkdownModal = true;

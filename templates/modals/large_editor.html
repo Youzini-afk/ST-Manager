@@ -1,5 +1,5 @@
 <!-- 大编辑器 -->
-<div x-show="showLargeEditor" x-cloak class="modal-overlay z-modal-popover" @click.stop>
+<div x-show="showLargeEditor" x-cloak class="modal-overlay z-modal-popover" x-init="ensurePreviewState()" @click.stop>
     <div class="modal-container large-editor-container" style="width: 1000px; height: 90vh; max-width: 95vw;"
         @click.away="saveLargeEditor()">
         <!-- 顶部栏 -->

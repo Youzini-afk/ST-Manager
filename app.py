@@ -1,5 +1,11 @@
 import sys
 import os
+
+# 显示将当前工作目录添加到系统路径中
+base_path = os.path.dirname(os.path.abspath(__file__))
+if base_path not in sys.path:
+    sys.path.insert(0, base_path)
+
 import threading
 import webbrowser
 import platform

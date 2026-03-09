@@ -120,7 +120,7 @@
                         <button class="chat-toolbar-btn" :class="readerRenderMode === 'markdown' ? 'chat-toolbar-btn--primary' : ''" @click="readerRenderMode = 'markdown'">渲染</button>
                         <label class="chat-inline-checkbox">
                             <input type="checkbox" x-model="readerComponentMode">
-                            <span>前端组件</span>
+                            <span>后挂载实例</span>
                         </label>
                         <button class="chat-toolbar-btn" @click="openRegexConfig()">解析规则</button>
                         <button class="chat-toolbar-btn" @click="readerViewSettingsOpen = true">显示策略</button>
@@ -199,31 +199,7 @@
                                 <template x-if="message.is_full_display">
                                     <div>
                                         <template x-if="message.should_render_full">
-                                            <div>
-                                                <div class="chat-message-segment-stack">
-                                                    <template x-for="(segment, segmentIndex) in (message.render_segments || [])" :key="message.floor + '-' + segment.kind + '-' + segmentIndex">
-                                                        <div class="chat-message-segment" :class="segment.kind === 'content' ? 'is-content' : 'is-sideblock'">
-                                                            <div x-show="segment.title" class="chat-message-sideblock-title" x-text="segment.title"></div>
-
-                                                            <template x-if="segment.type === 'text'">
-                                                                <div class="chat-message-segment-parts" x-effect="mountMessageSegment($el, message, segment)"></div>
-                                                            </template>
-
-                                                            <template x-if="segment.type === 'choices'">
-                                                                <div class="chat-choice-list">
-                                                                    <template x-for="choice in (segment.choices || [])" :key="choice.text + choice.desc">
-                                                                        <div class="chat-choice-item">
-                                                                            <strong x-text="choice.text"></strong>
-                                                                            <div class="chat-message-segment-parts"
-                                                                                x-effect="mountMessageSegment($el, message, { kind: 'choice', title: '', parts: choice.parts || [] })"></div>
-                                                                        </div>
-                                                                    </template>
-                                                                </div>
-                                                            </template>
-                                                        </div>
-                                                    </template>
-                                                </div>
-                                            </div>
+                                            <div class="chat-message-content markdown-body" :class="'st-reader-floor-' + message.floor" x-html="renderMessageDisplayHtml(message)" x-effect="mountMessageDisplay($el, message)"></div>
                                         </template>
 
                                         <template x-if="!message.should_render_full">
@@ -442,13 +418,7 @@
                     <textarea x-model="regexTestInput" class="form-textarea chat-reader-floor-editor chat-reader-floor-editor--raw" style="min-height: 14rem;" placeholder="贴一段原始消息文本，实时查看当前规则的显示效果"></textarea>
                     <div class="chat-reader-sideblock-card">
                         <div class="chat-message-sideblock-title">渲染预览</div>
-                        <div class="chat-message-segment-stack">
-                            <template x-for="(segment, segmentIndex) in (regexTestPreview.render_segments || [])" :key="'regex-preview-' + segmentIndex">
-                                <div class="chat-message-segment" :class="segment.kind === 'content' ? 'is-content' : 'is-sideblock'">
-                                    <div class="chat-message-segment-parts" x-effect="mountMessageSegment($el, regexTestPreview, segment)"></div>
-                                </div>
-                            </template>
-                        </div>
+                        <div class="chat-message-content markdown-body st-reader-floor-0" x-html="renderMessageDisplayHtml(regexTestPreview)" x-effect="mountMessageDisplay($el, regexTestPreview)"></div>
                     </div>
                 </div>
             </div>
@@ -485,8 +455,8 @@
                     <button class="chat-toolbar-btn" :class="editingMessagePreviewMode === 'parsed' ? 'chat-toolbar-btn--primary' : ''" @click="editingMessagePreviewMode = 'parsed'">解析预览</button>
                 </div>
                 <textarea x-model="editingMessageRawDraft" class="form-textarea chat-reader-floor-editor chat-reader-floor-editor--raw"></textarea>
-                <div x-show="editingMessagePreviewMode === 'source'" class="chat-reader-floor-preview markdown-body" x-effect="mountReaderRender($el, editingMessageSourcePreview)"></div>
-                <div x-show="editingMessagePreviewMode === 'parsed'" class="chat-reader-floor-preview markdown-body" x-effect="mountReaderRender($el, editingMessageParsedPreview)"></div>
+                <div x-show="editingMessagePreviewMode === 'source'" class="chat-reader-floor-preview markdown-body st-reader-floor-edit-source" x-html="editingMessageSourcePreviewHtml"></div>
+                <div x-show="editingMessagePreviewMode === 'parsed'" class="chat-reader-floor-preview markdown-body st-reader-floor-edit-preview" x-html="editingMessageParsedPreviewHtml"></div>
                 <div class="chat-reader-floor-diff">
                     <div class="chat-reader-panel-title">改动对比</div>
                     <div class="chat-diff-table" x-html="editingMessageDiffHtml"></div>

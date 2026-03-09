@@ -1,5 +1,5 @@
 <!-- HTML 大屏预览模态框 -->
-<div x-show="showLargePreview" x-cloak class="modal-overlay z-modal-popover" @click.self="showLargePreview=false">
+<div x-show="showLargePreview" x-cloak class="modal-overlay z-modal-popover" x-init="ensurePreviewState()" @click.self="showLargePreview=false">
     <div class="modal-container"
         style="width: 1000px; height: 90vh; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border-light); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8);">
 

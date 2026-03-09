@@ -16,9 +16,8 @@ import { getCardDetail, listCards } from '../api/card.js';
 import { openPath } from '../api/system.js';
 import { formatDate } from '../utils/format.js';
 import { ChatAppStage } from '../runtime/chatAppStage.js';
-import { clearIsolatedHtml } from '../runtime/renderRuntime.js';
-import { destroyMessageSegmentHost } from '../runtime/messageSegmentRenderer.js';
-import { renderMarkdown, updateInlineRenderContent } from '../utils/dom.js';
+import { renderMarkdown, updateInlineRenderContent, clearInlineIsolatedHtml } from '../utils/dom.js';
+import { formatScopedDisplayedHtml } from '../utils/stDisplayFormatter.js';
 import { clearActiveRuntimeContext, setActiveRuntimeContext } from '../runtime/runtimeContext.js';
 
 
@@ -27,36 +26,12 @@ const CHAT_READER_VIEW_SETTINGS_KEY = 'st_manager.chat_reader.view_settings.v1';
 const CHAT_READER_RENDER_PREFS_KEY = 'st_manager.chat_reader.render_prefs.v1';
 
 const DEFAULT_CHAT_READER_REGEX_CONFIG = {
-    userInputPattern: '<本轮用户输入>\\s*([\\s\\S]*?)\\s*</本轮用户输入>',
-    recallPattern: '<recall>([\\s\\S]*?)</recall>',
-    thinkingPattern: '\\[metacognition\\]([\\s\\S]*?)(?=\\n<content>|$)',
-    contentPattern: '<content>([\\s\\S]*?)</content>',
-    summaryPattern: '<details>\\s*<summary>\\s*小总结\\s*</summary>([\\s\\S]*?)</details>',
-    choicePattern: '<choice>([\\s\\S]*?)</choice>',
-    timeBarPattern: '```([^`·]+·[^`]+)```',
     displayRules: [],
 };
 
 const EMPTY_CHAT_READER_REGEX_CONFIG = {
-    userInputPattern: '',
-    recallPattern: '',
-    thinkingPattern: '',
-    contentPattern: '',
-    summaryPattern: '',
-    choicePattern: '',
-    timeBarPattern: '',
     displayRules: [],
 };
-
-const CHAT_READER_REGEX_FIELDS = [
-    'userInputPattern',
-    'recallPattern',
-    'thinkingPattern',
-    'contentPattern',
-    'summaryPattern',
-    'choicePattern',
-    'timeBarPattern',
-];
 
 const REGEX_RULE_SOURCE_META = {
     draft: { label: '当前草稿', order: 0, tone: 'accent' },
@@ -108,6 +83,16 @@ function normalizeDisplayRule(rule, index = 0) {
         expanded: Boolean(source.expanded),
     };
 }
+
+
+const READER_REGEX_PLACEMENT = {
+    MD_DISPLAY: 0,
+    USER_INPUT: 1,
+    AI_OUTPUT: 2,
+    SLASH_COMMAND: 3,
+    WORLD_INFO: 5,
+    REASONING: 9,
+};
 
 
 function buildDisplayRuleKey(rule) {
@@ -197,43 +182,14 @@ function filterReaderDisplayRules(rules) {
 }
 
 
-function canMapRuleToReaderField(rule) {
-    if (!rule || typeof rule !== 'object') return false;
-    return !String(rule.replaceString || '').trim();
-}
-
-
 function convertRulesToReaderConfig(rules, currentConfig, options = {}) {
     const fillDefaults = options.fillDefaults !== false;
     const nextConfig = normalizeRegexConfig(currentConfig, { fillDefaults });
     const displayRules = [];
     const displayCandidates = filterReaderDisplayRules(rules);
-    const claimedFields = new Set();
     const sourceTag = options.source || 'draft';
 
-    const fieldMappings = [
-        { field: 'thinkingPattern', keywords: ['思维链', 'think', 'meow', 'metacognition', '内心', '思考', 'cognition', 'inner'] },
-        { field: 'summaryPattern', keywords: ['小总结', 'summary', '摘要', '总结'] },
-        { field: 'userInputPattern', keywords: ['用户输入', 'user.?input', '本轮用户'] },
-        { field: 'timeBarPattern', keywords: ['时间', 'time', 'timebar', '状态栏', '地点'] },
-        { field: 'recallPattern', keywords: ['recall', '记忆', '召回', '回忆'] },
-        { field: 'contentPattern', keywords: ['content', '正文', '内容'] },
-        { field: 'choicePattern', keywords: ['choice', '选项', 'option', '选择'] },
-    ];
-
     displayCandidates.forEach((rule) => {
-        const haystack = `${rule.scriptName} ${rule.findRegex}`.toLowerCase();
-        const mapping = fieldMappings.find((item) => item.keywords.some((keyword) => new RegExp(keyword, 'i').test(haystack)));
-        if (mapping && canMapRuleToReaderField(rule) && !claimedFields.has(mapping.field)) {
-            const currentValue = String(nextConfig[mapping.field] || '').trim();
-            const defaultValue = fillDefaults ? String(DEFAULT_CHAT_READER_REGEX_CONFIG[mapping.field] || '').trim() : '';
-            if (!currentValue || currentValue === defaultValue) {
-                nextConfig[mapping.field] = rule.findRegex;
-                claimedFields.add(mapping.field);
-                return;
-            }
-        }
-
         displayRules.push(normalizeDisplayRule({
             scriptName: rule.scriptName,
             findRegex: rule.findRegex,
@@ -260,13 +216,6 @@ function normalizeRegexConfig(raw, options = {}) {
         : DEFAULT_CHAT_READER_REGEX_CONFIG;
 
     return {
-        userInputPattern: String(source.userInputPattern ?? fallback.userInputPattern),
-        recallPattern: String(source.recallPattern ?? fallback.recallPattern),
-        thinkingPattern: String(source.thinkingPattern ?? fallback.thinkingPattern),
-        contentPattern: String(source.contentPattern ?? fallback.contentPattern),
-        summaryPattern: String(source.summaryPattern ?? fallback.summaryPattern),
-        choicePattern: String(source.choicePattern ?? fallback.choicePattern),
-        timeBarPattern: String(source.timeBarPattern ?? fallback.timeBarPattern),
         displayRules: Array.isArray(source.displayRules)
             ? source.displayRules.map((item, index) => normalizeDisplayRule(item, index)).filter(item => item.findRegex)
             : [],
@@ -279,13 +228,6 @@ function mergeRegexConfigs(baseConfig, overrideConfig) {
     const override = normalizeRegexConfig(overrideConfig, { fillDefaults: false });
 
     const next = {
-        userInputPattern: override.userInputPattern || base.userInputPattern,
-        recallPattern: override.recallPattern || base.recallPattern,
-        thinkingPattern: override.thinkingPattern || base.thinkingPattern,
-        contentPattern: override.contentPattern || base.contentPattern,
-        summaryPattern: override.summaryPattern || base.summaryPattern,
-        choicePattern: override.choicePattern || base.choicePattern,
-        timeBarPattern: override.timeBarPattern || base.timeBarPattern,
         displayRules: [],
     };
 
@@ -316,8 +258,7 @@ function mergeRegexConfigs(baseConfig, overrideConfig) {
 
 function hasCustomRegexConfig(config) {
     const normalized = normalizeRegexConfig(config, { fillDefaults: false });
-    return CHAT_READER_REGEX_FIELDS.some((field) => String(normalized[field] || '').trim())
-        || normalized.displayRules.length > 0;
+    return normalized.displayRules.length > 0;
 }
 
 
@@ -622,11 +563,13 @@ function applyDisplayRules(text, config) {
     let content = String(text || '');
     const rules = Array.isArray(config?.displayRules) ? config.displayRules : [];
     const options = arguments[2] && typeof arguments[2] === 'object' ? arguments[2] : {};
-    const placement = Number(options.placement ?? 2);
+    const placement = Number(options.placement ?? READER_REGEX_PLACEMENT.AI_OUTPUT);
     const isMarkdown = options.isMarkdown !== false;
     const isPrompt = options.isPrompt === true;
     const isEdit = options.isEdit === true;
+    const readerDisplayRules = options.readerDisplayRules === true;
     const macroContext = options.macroContext && typeof options.macroContext === 'object' ? options.macroContext : {};
+    const depth = typeof options.depth === 'number' ? options.depth : null;
 
     const filterTrimStrings = (value, trimStrings = []) => {
         let output = String(value ?? '');
@@ -641,9 +584,21 @@ function applyDisplayRules(text, config) {
     for (const rule of rules) {
         if (!rule || rule.disabled || !rule.findRegex) continue;
         if (rule.promptOnly && !isPrompt) continue;
-        if (rule.markdownOnly && !isMarkdown) continue;
+        if (!readerDisplayRules) {
+            if ((rule.markdownOnly && isMarkdown)
+                || (rule.promptOnly && isPrompt)
+                || (!rule.markdownOnly && !rule.promptOnly && !isMarkdown && !isPrompt)) {
+                // allowed
+            } else {
+                continue;
+            }
+        }
         if (isEdit && rule.runOnEdit === false) continue;
         if (Array.isArray(rule.placement) && rule.placement.length > 0 && !rule.placement.includes(placement)) continue;
+        if (depth !== null) {
+            if (Number.isFinite(Number(rule.minDepth)) && Number(rule.minDepth) >= -1 && depth < Number(rule.minDepth)) continue;
+            if (Number.isFinite(Number(rule.maxDepth)) && Number(rule.maxDepth) >= 0 && depth > Number(rule.maxDepth)) continue;
+        }
         try {
             const regex = parseDisplayRuleRegex(getDisplayRuleRegexSource(rule, { macroContext }));
             if (!regex) continue;
@@ -681,132 +636,29 @@ function applyDisplayRules(text, config) {
 }
 
 
-function extractHtmlPayloadsFromText(text) {
-    const raw = String(text || '').trim();
-    if (!raw) return [];
-
-    const codeBlockRegex = /```(?:html|xml|text|js|css|json)?\s*([\s\S]*?)```/gi;
-    let match;
-    const results = [];
+function getMessageExecutableParts(message, host = null) {
+    const parts = [];
     const seen = new Set();
 
-    while ((match = codeBlockRegex.exec(raw)) !== null) {
-        const block = stripCommonIndent(match[1] || '');
-        if (/<!DOCTYPE html/i.test(block) || /<html[\s>]/i.test(block) || /id=["']readingContent["']/i.test(block)) {
-            if (!seen.has(block)) {
-                seen.add(block);
-                results.push(block);
-            }
-        }
-    }
-
-    if (results.length === 0 && (/<!DOCTYPE html/i.test(raw) || /<html[\s>]/i.test(raw))) {
-        if (!seen.has(raw)) {
-            results.push(raw);
-        }
-    }
-
-    return results;
-}
-
-
-function extractRawHtmlFragments(text) {
-    const source = String(text || '');
-    if (!source.trim()) return [];
-
-    const blockRegex = /(<(?:div|details|section|article|main|table|svg|iframe|script|style)\b[\s\S]*?<\/(?:div|details|section|article|main|table|svg|iframe|script|style)>|<img\b[^>]*?>)/gi;
-    const results = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = blockRegex.exec(source)) !== null) {
-        const before = source.slice(lastIndex, match.index);
-        if (before.trim()) {
-            results.push({ type: 'markdown', text: before });
-        }
-
-        const html = match[0];
-        if (html.trim()) {
-            results.push({ type: 'html', text: html });
-        }
-        lastIndex = match.index + html.length;
-    }
-
-    const after = source.slice(lastIndex);
-    if (after.trim()) {
-        results.push({ type: 'markdown', text: after });
-    }
-
-    return results;
-}
-
-
-function classifyHtmlRenderPart(htmlPayload) {
-    const analysis = scoreFullPageAppHtml(htmlPayload);
-    if (analysis.score >= 8) {
-        return {
-            type: 'app-stage',
-            text: htmlPayload,
-            score: analysis.score,
-            reasons: analysis.reasons,
-            minHeight: 520,
-            maxHeight: 860,
-        };
-    }
-
-    const isCompactWidget = analysis.reasons.includes('collapsible-widget') || analysis.reasons.includes('thinking-widget');
-    return {
-        type: 'html-component',
-        text: htmlPayload,
-        score: analysis.score,
-        reasons: analysis.reasons,
-        minHeight: isCompactWidget ? 28 : 120,
-        maxHeight: isCompactWidget ? 340 : 520,
-    };
-}
-
-
-function sanitizeHtmlForStaticPreview(htmlPayload) {
-    let source = String(htmlPayload || '');
-    if (!source.trim()) return '';
-
-    source = source.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-    source = source.replace(/\son[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-    source = source.replace(/\s(href|src)\s*=\s*(['"])javascript:[\s\S]*?\2/gi, ' $1="#"');
-    return source;
-}
-
-
-function isExecutableRenderPart(part) {
-    const source = String(part?.text || '');
-    if (!source.trim()) return false;
-
-    return part?.type === 'app-stage'
-        || /<script\b/i.test(source)
-        || /\b(?:MutationObserver|requestAnimationFrame|setTimeout|setInterval|addEventListener|querySelectorAll)\b/.test(source)
-        || /\b(?:processTextContent|createDialogueElement|showArgMenu|toggleCollapsible|window\.setTheme)\b/.test(source);
-}
-
-
-function getMessageExecutableParts(message) {
-    const segments = Array.isArray(message?.render_segments) ? message.render_segments : [];
-    const parts = [];
-
-    segments.forEach((segment) => {
-        const segmentParts = Array.isArray(segment?.parts) ? segment.parts : [];
-        segmentParts.forEach((part) => {
-            if (isExecutableRenderPart(part)) {
-                parts.push(part);
+    if (host instanceof Element) {
+        const codeNodes = Array.from(host.querySelectorAll('pre code'));
+        codeNodes.forEach((node) => {
+            const text = String(node.textContent || '').trim();
+            if (!text) return;
+            const analysis = scoreFullPageAppHtml(text);
+            if (analysis.score >= 8 && !seen.has(text)) {
+                seen.add(text);
+                parts.push({ type: 'app-stage', text });
             }
         });
-    });
+    }
 
     return parts;
 }
 
 
-function resolveBestMessageExecutablePart(message) {
-    const parts = getMessageExecutableParts(message);
+function resolveBestMessageExecutablePart(message, host = null) {
+    const parts = getMessageExecutableParts(message, host);
     if (!parts.length) return null;
 
     const scorePart = (part) => {
@@ -828,20 +680,126 @@ function resolveBestMessageExecutablePart(message) {
 }
 
 
-function getExecutableMessageFloors(activeChat) {
-    const messages = Array.isArray(activeChat?.messages) ? activeChat.messages : [];
-    return messages
-        .filter(message => Boolean(resolveBestMessageExecutablePart(message)))
-        .map(message => Number(message.floor || 0))
-        .filter(Boolean);
+function createRuntimeCandidateCache() {
+    return {
+        floorMap: new Map(),
+        executableFloorsKey: '',
+        executableFloors: [],
+    };
 }
 
 
-function shouldExecuteMessageSegments(message, activeChat, viewSettings) {
+function getRenderedDisplayHtmlForMessage(message, renderedFloorHtmlCache = null) {
+    const floor = Number(message?.floor || 0);
+    if (renderedFloorHtmlCache instanceof Map && floor > 0 && renderedFloorHtmlCache.has(floor)) {
+        return String(renderedFloorHtmlCache.get(floor) || '');
+    }
+
+    return String(message?.rendered_display_html || '');
+}
+
+
+function buildRuntimeHostId(floor, index = 0) {
+    return `st-runtime-host-${Number(floor || 0)}-${Number(index || 0)}`;
+}
+
+
+function buildRuntimeCandidateSignature(candidates = []) {
+    return candidates
+        .map((candidate, index) => `${index}:${Number(candidate.score || 0)}:${String(candidate.text || '').length}`)
+        .join('|');
+}
+
+
+function wrapRuntimeHostsInContainer(container, floor) {
+    if (!(container instanceof Element)) return [];
+
+    const wrappedHosts = [];
+    let runtimeIndex = 0;
+
+    Array.from(container.querySelectorAll('pre')).forEach((preNode) => {
+        const codeNode = preNode.querySelector('code');
+        const rawCodeText = String(codeNode?.textContent || '').trim();
+        const preText = String(preNode.textContent || '').trim();
+        const text = rawCodeText || preText;
+        if (!text) return;
+
+        const normalizedText = text
+            .replace(/^```(?:html|text|xml)?\s*/i, '')
+            .replace(/```$/i, '')
+            .trim();
+        const analysis = scoreFullPageAppHtml(normalizedText);
+        if (analysis.score < 8) return;
+
+        const existingWrapper = preNode.parentElement?.classList.contains('chat-inline-runtime-wrap')
+            ? preNode.parentElement
+            : null;
+        if (existingWrapper) {
+            const existingHost = existingWrapper.querySelector('.chat-inline-runtime-host');
+            if (existingHost instanceof Element) {
+                existingHost.id = buildRuntimeHostId(floor, runtimeIndex);
+                wrappedHosts.push(existingHost);
+                runtimeIndex += 1;
+            }
+            return;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'chat-inline-runtime-wrap';
+        const host = document.createElement('div');
+        host.id = buildRuntimeHostId(floor, runtimeIndex);
+        host.className = 'chat-inline-runtime-host';
+        preNode.classList.add('chat-inline-runtime-source');
+
+        preNode.replaceWith(wrapper);
+        wrapper.appendChild(host);
+        wrapper.appendChild(preNode);
+        wrappedHosts.push(host);
+        runtimeIndex += 1;
+    });
+
+    return wrappedHosts;
+}
+
+
+function setRuntimeWrapperActive(host, active) {
+    const wrapper = host instanceof Element ? host.closest('.chat-inline-runtime-wrap') : null;
+    if (wrapper instanceof Element) {
+        wrapper.classList.toggle('is-active', Boolean(active));
+    }
+}
+
+
+function getExecutableMessageFloors(activeChat, renderedFloorHtmlCache = null) {
+    const messages = Array.isArray(activeChat?.messages) ? activeChat.messages : [];
+    const key = messages
+        .map(message => `${Number(message?.floor || 0)}:${getRenderedDisplayHtmlForMessage(message, renderedFloorHtmlCache).length}`)
+        .join('|');
+
+    const cache = activeChat.runtime_candidate_cache || createRuntimeCandidateCache();
+    if (cache.executableFloorsKey === key) {
+        return cache.executableFloors;
+    }
+
+    const executableFloors = messages
+        .filter(message => extractRuntimeCandidatesFromRenderedHtml(getRenderedDisplayHtmlForMessage(message, renderedFloorHtmlCache)).length > 0)
+        .map(message => Number(message.floor || 0))
+        .filter(Boolean);
+
+    activeChat.runtime_candidate_cache = {
+        ...cache,
+        executableFloorsKey: key,
+        executableFloors,
+    };
+    return executableFloors;
+}
+
+
+function shouldExecuteMessageSegments(message, activeChat, viewSettings, renderedFloorHtmlCache = null) {
     const floor = Number(message?.floor || 0);
     if (!floor) return false;
 
-    const candidateFloors = getExecutableMessageFloors(activeChat);
+    const candidateFloors = getExecutableMessageFloors(activeChat, renderedFloorHtmlCache);
     if (!candidateFloors.length || !candidateFloors.includes(floor)) {
         return false;
     }
@@ -866,6 +824,49 @@ function buildDeferredInstancePlaceholder(message, viewSettings) {
         scopeText,
         '可点击楼层头部的“实例”按钮，或切换到整页实例模式查看该楼层。',
     ].join('\n\n');
+}
+
+
+function extractRuntimeCandidatesFromContainer(container) {
+    if (!(container instanceof Element)) return [];
+
+    const parts = [];
+    const seen = new Set();
+
+    Array.from(container.querySelectorAll('pre')).forEach((node) => {
+        const codeNode = node.querySelector('code');
+        const rawCodeText = String(codeNode?.textContent || '').trim();
+        const preText = String(node.textContent || '').trim();
+        const text = rawCodeText || preText;
+        const normalizedText = text
+            .replace(/^```(?:html|text|xml)?\s*/i, '')
+            .replace(/```$/i, '')
+            .trim();
+        if (!text || seen.has(text)) return;
+        const analysis = scoreFullPageAppHtml(normalizedText);
+        if (analysis.score >= 8) {
+            seen.add(text);
+            parts.push({
+                type: 'app-stage',
+                text: normalizedText,
+                score: analysis.score,
+                reasons: analysis.reasons,
+                host: node,
+            });
+        }
+    });
+
+    return parts;
+}
+
+
+function extractRuntimeCandidatesFromRenderedHtml(renderedHtml) {
+    const source = String(renderedHtml || '').trim();
+    if (!source) return [];
+
+    const probe = document.createElement('div');
+    probe.innerHTML = source;
+    return extractRuntimeCandidatesFromContainer(probe);
 }
 
 
@@ -903,50 +904,6 @@ function scoreFullPageAppHtml(htmlPayload) {
 }
 
 
-function selectBestFullPageAppHtml(messageText, config, macroContext = {}) {
-    const rawMessage = String(messageText || '');
-    if (!rawMessage.trim()) return { htmlPayload: '', score: 0, reasons: [], candidates: [] };
-
-    const transformedRaw = applyDisplayRules(rawMessage, config, { placement: 2, isMarkdown: true, macroContext });
-    const extractedContent = extractContentWithConfig(rawMessage, config, { placement: 2, isMarkdown: true, macroContext });
-    const candidates = [];
-
-    const pushCandidates = (items, sourceLabel) => {
-        for (const item of items) {
-            const analysis = scoreFullPageAppHtml(item);
-            candidates.push({
-                htmlPayload: item,
-                score: analysis.score,
-                reasons: analysis.reasons,
-                source: sourceLabel,
-            });
-        }
-    };
-
-    pushCandidates(extractHtmlPayloadsFromText(transformedRaw), 'display-rules');
-    pushCandidates(extractHtmlPayloadsFromText(extractedContent), 'content-extract');
-
-    candidates.sort((a, b) => b.score - a.score || b.htmlPayload.length - a.htmlPayload.length);
-    const best = candidates[0] || null;
-
-    if (!best || best.score < 8) {
-        return {
-            htmlPayload: '',
-            score: best?.score || 0,
-            reasons: best?.reasons || [],
-            candidates,
-        };
-    }
-
-    return {
-        htmlPayload: best.htmlPayload,
-        score: best.score,
-        reasons: best.reasons,
-        candidates,
-    };
-}
-
-
 function extractStatDataFromMessage(message) {
     const source = message && typeof message === 'object' ? message : {};
 
@@ -980,39 +937,87 @@ function resolveLatestStatData(rawMessages, floor) {
 }
 
 
-function extractContentWithConfig(messageText, config, options = {}) {
+function normalizeReaderMessageSource(message) {
+    const source = message && typeof message === 'object' ? message : {};
+    const extra = source.extra && typeof source.extra === 'object' ? source.extra : {};
+    return String(extra.display_text ?? source.mes ?? '');
+}
+
+
+function resolveReaderRegexPlacement(message) {
+    const source = message && typeof message === 'object' ? message : {};
+    const extra = source.extra && typeof source.extra === 'object' ? source.extra : {};
+
+    if (source.is_user) {
+        return READER_REGEX_PLACEMENT.USER_INPUT;
+    }
+    if (extra.type === 'narrator') {
+        return READER_REGEX_PLACEMENT.SLASH_COMMAND;
+    }
+    return READER_REGEX_PLACEMENT.AI_OUTPUT;
+}
+
+
+function resolveReaderMessageDepth(rawMessages, floor) {
+    const list = Array.isArray(rawMessages) ? rawMessages : [];
+    const usableMessages = list
+        .map((item, index) => ({ message: item, index: index + 1 }))
+        .filter(entry => !entry.message?.is_system);
+    const currentIndex = usableMessages.findIndex(entry => entry.index === Number(floor || 0));
+    if (currentIndex === -1) {
+        return null;
+    }
+    return usableMessages.length - currentIndex - 1;
+}
+
+
+function isReaderRenderableSystemMessage(message) {
+    const source = message && typeof message === 'object' ? message : {};
+    if (!source.is_system) return false;
+
+    const extra = source.extra && typeof source.extra === 'object' ? source.extra : {};
+    if (source.name && source.name !== 'System') {
+        return true;
+    }
+
+    return Boolean(extra.display_text);
+}
+
+
+function resolveReaderFormatFlags(message) {
+    const source = message && typeof message === 'object' ? message : {};
+    const extra = source.extra && typeof source.extra === 'object' ? source.extra : {};
+
+    return {
+        encodeTags: false,
+        promptBias: '',
+        hidePromptBias: !source.is_user && !source.is_system,
+        reasoningMarkers: [],
+        stripSpeakerPrefix: !source.is_user && !source.is_system,
+        speakerName: String(source.name || ''),
+        usesSystemUi: Boolean(extra.uses_system_ui),
+    };
+}
+
+
+function buildReaderDisplaySource(messageText, config, options = {}) {
     if (!messageText) return '';
 
-    let content = String(messageText || '');
+    let displayText = String(messageText || '');
+    const macroContext = options.macroContext && typeof options.macroContext === 'object' ? options.macroContext : {};
+    const depth = typeof options.depth === 'number' ? options.depth : null;
 
-    const userInputRegex = compileReaderPattern(config?.userInputPattern, 'i');
-    if (userInputRegex) {
-        const match = content.match(userInputRegex);
-        if (match && match[1]) {
-            content = match[1];
-        }
-    }
+    displayText = displayText.replace(/以下是用户的本轮输入[\s\S]*?<\/本轮用户输入>/g, '');
+    const strippedDisplayText = stripCommonIndent(displayText);
 
-    const recallRegex = compileReaderPattern(config?.recallPattern, 'gi');
-    if (recallRegex) {
-        content = content.replace(recallRegex, '');
-    }
-
-    const thinkingRegex = compileReaderPattern(config?.thinkingPattern, 'gi');
-    if (thinkingRegex) {
-        content = content.replace(thinkingRegex, '');
-    }
-
-    const mainContentRegex = compileReaderPattern(config?.contentPattern, 'i');
-    if (mainContentRegex) {
-        const match = content.match(mainContentRegex);
-        if (match && match[1]) {
-            content = match[1];
-        }
-    }
-
-    content = content.replace(/以下是用户的本轮输入[\s\S]*?<\/本轮用户输入>/g, '');
-    return applyDisplayRules(stripCommonIndent(content), config, options);
+    return applyDisplayRules(strippedDisplayText, config, {
+        ...options,
+        placement: READER_REGEX_PLACEMENT.MD_DISPLAY,
+        isMarkdown: true,
+        readerDisplayRules: true,
+        macroContext,
+        depth,
+    });
 }
 
 
@@ -1055,117 +1060,16 @@ function extractTagBlockWithIndex(messageText, tagNames = []) {
 }
 
 
-function buildTextRenderParts(text) {
-    const source = String(text || '');
-    if (!source.trim()) return [];
-
-    const parts = [];
-    const codeBlockRegex = /```(?:html|xml|text|js|css|json)?\s*([\s\S]*?)```/gi;
-    let lastIndex = 0;
-    let match;
-
-    while ((match = codeBlockRegex.exec(source)) !== null) {
-        const before = source.slice(lastIndex, match.index);
-        if (before.trim()) {
-            parts.push({ type: 'markdown', text: before });
-        }
-
-        const htmlCandidates = extractHtmlPayloadsFromText(match[0]);
-        if (htmlCandidates.length > 0) {
-            htmlCandidates.forEach(candidate => parts.push(classifyHtmlRenderPart(candidate)));
-        } else if (match[0].trim()) {
-            parts.push({ type: 'markdown', text: match[0] });
-        }
-
-        lastIndex = match.index + match[0].length;
-    }
-
-    const after = source.slice(lastIndex);
-    if (after.trim()) {
-        parts.push({ type: 'markdown', text: after });
-    }
-
-    if (parts.length > 0) {
-        const normalized = [];
-        for (const part of parts) {
-            if (part.type === 'markdown') {
-                const fragments = extractRawHtmlFragments(part.text);
-                if (fragments.length > 0) {
-                    fragments.forEach(fragment => {
-                        if (fragment.type === 'html') {
-                            normalized.push(classifyHtmlRenderPart(fragment.text));
-                        } else {
-                            normalized.push({ type: 'markdown', text: fragment.text });
-                        }
-                    });
-                } else {
-                    normalized.push(part);
-                }
-            } else {
-                normalized.push(part);
-            }
-        }
-        return normalized;
-    }
-
-    const htmlCandidates = extractHtmlPayloadsFromText(source);
-    if (htmlCandidates.length > 0) {
-        return htmlCandidates.map(candidate => classifyHtmlRenderPart(candidate));
-    }
-
-    const rawFragments = extractRawHtmlFragments(source);
-    if (rawFragments.length > 0) {
-        return rawFragments.map(fragment => fragment.type === 'html'
-            ? classifyHtmlRenderPart(fragment.text)
-            : { type: 'markdown', text: fragment.text });
-    }
-
-    return [{ type: 'markdown', text: source }];
-}
-
-
-function buildOrderedMessageSegments(rawMessage, config, options = {}) {
-    const source = rawMessage && typeof rawMessage === 'object' ? rawMessage : {};
-    const macroContext = options.macroContext && typeof options.macroContext === 'object' ? options.macroContext : {};
-    const content = extractContentWithConfig(source.mes || '', config, { placement: 2, isMarkdown: true, macroContext });
-    if (!content.trim()) {
-        return [];
-    }
-
-    return [{
-        type: 'text',
-        kind: 'content',
-        title: '',
-        index: 0,
-        text: content,
-        parts: buildTextRenderParts(content),
-    }];
-}
-
-
-function parseChoicesWithConfig(messageText, config, options = {}) {
-    const match = extractSingleMatch(messageText, config.choicePattern);
-    if (!match) return [];
-
-    const choices = [];
-    for (const line of match.split(/\r?\n/)) {
-        const itemMatch = line.match(/^\s*(.+?)\s*-\s*(.+?)\s*$/);
-        if (!itemMatch) continue;
-        choices.push({
-            text: applyDisplayRules(itemMatch[1].trim(), config, { placement: 2, isMarkdown: true, macroContext: options.macroContext }),
-            desc: applyDisplayRules(itemMatch[2].trim(), config, { placement: 2, isMarkdown: true, macroContext: options.macroContext }),
-        });
-    }
-    return choices;
-}
-
-
 function buildReaderParsedMessage(rawMessage, floor, config, options = {}) {
     const source = rawMessage && typeof rawMessage === 'object' ? rawMessage : {};
-    const messageText = String(source.mes || '');
+    const messageText = normalizeReaderMessageSource(source);
     const macroContext = options.macroContext && typeof options.macroContext === 'object' ? options.macroContext : {};
-    const content = extractContentWithConfig(messageText, config, { placement: 2, isMarkdown: true, macroContext });
-    const renderSegments = buildOrderedMessageSegments(rawMessage, config, { macroContext });
+    const placement = resolveReaderRegexPlacement(source);
+    const depth = typeof options.depth === 'number' ? options.depth : null;
+    const treatedAsSystem = Boolean(source.is_system) && !isReaderRenderableSystemMessage(source);
+    const displaySource = treatedAsSystem
+        ? messageText
+        : buildReaderDisplaySource(messageText, config, { placement, isMarkdown: true, macroContext, depth });
 
     return {
         floor: Number(floor || 0),
@@ -1176,12 +1080,14 @@ function buildReaderParsedMessage(rawMessage, floor, config, options = {}) {
         mes: messageText,
         swipes: Array.isArray(source.swipes) ? source.swipes : [],
         extra: source.extra && typeof source.extra === 'object' ? source.extra : {},
-        content,
+        content: displaySource,
+        display_source: displaySource,
+        rendered_display_html: '',
         time_bar: null,
         summary: null,
         thinking: null,
         choices: [],
-        render_segments: renderSegments,
+        render_segments: [],
     };
 }
 
@@ -1381,6 +1287,16 @@ export default function chatGrid() {
             matchedFloors: [],
             status: '未检测',
         },
+        readerRuntimeDebug: {
+            enabled: true,
+            floor: 0,
+            preCount: 0,
+            candidateCount: 0,
+            wrappedCount: 0,
+            scores: [],
+            snippets: [],
+            status: '未检测',
+        },
         chatAppStage: null,
         readerSegmentRegistry: new WeakMap(),
         readerPartStages: new WeakMap(),
@@ -1499,11 +1415,28 @@ export default function chatGrid() {
         },
 
         get executableMessageFloors() {
-            return getExecutableMessageFloors(this.activeChat);
+            return getExecutableMessageFloors(this.activeChat, this.renderedFloorHtmlCache);
         },
 
         get hasAppFloorNavigation() {
             return this.executableMessageFloors.length > 1;
+        },
+
+        get renderedFloorHtmlCache() {
+            if (!this._renderedFloorHtmlCache) {
+                this._renderedFloorHtmlCache = new Map();
+            }
+            return this._renderedFloorHtmlCache;
+        },
+
+        get runtimeCandidateCache() {
+            if (!this.activeChat) {
+                return createRuntimeCandidateCache();
+            }
+            if (!this.activeChat.runtime_candidate_cache) {
+                this.activeChat.runtime_candidate_cache = createRuntimeCandidateCache();
+            }
+            return this.activeChat.runtime_candidate_cache;
         },
 
         buildReaderRegexMacroContext(rawMessage = null, floor = 0) {
@@ -1557,16 +1490,45 @@ export default function chatGrid() {
 
         get editingMessageParsedPreview() {
             if (!this.editingMessageRawDraft) return '';
-            return extractContentWithConfig(this.editingMessageRawDraft, this.activeRegexConfig, {
+            return buildReaderDisplaySource(this.editingMessageRawDraft, this.activeRegexConfig, {
                 placement: 2,
                 isMarkdown: true,
                 isEdit: true,
                 macroContext: this.buildReaderRegexMacroContext(this.editingMessageTarget || { mes: this.editingMessageRawDraft }, this.editingFloor),
+                depth: 0,
             });
         },
 
         get editingMessageSourcePreview() {
             return this.editingMessageRawDraft || this.editingMessageDraft || '';
+        },
+
+        get editingMessageParsedPreviewHtml() {
+            const flags = resolveReaderFormatFlags(this.editingMessageTarget || {});
+            return formatScopedDisplayedHtml(this.editingMessageParsedPreview, {
+                scopeClass: 'st-reader-floor-edit-preview',
+                renderMode: this.readerRenderMode,
+                speakerName: flags.speakerName,
+                stripSpeakerPrefix: flags.stripSpeakerPrefix,
+                encodeTags: flags.encodeTags,
+                promptBias: flags.promptBias,
+                hidePromptBias: flags.hidePromptBias,
+                reasoningMarkers: flags.reasoningMarkers,
+            });
+        },
+
+        get editingMessageSourcePreviewHtml() {
+            const flags = resolveReaderFormatFlags(this.editingMessageTarget || {});
+            return formatScopedDisplayedHtml(this.editingMessageSourcePreview, {
+                scopeClass: 'st-reader-floor-edit-source',
+                renderMode: this.readerRenderMode,
+                speakerName: flags.speakerName,
+                stripSpeakerPrefix: flags.stripSpeakerPrefix,
+                encodeTags: flags.encodeTags,
+                promptBias: flags.promptBias,
+                hidePromptBias: flags.hidePromptBias,
+                reasoningMarkers: flags.reasoningMarkers,
+            });
         },
 
         get editingMessageDiffHtml() {
@@ -1580,6 +1542,7 @@ export default function chatGrid() {
             if (!source) {
                 return {
                     content: '',
+                    display_source: '',
                     thinking: '',
                     summary: '',
                     time_bar: '',
@@ -1591,7 +1554,10 @@ export default function chatGrid() {
             return buildReaderParsedMessage({
                 mes: source,
                 name: 'Regex Test',
-            }, 1, normalizeRegexConfig(this.regexConfigDraft), { macroContext: this.buildReaderRegexMacroContext({ mes: source, name: 'Regex Test' }, 1) });
+            }, 1, normalizeRegexConfig(this.regexConfigDraft), {
+                macroContext: this.buildReaderRegexMacroContext({ mes: source, name: 'Regex Test' }, 1),
+                depth: 0,
+            });
         },
 
         get hasChatRegexConfig() {
@@ -1936,6 +1902,10 @@ export default function chatGrid() {
             this.readerViewportFloor = 0;
             this.readerWindowStartFloor = 1;
             this.readerWindowEndFloor = 0;
+            this._renderedFloorHtmlCache = new Map();
+            if (this.activeChat) {
+                this.activeChat.runtime_candidate_cache = createRuntimeCandidateCache();
+            }
             resetReaderVisibleMessagesCache(this);
             this.readerViewSettingsOpen = false;
             this.readerAppMode = false;
@@ -2031,6 +2001,10 @@ export default function chatGrid() {
             this.readerViewportFloor = 0;
             this.readerWindowStartFloor = 1;
             this.readerWindowEndFloor = 0;
+            this._renderedFloorHtmlCache = new Map();
+            if (this.activeChat) {
+                this.activeChat.runtime_candidate_cache = createRuntimeCandidateCache();
+            }
             resetReaderVisibleMessagesCache(this);
             this.readerViewSettingsOpen = false;
             this.readerAppMode = false;
@@ -2458,7 +2432,7 @@ export default function chatGrid() {
             const parsedMessageForFloor = Array.isArray(this.activeChat.messages)
                 ? this.activeChat.messages.find(item => Number(item.floor || 0) === floor)
                 : null;
-            const selectedPart = resolveBestMessageExecutablePart(parsedMessageForFloor);
+            const selectedPart = this.resolveRenderedRuntimePart(parsedMessageForFloor);
 
             if (!selectedPart?.text) {
                 return null;
@@ -2632,7 +2606,10 @@ export default function chatGrid() {
 
             this.activeChat.messages = rawMessages.map((item, index) => buildReaderParsedMessage(item, index + 1, nextConfig, {
                 macroContext: this.buildReaderRegexMacroContext(item, index + 1),
+                depth: resolveReaderMessageDepth(rawMessages, index + 1),
             }));
+            this._renderedFloorHtmlCache = new Map();
+            this.activeChat.runtime_candidate_cache = createRuntimeCandidateCache();
             const anchorFloor = Number(this.readerViewportFloor || this.activeChat.last_view_floor || rawMessages.length || 1);
             this.setReaderWindowAroundFloor(anchorFloor, 'center');
             resetReaderVisibleMessagesCache(this);
@@ -2893,38 +2870,197 @@ export default function chatGrid() {
             return `<div>${escapeHtml(source).replace(/\n/g, '<br>')}</div>`;
         },
 
-        detectRenderMode(text) {
-            const source = String(text || '').trim();
-            if (!source) return 'plain';
+        renderMessageDisplayHtml(message) {
+            const source = String(message?.display_source || message?.content || '');
+            const scopeClass = `st-reader-floor-${Number(message?.floor || 0) || 0}`;
+            const flags = resolveReaderFormatFlags(message);
+            const html = formatScopedDisplayedHtml(source, {
+                scopeClass,
+                renderMode: this.readerRenderMode,
+                speakerName: flags.speakerName,
+                stripSpeakerPrefix: flags.stripSpeakerPrefix,
+                encodeTags: flags.encodeTags,
+                promptBias: flags.promptBias,
+                hidePromptBias: flags.hidePromptBias,
+                reasoningMarkers: flags.reasoningMarkers,
+            });
+            const floor = Number(message?.floor || 0);
 
-            const htmlFragmentRegex = /^\s*<(?:div|style|details|section|article|main|link|table|script|iframe|svg)/i;
-            const fencedHtmlRegex = /```(?:html|xml|text|js|css|json)?\s*[\s\S]*?(?:<div|<style|<!DOCTYPE|<html|<script)/i;
-
-            if (this.readerComponentMode && (htmlFragmentRegex.test(source) || fencedHtmlRegex.test(source))) {
-                return 'html-component';
+            if (floor > 0) {
+                this.renderedFloorHtmlCache.set(floor, html);
+                if (message && typeof message === 'object') {
+                    message.rendered_display_html = html;
+                }
+                if (Array.isArray(this.activeChat?.messages)) {
+                    const originalMessage = this.activeChat.messages.find(item => Number(item?.floor || 0) === floor);
+                    if (originalMessage && originalMessage !== message) {
+                        originalMessage.rendered_display_html = html;
+                    }
+                }
+                this.runtimeCandidateCache.floorMap.delete(floor);
+                this.runtimeCandidateCache.executableFloorsKey = '';
             }
-
-            if (this.readerRenderMode === 'markdown') {
-                return 'markdown';
-            }
-
-            return 'plain';
+            return html;
         },
 
-        mountMessageRenderPart(el, message, part) {
-            if (!el || !part) return;
+        shouldRenderMessageAsApp(message) {
+            if (!message) return false;
+            return this.readerComponentMode
+                && shouldExecuteMessageSegments(message, this.activeChat, this.readerViewSettings, this.renderedFloorHtmlCache);
+        },
 
-            const allowExecutableHtml = this.readerComponentMode
-                && shouldExecuteMessageSegments(message, this.activeChat, this.readerViewSettings);
-            const htmlText = String(part.text || '');
+        resolveRenderedRuntimePart(message) {
+            if (!message) return null;
 
-            if (part.type === 'app-stage') {
-                if (!allowExecutableHtml) {
-                    this.mountReaderRender(el, buildDeferredInstancePlaceholder(message, this.readerViewSettings));
+            const floor = Number(message.floor || 0);
+            const cacheKey = floor > 0
+                ? `${floor}:${String(message.rendered_display_html || this.renderedFloorHtmlCache.get(floor) || '')}`
+                : `preview:${String(message.rendered_display_html || '')}`;
+            const cacheEntry = floor > 0 ? this.runtimeCandidateCache.floorMap.get(floor) : null;
+            if (cacheEntry && cacheEntry.key === cacheKey) {
+                return cacheEntry.part;
+            }
+
+            const renderedHtml = floor > 0
+                ? this.renderedFloorHtmlCache.get(floor) || message.rendered_display_html || ''
+                : message.rendered_display_html || '';
+            const candidates = extractRuntimeCandidatesFromRenderedHtml(renderedHtml);
+            const part = candidates.length
+                ? candidates
+                    .slice()
+                    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0) || String(right.text || '').length - String(left.text || '').length)[0]
+                : null;
+
+            if (floor > 0) {
+                this.runtimeCandidateCache.floorMap.set(floor, {
+                    key: cacheKey,
+                    part,
+                });
+            }
+
+            return part;
+        },
+
+        resolveRenderedRuntimeCandidates(message) {
+            if (!message) return [];
+
+            const floor = Number(message.floor || 0);
+            const renderedHtml = floor > 0
+                ? this.renderedFloorHtmlCache.get(floor) || message.rendered_display_html || ''
+                : message.rendered_display_html || '';
+            return extractRuntimeCandidatesFromRenderedHtml(renderedHtml);
+        },
+
+        wrapRenderedRuntimeHosts(el, message) {
+            if (!(el instanceof Element) || !message || !this.readerComponentMode) {
+                return [];
+            }
+            return wrapRuntimeHostsInContainer(el, Number(message.floor || 0));
+        },
+
+        updateReaderRuntimeDebug(message, element, candidates = [], wrappedHosts = []) {
+            const floor = Number(message?.floor || 0);
+            const preCount = element instanceof Element ? element.querySelectorAll('pre').length : 0;
+            this.readerRuntimeDebug = {
+                enabled: true,
+                floor,
+                preCount,
+                candidateCount: candidates.length,
+                wrappedCount: wrappedHosts.length,
+                scores: candidates.map(candidate => Number(candidate.score || 0)),
+                snippets: candidates.slice(0, 4).map((candidate) => {
+                    const text = String(candidate.text || '').replace(/\s+/g, ' ').trim();
+                    return text.slice(0, 120);
+                }),
+                status: candidates.length
+                    ? `楼层 #${floor} 检测到 ${candidates.length} 个实例候选`
+                    : `楼层 #${floor} 未检测到实例候选`,
+            };
+            window.__STM_RUNTIME_DEBUG__ = {
+                floor,
+                preCount,
+                candidateCount: candidates.length,
+                wrappedCount: wrappedHosts.length,
+                scores: this.readerRuntimeDebug.scores,
+                snippets: this.readerRuntimeDebug.snippets,
+            };
+
+            if (this.readerRuntimeDebug.enabled) {
+                console.info('[STM runtime debug]', {
+                    floor,
+                    preCount,
+                    candidateCount: candidates.length,
+                    wrappedCount: wrappedHosts.length,
+                    scores: this.readerRuntimeDebug.scores,
+                    snippets: this.readerRuntimeDebug.snippets,
+                });
+            }
+        },
+
+        mountMessageDisplay(el, message) {
+            if (!el || !message) return;
+
+            this.$nextTick(() => {
+                if (!el || !el.isConnected) return;
+                this.mountMessageDisplayNow(el, message);
+            });
+        },
+
+        mountMessageDisplayNow(el, message) {
+            if (!el || !message) return;
+
+            const floor = Number(message.floor || 0);
+            const allowExecutableHtml = this.shouldRenderMessageAsApp(message);
+            const wrappedHosts = this.wrapRenderedRuntimeHosts(el, message);
+            const candidates = extractRuntimeCandidatesFromContainer(el);
+            this.updateReaderRuntimeDebug(message, el, candidates, wrappedHosts);
+            const candidateSignature = buildRuntimeCandidateSignature(candidates);
+
+            const current = this.readerSegmentRegistry.get(el);
+            const needsRuntimeAttach = allowExecutableHtml && wrappedHosts.some((host) => !(host instanceof Element) || !host.querySelector('iframe'));
+            const needsPlaceholderRender = !allowExecutableHtml && wrappedHosts.some((host) => !(host instanceof Element) || !String(host.innerHTML || '').trim());
+            const signature = JSON.stringify({
+                floor,
+                displaySource: String(message.display_source || message.content || ''),
+                candidateSignature,
+                appEnabled: allowExecutableHtml,
+                renderMode: this.readerRenderMode,
+            });
+
+            if (current?.signature === signature && !needsRuntimeAttach && !needsPlaceholderRender) {
+                return;
+            }
+
+            this.destroyMessageRenderPart(el);
+            if (!this.readerComponentMode || !candidates.length) {
+                this.readerSegmentRegistry.set(el, { signature, children: [el] });
+                return;
+            }
+
+            if (!allowExecutableHtml) {
+                wrappedHosts.forEach((host) => {
+                    if (host instanceof Element) {
+                        setRuntimeWrapperActive(host, false);
+                        host.innerHTML = this.renderReaderContent(buildDeferredInstancePlaceholder(message, this.readerViewSettings));
+                    }
+                });
+                this.readerSegmentRegistry.set(el, { signature, children: [el] });
+                return;
+            }
+
+            const rawMessage = floor > 0 && Array.isArray(this.activeChat?.raw_messages)
+                ? this.activeChat.raw_messages[floor - 1]
+                : { mes: String(message?.mes || message?.content || ''), name: message?.name || 'Preview' };
+
+            candidates.forEach((candidate, index) => {
+                const runtimeHost = wrappedHosts[index] || el.querySelector(`#${buildRuntimeHostId(floor || 0, index)}`);
+                if (!(runtimeHost instanceof Element)) {
                     return;
                 }
 
-                let stage = this.readerPartStages.get(el);
+                setRuntimeWrapperActive(runtimeHost, true);
+
+                let stage = this.readerPartStages.get(runtimeHost);
                 if (!stage) {
                     stage = new ChatAppStage({
                         onTriggerSlash: async (command) => {
@@ -2935,16 +3071,12 @@ export default function chatGrid() {
                             this.$store.global.showToast(`实例错误: ${error.message}`, 2600);
                         },
                     });
-                    this.readerPartStages.set(el, stage);
+                    this.readerPartStages.set(runtimeHost, stage);
                 }
 
-                stage.attachHost(el);
-                const floor = Number(message?.floor || 0);
-                const rawMessage = floor > 0 && Array.isArray(this.activeChat?.raw_messages)
-                    ? this.activeChat.raw_messages[floor - 1]
-                    : { mes: String(message?.mes || message?.content || part.text || ''), name: message?.name || 'Preview' };
+                stage.attachHost(runtimeHost);
                 stage.update({
-                    htmlPayload: htmlText,
+                    htmlPayload: String(candidate.text || ''),
                     assetBase: this.activeReaderAssetBase,
                     context: buildChatAppCompatContext(
                         this.activeChat?.raw_messages || [],
@@ -2954,150 +3086,35 @@ export default function chatGrid() {
                         this.activeChat,
                     ),
                 });
-                return;
-            }
+            });
 
-            const existingStage = this.readerPartStages.get(el);
-            if (existingStage) {
-                existingStage.clear();
-            }
-
-            if (part.type === 'html-component') {
-                if (!allowExecutableHtml && isExecutableRenderPart(part)) {
-                    this.mountReaderRender(el, buildDeferredInstancePlaceholder(message, this.readerViewSettings));
-                    return;
-                }
-
-                updateInlineRenderContent(el, htmlText, {
-                    mode: 'html-component',
-                    minHeight: Number(part.minHeight || 72),
-                    maxHeight: Number(part.maxHeight || 520),
-                    assetBase: this.activeReaderAssetBase,
-                });
-                return;
-            }
-
-            this.mountReaderRender(el, String(part.text || ''));
+            this.readerSegmentRegistry.set(el, { signature, children: [el] });
         },
 
         destroyMessageRenderPart(el) {
             if (!el) return;
 
-            destroyMessageSegmentHost(el);
-
-            const stage = this.readerPartStages.get(el);
-            if (stage) {
-                stage.destroy();
-                this.readerPartStages.delete(el);
-            }
-
-            clearIsolatedHtml(el, { clearShadow: true });
-            el.innerHTML = '';
-        },
-
-        mountMessageSegment(el, message, segment) {
-            if (!el || !segment) return;
-
-            if (segment.type === 'text') {
-                const parts = Array.isArray(segment.parts) ? segment.parts : [];
-                const signature = JSON.stringify({
-                    source: String(segment.text || ''),
-                    parts: parts.map(part => ({
-                        type: part.type,
-                        text: part.text,
-                    })),
-                    renderMode: this.readerRenderMode,
-                    componentMode: this.readerComponentMode,
-                });
-
-                const current = this.readerSegmentRegistry.get(el);
-                if (current?.signature === signature) {
-                    return;
+            const hosts = [el, ...Array.from(el.querySelectorAll('.chat-inline-runtime-host'))];
+            hosts.forEach((host) => {
+                const stage = this.readerPartStages.get(host);
+                if (stage) {
+                    stage.destroy();
+                    this.readerPartStages.delete(host);
                 }
-
-                if (current?.children) {
-                    current.children.forEach((child) => {
-                        if (child !== el) {
-                            this.destroyMessageRenderPart(child);
-                        }
-                    });
+                if (host instanceof Element) {
+                    setRuntimeWrapperActive(host, false);
                 }
-
-                destroyMessageSegmentHost(el);
-                el.innerHTML = '';
-
-                const children = [];
-                parts.forEach((part) => {
-                    const child = document.createElement('div');
-                    child.className = `chat-message-segment-part markdown-body ${part.type === 'markdown' ? 'is-markdown' : 'is-html'}`;
-                    el.appendChild(child);
-                    children.push(child);
-                    this.mountMessageRenderPart(child, message, part);
-                });
-
-                if (children.length === 0) {
-                    clearIsolatedHtml(el, { clearShadow: true });
-                    this.mountReaderRender(el, String(segment.text || ''));
-                    this.readerSegmentRegistry.set(el, { signature, children: [el] });
-                    return;
-                }
-
-                this.readerSegmentRegistry.set(el, { signature, children });
-                return;
-            }
-
-            const parts = Array.isArray(segment.parts) ? segment.parts : [];
-            const signature = JSON.stringify({
-                kind: segment.kind,
-                title: segment.title || '',
-                parts: parts.map(part => ({
-                    type: part.type,
-                    text: part.text,
-                    minHeight: part.minHeight || 0,
-                    maxHeight: part.maxHeight || 0,
-                })),
             });
 
-            const current = this.readerSegmentRegistry.get(el);
-            if (current?.signature === signature) {
-                return;
-            }
-
-            if (current?.children) {
-                current.children.forEach(child => this.destroyMessageRenderPart(child));
-            }
-
-            el.innerHTML = '';
-            const children = [];
-
-            parts.forEach((part) => {
-                const child = document.createElement('div');
-                child.className = `chat-message-segment-part markdown-body ${part.type === 'markdown' ? 'is-markdown' : 'is-html'}`;
-                el.appendChild(child);
-                children.push(child);
-                this.mountMessageRenderPart(child, message, part);
-            });
-
-            this.readerSegmentRegistry.set(el, { signature, children });
+            clearInlineIsolatedHtml(el, { clearShadow: true });
         },
 
         mountReaderRender(el, text) {
             if (!el) return;
 
-            const mode = this.detectRenderMode(text);
-
-            if (mode === 'html-component') {
-                updateInlineRenderContent(el, String(text || ''), {
-                    mode: 'html-component',
-                    minHeight: 220,
-                    maxHeight: 520,
-                    assetBase: this.activeReaderAssetBase,
-                });
-                return;
-            }
-
-            updateInlineRenderContent(el, String(text || ''), {
-                mode,
+            const source = String(text || '');
+            updateInlineRenderContent(el, source, {
+                mode: this.readerRenderMode === 'markdown' ? 'markdown' : 'plain',
                 isolated: true,
                 emptyHtml: '<span class="chat-render-empty">空内容</span>',
             });
@@ -3152,10 +3169,11 @@ export default function chatGrid() {
         },
 
         extractDisplayContent(messageText) {
-            return extractContentWithConfig(messageText, this.activeRegexConfig, {
+            return buildReaderDisplaySource(messageText, this.activeRegexConfig, {
                 placement: 2,
                 isMarkdown: true,
                 macroContext: this.buildReaderRegexMacroContext(this.editingMessageTarget || { mes: messageText }, this.editingFloor),
+                depth: 0,
             });
         },
 

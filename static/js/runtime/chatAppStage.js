@@ -176,6 +176,26 @@ function buildChatAppDocument({ htmlPayload, assetBase = '', context = {} }) {
     return `<!DOCTYPE html><html><head>${injectedHead}</head><body>${sanitizedPayload}</body></html>`;
 }
 
+
+function detectAppFrameHeight(htmlPayload = '') {
+    const source = String(htmlPayload || '');
+    const compactSignals = [
+        'modern-dark-log',
+        'sakura-collapsible',
+        'evidence-details',
+    ];
+
+    if (compactSignals.some(signal => source.includes(signal))) {
+        return 260;
+    }
+
+    if (/<!doctype html/i.test(source) || /<html[\s>]/i.test(source)) {
+        return 960;
+    }
+
+    return 520;
+}
+
 export class ChatAppStage {
     constructor(callbacks = {}) {
         this.callbacks = callbacks;
@@ -231,6 +251,9 @@ export class ChatAppStage {
         }
 
         this.signature = signature;
+        if (this.iframe) {
+            this.iframe.style.height = `${detectAppFrameHeight(String(options.htmlPayload || ''))}px`;
+        }
         this.iframe.srcdoc = buildChatAppDocument({
             htmlPayload: String(options.htmlPayload || ''),
             assetBase: options.assetBase || '',
