@@ -58,6 +58,7 @@ const DEFAULT_CHAT_READER_RENDER_PREFS = {
 
 const CHAT_READER_WINDOW_SIZE = 120;
 const CHAT_READER_WINDOW_OVERLAP = 24;
+const CHAT_READER_WINDOW_STEP = Math.max(1, CHAT_READER_WINDOW_SIZE - CHAT_READER_WINDOW_OVERLAP);
 
 
 function normalizeDisplayRule(rule, index = 0) {
@@ -584,6 +585,11 @@ function applyDisplayRules(text, config) {
     const readerDisplayRules = options.readerDisplayRules === true;
     const macroContext = options.macroContext && typeof options.macroContext === 'object' ? options.macroContext : {};
     const depth = typeof options.depth === 'number' ? options.depth : null;
+    const normalizeDepthBound = (value) => {
+        if (value === null || value === undefined || value === '') return null;
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : null;
+    };
 
     const filterTrimStrings = (value, trimStrings = []) => {
         let output = String(value ?? '');
@@ -610,8 +616,10 @@ function applyDisplayRules(text, config) {
         if (isEdit && rule.runOnEdit === false) continue;
         if (Array.isArray(rule.placement) && rule.placement.length > 0 && !rule.placement.includes(placement)) continue;
         if (depth !== null) {
-            if (Number.isFinite(Number(rule.minDepth)) && Number(rule.minDepth) >= -1 && depth < Number(rule.minDepth)) continue;
-            if (Number.isFinite(Number(rule.maxDepth)) && Number(rule.maxDepth) >= 0 && depth > Number(rule.maxDepth)) continue;
+            const minDepth = normalizeDepthBound(rule.minDepth);
+            const maxDepth = normalizeDepthBound(rule.maxDepth);
+            if (minDepth !== null && minDepth >= -1 && depth < minDepth) continue;
+            if (maxDepth !== null && maxDepth >= 0 && depth > maxDepth) continue;
         }
         try {
             const regex = parseDisplayRuleRegex(getDisplayRuleRegexSource(rule, { macroContext }));
@@ -738,6 +746,39 @@ function getRenderedDisplayHtmlForMessage(message, renderedFloorHtmlCache = null
 }
 
 
+function getRuntimeScanCandidateFloors(activeChat, viewSettings = null) {
+    const messages = Array.isArray(activeChat?.messages) ? activeChat.messages : [];
+    if (!messages.length) return [];
+
+    const total = messages.length;
+    const settings = viewSettings && typeof viewSettings === 'object' ? viewSettings : DEFAULT_CHAT_READER_VIEW_SETTINGS;
+    const recentTailCount = Math.max(
+        Number(settings.fullDisplayCount || DEFAULT_CHAT_READER_VIEW_SETTINGS.fullDisplayCount),
+        Number(settings.instanceRenderDepth || DEFAULT_CHAT_READER_VIEW_SETTINGS.instanceRenderDepth),
+        8,
+    );
+    const viewportFloor = Math.min(total, Math.max(1, Number(activeChat?.last_view_floor || total || 1)));
+    const nearRadius = Math.max(
+        Number(settings.renderNearbyCount || DEFAULT_CHAT_READER_VIEW_SETTINGS.renderNearbyCount),
+        Number(settings.simpleRenderRadius || DEFAULT_CHAT_READER_VIEW_SETTINGS.simpleRenderRadius),
+    );
+    const recentStartFloor = Math.max(1, total - recentTailCount + 1);
+    const nearStartFloor = Math.max(1, viewportFloor - nearRadius);
+    const nearEndFloor = Math.min(total, viewportFloor + nearRadius);
+    const candidateSet = new Set();
+
+    for (let floor = recentStartFloor; floor <= total; floor += 1) {
+        candidateSet.add(floor);
+    }
+
+    for (let floor = nearStartFloor; floor <= nearEndFloor; floor += 1) {
+        candidateSet.add(floor);
+    }
+
+    return Array.from(candidateSet).sort((left, right) => left - right);
+}
+
+
 function buildRuntimeHostId(floor, index = 0) {
     return `st-runtime-host-${Number(floor || 0)}-${Number(index || 0)}`;
 }
@@ -809,9 +850,12 @@ function setRuntimeWrapperActive(host, active) {
 }
 
 
-function getExecutableMessageFloors(activeChat, renderedFloorHtmlCache = null) {
+function getExecutableMessageFloors(activeChat, renderedFloorHtmlCache = null, viewSettings = null) {
     const messages = Array.isArray(activeChat?.messages) ? activeChat.messages : [];
+    const scanFloors = getRuntimeScanCandidateFloors(activeChat, viewSettings);
+    const floorSet = new Set(scanFloors);
     const key = messages
+        .filter(message => floorSet.has(Number(message?.floor || 0)))
         .map(message => `${Number(message?.floor || 0)}:${getRenderedDisplayHtmlForMessage(message, renderedFloorHtmlCache).length}`)
         .join('|');
 
@@ -821,6 +865,7 @@ function getExecutableMessageFloors(activeChat, renderedFloorHtmlCache = null) {
     }
 
     const executableFloors = messages
+        .filter(message => floorSet.has(Number(message?.floor || 0)))
         .filter(message => extractRuntimeCandidatesFromRenderedHtml(getRenderedDisplayHtmlForMessage(message, renderedFloorHtmlCache)).length > 0)
         .map(message => Number(message.floor || 0))
         .filter(Boolean);
@@ -838,7 +883,7 @@ function shouldExecuteMessageSegments(message, activeChat, viewSettings, rendere
     const floor = Number(message?.floor || 0);
     if (!floor) return false;
 
-    const candidateFloors = getExecutableMessageFloors(activeChat, renderedFloorHtmlCache);
+    const candidateFloors = getExecutableMessageFloors(activeChat, renderedFloorHtmlCache, viewSettings);
     if (!candidateFloors.length || !candidateFloors.includes(floor)) {
         return false;
     }
@@ -1522,7 +1567,7 @@ export default function chatGrid() {
         },
 
         get executableMessageFloors() {
-            return getExecutableMessageFloors(this.activeChat, this.renderedFloorHtmlCache);
+            return getExecutableMessageFloors(this.activeChat, this.renderedFloorHtmlCache, this.readerViewSettings);
         },
 
         get hasAppFloorNavigation() {
@@ -2196,6 +2241,35 @@ export default function chatGrid() {
             };
         },
 
+        extendReaderWindow(direction = 'backward', anchorFloor = 0) {
+            const total = Number(this.activeChat?.messages?.length || 0);
+            if (!total) return { start: 1, end: 0 };
+
+            const currentStart = Math.max(1, Number(this.readerWindowStartFloor || 1));
+            const currentEnd = Math.max(currentStart, Number(this.readerWindowEndFloor || currentStart));
+            let nextStart = currentStart;
+            let nextEnd = currentEnd;
+
+            if (direction === 'backward') {
+                nextStart = Math.max(1, currentStart - CHAT_READER_WINDOW_STEP);
+            } else if (direction === 'forward') {
+                nextEnd = Math.min(total, currentEnd + CHAT_READER_WINDOW_STEP);
+            } else {
+                const bounds = this.resolveReaderWindowBounds(anchorFloor || currentEnd || total, 'center');
+                nextStart = bounds.start;
+                nextEnd = bounds.end;
+            }
+
+            if (nextStart === currentStart && nextEnd === currentEnd) {
+                return { start: currentStart, end: currentEnd };
+            }
+
+            this.readerWindowStartFloor = nextStart;
+            this.readerWindowEndFloor = nextEnd;
+            resetReaderVisibleMessagesCache(this);
+            return { start: nextStart, end: nextEnd };
+        },
+
         setReaderWindowAroundFloor(floor = 1, mode = 'center') {
             const bounds = this.resolveReaderWindowBounds(floor, mode);
             this.readerWindowStartFloor = bounds.start;
@@ -2208,8 +2282,31 @@ export default function chatGrid() {
             const targetFloor = Number(floor || 0);
             if (!targetFloor) return false;
 
-            if (targetFloor >= Number(this.readerWindowStartFloor || 1) && targetFloor <= Number(this.readerWindowEndFloor || 0)) {
+            const currentStart = Number(this.readerWindowStartFloor || 1);
+            const currentEnd = Number(this.readerWindowEndFloor || 0);
+            if (targetFloor >= currentStart && targetFloor <= currentEnd) {
                 return false;
+            }
+
+            const total = Number(this.activeChat?.messages?.length || 0);
+            if (total > 0) {
+                if (targetFloor < currentStart) {
+                    while (targetFloor < Number(this.readerWindowStartFloor || 1) && Number(this.readerWindowStartFloor || 1) > 1) {
+                        this.extendReaderWindow('backward', targetFloor);
+                    }
+                    if (targetFloor >= Number(this.readerWindowStartFloor || 1) && targetFloor <= Number(this.readerWindowEndFloor || 0)) {
+                        return true;
+                    }
+                }
+
+                if (targetFloor > currentEnd) {
+                    while (targetFloor > Number(this.readerWindowEndFloor || 0) && Number(this.readerWindowEndFloor || 0) < total) {
+                        this.extendReaderWindow('forward', targetFloor);
+                    }
+                    if (targetFloor >= Number(this.readerWindowStartFloor || 1) && targetFloor <= Number(this.readerWindowEndFloor || 0)) {
+                        return true;
+                    }
+                }
             }
 
             this.setReaderWindowAroundFloor(targetFloor, mode);
@@ -2220,20 +2317,16 @@ export default function chatGrid() {
             if (!this.hasEarlierReaderWindow) return;
 
             const previousStart = Number(this.readerWindowStartFloor || 1);
-            const step = Math.max(1, CHAT_READER_WINDOW_SIZE - CHAT_READER_WINDOW_OVERLAP);
-            const nextStart = Math.max(1, previousStart - step);
-            this.setReaderWindowAroundFloor(nextStart, 'start');
-            this.scrollToFloor(previousStart, false, 'auto');
+            this.extendReaderWindow('backward', previousStart);
+            this.$nextTick(() => this.scrollToFloor(previousStart, false, 'auto'));
         },
 
         loadNextReaderWindow() {
             if (!this.hasLaterReaderWindow) return;
 
             const previousEnd = Number(this.readerWindowEndFloor || 0);
-            const step = Math.max(1, CHAT_READER_WINDOW_SIZE - CHAT_READER_WINDOW_OVERLAP);
-            const nextStart = Math.max(1, Number(this.readerWindowStartFloor || 1) + step);
-            this.setReaderWindowAroundFloor(nextStart, 'start');
-            this.scrollToFloor(previousEnd, false, 'auto');
+            this.extendReaderWindow('forward', previousEnd);
+            this.$nextTick(() => this.scrollToFloor(previousEnd, false, 'auto'));
         },
 
         resolveReaderViewportFloor(container) {
