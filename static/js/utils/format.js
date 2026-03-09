@@ -3,10 +3,11 @@
  * 格式化与计算工具函数
  */
 
-// 格式化时间戳 (秒) 为 "MM-DD HH:mm"
-export function formatDate(ts) {
+// 格式化时间戳 (秒)
+export function formatDate(ts, options = {}) {
     if (!ts) return '-';
     let dateValue = null;
+    const includeYear = Boolean(options && options.includeYear);
 
     if (typeof ts === 'number') {
         dateValue = new Date(ts * 1000);
@@ -28,9 +29,18 @@ export function formatDate(ts) {
         return String(ts);
     }
 
-    return dateValue.toLocaleString('zh-CN', {
-        month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-    });
+    const formatOptions = {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    };
+
+    if (includeYear) {
+        formatOptions.year = 'numeric';
+    }
+
+    return dateValue.toLocaleString('zh-CN', formatOptions);
 }
 
 // 获取版本显示名称 (去掉后缀)

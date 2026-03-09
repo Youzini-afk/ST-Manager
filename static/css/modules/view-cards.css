@@ -183,23 +183,34 @@
     min-height: 2rem
 }
 
-.card-front-meta-row {
+.card-front-meta-left,
+.card-front-meta-right {
     min-width: 0;
     display: inline-flex;
-    align-items: center;
+    align-items: center
+}
+
+.card-front-meta-left {
+    justify-content: flex-start;
+    flex: 0 1 auto
+}
+
+.card-front-meta-right {
     justify-content: flex-end;
+    margin-left: auto;
     gap: 0.26rem;
     overflow: visible;
     padding-bottom: 1px
 }
 
-.card-front-meta-row span {
+.card-front-meta-right span,
+.card-front-meta-left span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap
 }
 
-.card-front-meta-row>.card-meta-chip:nth-child(n + 4) {
+.card-front-meta-right>.card-meta-chip:nth-child(n + 4) {
     display: none
 }
 
@@ -223,14 +234,23 @@
 }
 
 .card-meta-token {
-    max-width: 9.5rem;
-    font-weight: 700
+    max-width: 8.2rem;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--text-main), #ffffff 10%);
+    background: rgba(8, 47, 73, 0.44);
+    border-color: rgba(125, 211, 252, 0.28)
 }
 
 .card-meta-token span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap
+}
+
+.card-meta-token-unit {
+    opacity: 0.66;
+    font-size: 9px;
+    letter-spacing: 0.04em
 }
 
 .card-meta-category {
@@ -693,7 +713,7 @@ html.light-mode .card-bottom-toolbar {
 }
 
 .card-back-header {
-    padding: 0.6rem 0.75rem 0.35rem;
+    padding: 0.58rem 0.75rem 0.28rem;
     border-bottom: 1px solid color-mix(in srgb, var(--border-light), #ffffff 12%);
     background: linear-gradient(180deg, color-mix(in srgb, var(--bg-sub), transparent 22%), transparent)
 }
@@ -718,15 +738,68 @@ html.light-mode .card-bottom-toolbar {
     padding-right: 0
 }
 
+.card-back-category {
+    display: flex;
+    align-items: center;
+    gap: 0.32rem;
+    margin-top: 0.36rem;
+    min-width: 0;
+    font-size: 10px;
+    color: color-mix(in srgb, var(--text-sub), #ffffff 10%);
+    line-height: 1.1
+}
+
+.card-back-category-icon {
+    flex: 0 0 auto;
+    opacity: 0.82
+}
+
+.card-back-category-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+
 .card-back-info {
-    gap: 0.5rem;
-    padding-top: 0.55rem
+    gap: 0.42rem;
+    padding-top: 0.48rem
+}
+
+.card-back-times {
+    display: grid;
+    gap: 0.28rem;
+    padding: 0.02rem 0.02rem 0.04rem;
+    font-variant-numeric: tabular-nums
+}
+
+.card-back-time-row {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.42rem;
+    min-width: 0;
+    font-size: 10px;
+    line-height: 1.15
+}
+
+.card-back-time-label {
+    color: var(--text-dim);
+    letter-spacing: 0.04em
+}
+
+.card-back-time-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--text-main), #ffffff 8%)
 }
 
 .card-back-note {
     overflow: auto !important;
     line-height: 1.35;
-    min-height: 8.9rem
+    min-height: 5.6rem
 }
 
 .card-bottom-toolbar {
@@ -773,6 +846,48 @@ html.light-mode .card-bottom-toolbar {
     background: linear-gradient(180deg, rgba(133, 77, 14, 0.58), rgba(120, 53, 15, 0.36));
     opacity: 1;
     box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.16) inset
+}
+
+.card-send-st-btn {
+    appearance: none;
+    border: 1px solid color-mix(in srgb, var(--border-light), #ffffff 14%);
+    background: rgba(15, 23, 42, 0.45);
+    color: var(--text-sub);
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease
+}
+
+.card-send-st-btn.has-sent {
+    color: #bfdbfe;
+    border-color: rgba(96, 165, 250, 0.68);
+    background: linear-gradient(180deg, rgba(30, 64, 175, 0.62), rgba(30, 41, 59, 0.4));
+    box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.2) inset, 0 0 10px rgba(59, 130, 246, 0.18)
+}
+
+.card-send-st-btn:hover:not(:disabled) {
+    color: #e0f2fe;
+    border-color: rgba(96, 165, 250, 0.8);
+    transform: translateY(-1px)
+}
+
+.card-send-st-btn.is-sending,
+.card-send-st-btn:disabled {
+    cursor: wait;
+    opacity: 0.9
+}
+
+.card-send-st-btn.is-sending {
+    color: #e0f2fe;
+    border-color: rgba(125, 211, 252, 0.74);
+    background: linear-gradient(180deg, rgba(14, 116, 144, 0.62), rgba(15, 23, 42, 0.42));
+    box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.22) inset
 }
 
 .card-local-note-btn.has-note:hover {
@@ -1047,6 +1162,23 @@ html.light-mode .card-local-note-btn.has-note {
     background: linear-gradient(180deg, rgba(253, 224, 71, 0.38), rgba(251, 191, 36, 0.24))
 }
 
+html.light-mode .card-send-st-btn {
+    background: rgba(255, 255, 255, 0.85)
+}
+
+html.light-mode .card-send-st-btn.has-sent {
+    color: #1d4ed8;
+    border-color: rgba(59, 130, 246, 0.5);
+    background: linear-gradient(180deg, rgba(191, 219, 254, 0.9), rgba(219, 234, 254, 0.56));
+    box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.2) inset, 0 8px 16px -14px rgba(59, 130, 246, 0.38)
+}
+
+html.light-mode .card-send-st-btn.is-sending {
+    color: #0f766e;
+    border-color: rgba(45, 212, 191, 0.5);
+    background: linear-gradient(180deg, rgba(204, 251, 241, 0.92), rgba(240, 253, 250, 0.6))
+}
+
 html.light-mode .card-meta-category {
     color: color-mix(in srgb, var(--text-sub), #000000 8%)
 }
@@ -1287,6 +1419,10 @@ html.light-mode .btn-note-preview:hover {
         gap: 0.18rem
     }
 
+    .card-front-meta-right {
+        gap: 0.18rem
+    }
+
     .card-meta-category {
         max-width: 3.2rem
     }
@@ -1322,10 +1458,6 @@ html.light-mode .btn-note-preview:hover {
         transform: scale(1)
     }
 
-    .card-fav-overlay .card-fav-icon {
-        font-size: 1.26rem
-    }
-
     .card-source-link-fab {
         width: 1.45rem;
         height: 1.45rem;
@@ -1354,14 +1486,29 @@ html.light-mode .btn-note-preview:hover {
         font-size: 10px
     }
 
+    .card-back-category {
+        margin-top: 0.28rem;
+        font-size: 9px
+    }
+
     .card-back-info {
         padding: 0.25rem 0.35rem 0.35rem;
         gap: 0.3rem
     }
 
+    .card-back-times {
+        gap: 0.2rem
+    }
+
+    .card-back-time-row {
+        grid-template-columns: 1.75rem minmax(0, 1fr);
+        gap: 0.32rem;
+        font-size: 9px
+    }
+
     .card-back-note {
         min-height: 0;
-        max-height: 3.7rem;
+        max-height: 3.2rem;
         font-size: 11px;
         padding: 0.35rem
     }
@@ -1372,6 +1519,11 @@ html.light-mode .btn-note-preview:hover {
     }
 
     .card-local-note-btn {
+        width: 1.45rem;
+        height: 1.45rem
+    }
+
+    .card-send-st-btn {
         width: 1.45rem;
         height: 1.45rem
     }
@@ -1388,6 +1540,10 @@ html.light-mode .btn-note-preview:hover {
 
     .card-image-container::after {
         height: 6.4rem
+    }
+
+    .card-fav-overlay .card-fav-icon {
+        font-size: 1.26rem
     }
 
     .card-image-tags-wrap .card-tags-row {

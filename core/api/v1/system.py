@@ -18,7 +18,7 @@ from core.config import (
     load_config, save_config, get_cards_folder
 )
 from core.context import ctx
-from core.data.ui_store import load_ui_data, save_ui_data, UI_DATA_FILE
+from core.data.ui_store import load_ui_data, save_ui_data, set_last_sent_to_st, UI_DATA_FILE
 from core.consts import SIDECAR_EXTENSIONS, RESERVED_RESOURCE_NAMES
 
 # === 核心服务 ===
@@ -1115,7 +1115,22 @@ def api_send_to_st():
 
         # 5. 处理结果
         if response.status_code == 200:
-            return jsonify({"success": True, "st_response": response.json() if response.content else "OK"})
+            st_response = response.json() if response.content else 'OK'
+            ui_data = load_ui_data()
+            ui_key = resolve_ui_key(card_id)
+            _, last_sent_to_st = set_last_sent_to_st(ui_data, ui_key, time.time())
+            save_ui_data(ui_data)
+
+            target_id = card_id
+            if ui_key in ctx.cache.bundle_map:
+                target_id = ctx.cache.bundle_map[ui_key]
+            ctx.cache.update_card_data(target_id, {'last_sent_to_st': last_sent_to_st})
+
+            return jsonify({
+                'success': True,
+                'st_response': st_response,
+                'last_sent_to_st': last_sent_to_st,
+            })
         elif response.status_code == 400:
             return jsonify({"success": False, "msg": f"ST 请求错误 (400): {response.text}"})
         elif response.status_code == 401:

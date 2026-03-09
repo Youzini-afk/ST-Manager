@@ -9,11 +9,12 @@ import {
     checkResourceFolders,
     findCardPage,
     moveCard,
-    toggleFavorite
+    toggleFavorite,
+    sendToSillyTavern
 } from '../api/card.js';
 
 import { batchUpdateTags } from '../api/system.js';
-import { getCardGridTokenBadgeClass } from '../utils/format.js';
+import { formatDate, getCardGridTokenBadgeClass } from '../utils/format.js';
 
 export default function cardGrid() {
     return {
@@ -37,6 +38,7 @@ export default function cardGrid() {
         dragCounter: 0,
         getCardGridTokenBadgeClass,
         flippedCardIds: {},
+        sendingToStIds: {},
         bulkBackMode: false,
         autoFlipBackDelayMs: 1800,
         _autoFlipBackTimers: {},
@@ -302,6 +304,55 @@ export default function cardGrid() {
         openCardLocalNote(card) {
             if (!this.cardHasLocalNote(card)) return;
             this.openMarkdownView(card.ui_summary);
+        },
+
+        formatCardBackDate(ts) {
+            return formatDate(ts, { includeYear: true });
+        },
+
+        formatCardBackDateFull(ts) {
+            return formatDate(ts, { includeYear: true });
+        },
+
+        isSendingToST(cardId) {
+            return !!this.sendingToStIds[String(cardId)];
+        },
+
+        cardHasBeenSentToST(card) {
+            return Number(card?.last_sent_to_st || 0) > 0;
+        },
+
+        getCardSendToSTTitle(card) {
+            if (!card || !card.id) return '发送到 ST';
+            if (this.isSendingToST(card.id)) return '正在发送到 ST';
+            if (this.cardHasBeenSentToST(card)) {
+                return `已发送到 ST：${this.formatCardBackDateFull(card.last_sent_to_st)}`;
+            }
+            return '发送到 ST';
+        },
+
+        async sendCardToST(card) {
+            if (!card || !card.id || this.isSendingToST(card.id)) return;
+
+            const key = String(card.id);
+            this.sendingToStIds = { ...this.sendingToStIds, [key]: true };
+
+            try {
+                const res = await sendToSillyTavern(card.id);
+                if (res.success) {
+                    const sentAt = Number(res.last_sent_to_st || Date.now() / 1000);
+                    card.last_sent_to_st = sentAt;
+                    this.$store.global.showToast('🚀 已发送到 ST', 1800);
+                } else {
+                    this.$store.global.showToast(`❌ ${res.msg || '发送失败'}`, 2600);
+                }
+            } catch (error) {
+                this.$store.global.showToast(`❌ ${error?.message || '发送失败'}`, 2600);
+            } finally {
+                const next = { ...this.sendingToStIds };
+                delete next[key];
+                this.sendingToStIds = next;
+            }
         },
 
         getReadableTagChipStyle(tag) {

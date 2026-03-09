@@ -1054,12 +1054,17 @@
                                         <div class="detail-manage-kv-row">
                                             <span class="detail-manage-kv-label">导入时间</span>
                                             <span class="detail-manage-kv-value"
-                                                x-text="formatDate(activeCard.import_time || activeCard.last_modified)"></span>
+                                                x-text="formatDateWithYear(activeCard.import_time || activeCard.last_modified)"></span>
                                         </div>
                                         <div class="detail-manage-kv-row">
                                             <span class="detail-manage-kv-label">修改时间</span>
                                             <span class="detail-manage-kv-value"
-                                                x-text="formatDate(activeCard.last_modified)"></span>
+                                                x-text="formatDateWithYear(activeCard.last_modified)"></span>
+                                        </div>
+                                        <div class="detail-manage-kv-row">
+                                            <span class="detail-manage-kv-label">上次发送到 ST</span>
+                                            <span class="detail-manage-kv-value"
+                                                x-text="formatDateWithYear(activeCard.last_sent_to_st)"></span>
                                         </div>
                                     </div>
                                 </article>

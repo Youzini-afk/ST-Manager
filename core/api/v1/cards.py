@@ -22,6 +22,7 @@ from core.data.ui_store import (
     get_version_remark,
     set_version_remark,
     get_import_time,
+    get_last_sent_to_st,
     ensure_import_time,
     get_tag_taxonomy,
     set_tag_taxonomy,
@@ -2860,6 +2861,7 @@ def api_get_card_detail():
         if import_time_changed:
             save_ui_data(ui_data)
         card_data['import_time'] = import_time_val
+        card_data['last_sent_to_st'] = get_last_sent_to_st(ui_data, ui_key)
 
         is_version_of_bundle = False
         parent_dir = os.path.dirname(card_id).replace('\\', '/')

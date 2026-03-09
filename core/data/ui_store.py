@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 VERSION_REMARKS_KEY = '_version_remarks'
 IMPORT_TIME_KEY = 'import_time'
+LAST_SENT_TO_ST_KEY = 'last_sent_to_st'
 TAG_TAXONOMY_KEY = '_tag_taxonomy_v1'
 
 DEFAULT_TAG_CATEGORY = '未分类'
@@ -302,6 +303,43 @@ def ensure_import_time(ui_data, ui_key, fallback=None):
     changed = True
     return changed, fallback_ts
 
+
+def get_last_sent_to_st(ui_data, ui_key):
+    """获取上次发送到 ST 的时间戳；不存在则返回 0。"""
+    if not isinstance(ui_data, dict):
+        return 0.0
+
+    entry = ui_data.get(ui_key)
+    if not isinstance(entry, dict):
+        return 0.0
+
+    sent_ts = _normalize_timestamp(entry.get(LAST_SENT_TO_ST_KEY))
+    return sent_ts if sent_ts is not None else 0.0
+
+
+def set_last_sent_to_st(ui_data, ui_key, timestamp=None):
+    """设置上次发送到 ST 的时间戳。"""
+    sent_ts = _normalize_timestamp(timestamp)
+    if sent_ts is None:
+        sent_ts = time.time()
+
+    if not isinstance(ui_data, dict) or not ui_key:
+        return False, sent_ts
+
+    changed = False
+    entry = ui_data.get(ui_key)
+    if not isinstance(entry, dict):
+        entry = {}
+        ui_data[ui_key] = entry
+        changed = True
+
+    current_ts = _normalize_timestamp(entry.get(LAST_SENT_TO_ST_KEY))
+    if current_ts != sent_ts:
+        entry[LAST_SENT_TO_ST_KEY] = sent_ts
+        changed = True
+
+    return changed, sent_ts
+
 def load_ui_data():
     """
     加载 UI 辅助数据 (JSON 格式)。
@@ -339,6 +377,15 @@ def load_ui_data():
                         dirty = True
                     elif info.get(IMPORT_TIME_KEY) != normalized_ts:
                         info[IMPORT_TIME_KEY] = normalized_ts
+                        dirty = True
+
+                if LAST_SENT_TO_ST_KEY in info:
+                    normalized_sent_ts = _normalize_timestamp(info.get(LAST_SENT_TO_ST_KEY))
+                    if normalized_sent_ts is None:
+                        del info[LAST_SENT_TO_ST_KEY]
+                        dirty = True
+                    elif info.get(LAST_SENT_TO_ST_KEY) != normalized_sent_ts:
+                        info[LAST_SENT_TO_ST_KEY] = normalized_sent_ts
                         dirty = True
             
             if dirty:

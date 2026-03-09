@@ -13,6 +13,7 @@ from core.data.ui_store import (
     load_ui_data,
     get_version_remark,
     get_import_time,
+    get_last_sent_to_st,
     ensure_import_time,
     cleanup_stale_version_remarks,
     migrate_bundle_remarks_to_versions,
@@ -270,6 +271,7 @@ class GlobalMetadataCache:
         """[增量更新] 新增卡片"""
         with self.lock:
             new_card_data['tags'] = self._normalize_tags(new_card_data.get('tags'))
+            ui_data = load_ui_data()
 
             import_ts = new_card_data.get('import_time')
             try:
@@ -279,6 +281,16 @@ class GlobalMetadataCache:
             except Exception:
                 import_ts = new_card_data.get('last_modified', time.time())
             new_card_data['import_time'] = import_ts
+
+            sent_ts = new_card_data.get('last_sent_to_st')
+            try:
+                sent_ts = float(sent_ts)
+                if sent_ts <= 0:
+                    raise ValueError('invalid last_sent_to_st')
+            except Exception:
+                ui_key = new_card_data.get('bundle_dir') if new_card_data.get('is_bundle') else new_card_data.get('id')
+                sent_ts = get_last_sent_to_st(ui_data, ui_key)
+            new_card_data['last_sent_to_st'] = sent_ts
 
             self.cards.append(new_card_data)
             self.id_map[new_card_data['id']] = new_card_data
@@ -556,6 +568,7 @@ class GlobalMetadataCache:
 
         import_time_changed, import_ts = ensure_import_time(ui_data, key, card.get('last_modified', 0))
         card['import_time'] = import_ts
+        card['last_sent_to_st'] = get_last_sent_to_st(ui_data, key)
 
         # 预计算 URL
         mtime = int(card.get('last_modified', 0))

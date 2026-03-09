@@ -129,6 +129,10 @@ export default function detailModal() {
         updateWiKeys,
         ...wiHelpers,
 
+        formatDateWithYear(ts) {
+            return formatDate(ts, { includeYear: true });
+        },
+
         _convertLegacyTavernHelper(extensions) {
             if (!extensions || typeof extensions !== 'object') return;
             if (extensions.tavern_helper !== undefined) return;
@@ -1043,7 +1047,8 @@ export default function detailModal() {
                     }
 
                     if (res.card.image_url) this.activeCard.image_url = res.card.image_url;
-                    if (res.card.import_time) this.activeCard.import_time = res.card.import_time;
+                    this.activeCard.import_time = Number(res.card.import_time || 0);
+                    this.activeCard.last_sent_to_st = Number(res.card.last_sent_to_st || 0);
                     this.fetchCardChats(safeCard.id || cardId);
 
                     // 更新 UI 备注字段
@@ -1640,7 +1645,10 @@ export default function detailModal() {
             
             sendToSillyTavern(this.activeCard.id)
                 .then(res => {
-                    if (res.success) alert("✅ 发送成功");
+                    if (res.success) {
+                        this.activeCard.last_sent_to_st = Number(res.last_sent_to_st || Date.now() / 1000);
+                        alert("✅ 发送成功");
+                    }
                     else alert("❌ 发送失败: " + res.msg);
                 })
                 .finally(() => {

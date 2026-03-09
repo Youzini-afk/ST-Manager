@@ -30,18 +30,16 @@
                     <div class="card-flip-inner" :class="{'is-flipped': isCardFlipped(card.id)}">
                         <div class="card-face card-front">
                             <div class="card-front-topbar">
-                                <div class="card-meta-chip card-meta-category"
-                                    :title="`分类：${(card.category && card.category.trim()) ? card.category : '根目录'}`">
-                                    📁 <span x-text="formatCategoryLabel(card.category)"></span>
-                                </div>
-
-                                <div class="card-front-meta-row">
+                                <div class="card-front-meta-left">
                                     <!-- Token 计数 -->
                                     <div :class="getCardGridTokenBadgeClass(card.token_count)"
                                         class="card-meta-chip card-meta-token" title="Token 估算">
-                                        <span x-text="card.token_count"></span> T
+                                        <span x-text="card.token_count"></span>
+                                        <span class="card-meta-token-unit">T</span>
                                     </div>
+                                </div>
 
+                                <div class="card-front-meta-right">
                                     <div x-show="card.char_version && card.char_version.trim() !== ''"
                                         :title="`版本：${card.char_version}`" class="card-meta-chip card-meta-version">
                                         <span x-text="card.char_version"></span>
@@ -103,7 +101,6 @@
                                                     <span x-text="tag"></span>
                                                 </button>
                                             </template>
-                                            <span x-show="card.tags.length === 0" class="card-tag card-tag-empty">无标签</span>
                                         </div>
                                         <div x-show="card.tags.length > getVisibleTagLimit()" class="card-tags-more">+<span
                                                 x-text="card.tags.length - getVisibleTagLimit()"></span> 个标签</div>
@@ -119,8 +116,25 @@
                                 <p class="card-back-title">文件名</p>
                                 <p class="card-back-filename" :title="card.filename"
                                     x-text="card.filename || '未知文件名'"></p>
+                                <div class="card-back-category"
+                                    :title="`分类：${(card.category && card.category.trim()) ? card.category : '根目录'}`">
+                                    <span class="card-back-category-icon">📁</span>
+                                    <span class="card-back-category-text" x-text="formatCategoryLabel(card.category)"></span>
+                                </div>
                             </div>
                             <div class="card-info card-back-info">
+                                <div class="card-back-times">
+                                    <div class="card-back-time-row"
+                                        :title="`导入时间：${formatCardBackDateFull(card.import_time || card.last_modified)}`">
+                                        <span class="card-back-time-label">导入</span>
+                                        <span class="card-back-time-value" x-text="formatCardBackDate(card.import_time || card.last_modified)"></span>
+                                    </div>
+                                    <div class="card-back-time-row"
+                                        :title="`修改时间：${formatCardBackDateFull(card.last_modified)}`">
+                                        <span class="card-back-time-label">修改</span>
+                                        <span class="card-back-time-value" x-text="formatCardBackDate(card.last_modified)"></span>
+                                    </div>
+                                </div>
                                 <div class="local-note-preview custom-scrollbar card-back-note" @click.stop
                                     :class="card.ui_summary ? 'note-text' : 'note-placeholder'" title="本地备注"
                                     x-text="card.ui_summary || '无本地备注...'"></div>
@@ -135,6 +149,14 @@
                             :title="cardHasLocalNote(card) ? '查看本地备注预览' : '暂无本地备注'"
                             @click.stop="openCardLocalNote(card)">
                             📝
+                        </button>
+                        <button type="button" class="card-send-st-btn"
+                            :class="{ 'has-sent': cardHasBeenSentToST(card), 'is-sending': isSendingToST(card.id) }"
+                            :disabled="isSendingToST(card.id)"
+                            :title="getCardSendToSTTitle(card)"
+                            @click.stop="sendCardToST(card)">
+                            <span x-show="!isSendingToST(card.id)">🚀</span>
+                            <span x-show="isSendingToST(card.id)">⏳</span>
                         </button>
                     </div>
 
