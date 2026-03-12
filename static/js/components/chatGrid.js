@@ -1672,7 +1672,7 @@ export default function chatGrid() {
                 return {
                     type: 'app-stage',
                     minHeight: 520,
-                    maxHeight: 860,
+                    maxHeight: 0,
                 };
             }
 

@@ -31,6 +31,13 @@ function mountAnchorContent(anchor, classification, text, options = {}) {
     anchor.dataset.runtimeLabel = String(options.runtimeLabel || 'Chat Segment');
 
     if (classification.type === 'app-stage') {
+        if (options.fillStageHeight === true) {
+            anchor.style.display = 'block';
+            anchor.style.width = '100%';
+            anchor.style.height = 'auto';
+            anchor.style.minHeight = '100%';
+        }
+
         const stage = new ChatAppStage({
             onTriggerSlash: options.onTriggerSlash,
             onToast: options.onToast,

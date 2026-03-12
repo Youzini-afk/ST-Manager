@@ -758,12 +758,7 @@ export class ChatAppStage {
             return Math.max(this.resolveMinHeight(), Math.ceil(this.maxHeight));
         }
 
-        const rectHeight = Math.ceil(this.host?.getBoundingClientRect?.().height || 0);
-        if (rectHeight > 0) {
-            return Math.max(this.resolveMinHeight(), rectHeight);
-        }
-
-        return Math.max(this.resolveMinHeight(), DEFAULT_STAGE_MAX_HEIGHT);
+        return null;
     }
 
     applyMeasuredHeight(height) {
@@ -783,16 +778,20 @@ export class ChatAppStage {
             return;
         }
 
-        const fallbackHeight = this.resolveMinHeight();
+        const minHeight = this.resolveMinHeight();
+        const maxHeight = this.resolveMaxHeight();
+        const fallbackHeight = minHeight;
         const numericHeight = Number.isFinite(Number(height)) && Number(height) > 0 ? Math.ceil(Number(height)) : fallbackHeight;
-        const clampedHeight = Math.max(this.resolveMinHeight(), Math.min(this.resolveMaxHeight(), numericHeight));
+        const clampedHeight = maxHeight === null
+            ? Math.max(minHeight, numericHeight)
+            : Math.max(minHeight, Math.min(maxHeight, numericHeight));
 
         this.lastMeasuredHeight = numericHeight;
-        this.shell.style.minHeight = `${this.resolveMinHeight()}px`;
-        this.shell.style.maxHeight = `${this.resolveMaxHeight()}px`;
+        this.shell.style.minHeight = `${minHeight}px`;
+        this.shell.style.maxHeight = maxHeight === null ? 'none' : `${maxHeight}px`;
         this.shell.style.height = `${clampedHeight}px`;
-        this.iframe.style.minHeight = `${this.resolveMinHeight()}px`;
-        this.iframe.style.maxHeight = `${this.resolveMaxHeight()}px`;
+        this.iframe.style.minHeight = `${minHeight}px`;
+        this.iframe.style.maxHeight = maxHeight === null ? 'none' : `${maxHeight}px`;
         this.iframe.style.height = `${clampedHeight}px`;
     }
 

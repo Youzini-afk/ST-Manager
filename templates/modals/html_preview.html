@@ -14,8 +14,8 @@
 
         <!-- 内容区 (Shadow DOM) -->
         <!-- 这里复用 updateShadowContent 函数，确保样式和逻辑与小框一致 -->
-        <div class="flex-1 overflow-hidden relative bg-[var(--bg-body)]"
-            x-effect="updateMixedPreviewContent($el, showLargePreview ? regexTestResult : null, { runtimeOwner: 'fullscreen-html-preview', runtimeLabel: 'Fullscreen HTML Preview', scroll: true, minHeight: 260, maxHeight: 100000, embeddedStageStyle: false })">
+        <div class="flex-1 overflow-auto custom-scrollbar relative bg-[var(--bg-body)]"
+            x-effect="updateMixedPreviewContent($el, showLargePreview ? regexTestResult : null, { runtimeOwner: 'fullscreen-html-preview', runtimeLabel: 'Fullscreen HTML Preview', scroll: false, minHeight: 260, maxHeight: 100000, embeddedStageStyle: false })">
         </div>
 
         <!-- 底部 -->

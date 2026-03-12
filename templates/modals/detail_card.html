@@ -587,7 +587,7 @@
                                 <!-- 编辑模式或阅览模式 - HTML预览 -->
                                 <div x-show="showFirstPreview" class="detail-render-box custom-scrollbar detail-dialog-grow-box"
                                     style="background: var(--bg-panel); border-color: var(--accent-main); padding: 0; overflow: auto;"
-                                    x-effect="updateMixedPreviewContent($el, showFirstPreview ? editingData.first_mes : null, { runtimeOwner: 'card-first-message', runtimeLabel: 'Card First Message Preview', scroll: true, minHeight: 220, maxHeight: 3200 })">
+                                    x-effect="updateMixedPreviewContent($el, showFirstPreview ? editingData.first_mes : null, { runtimeOwner: 'card-first-message', runtimeLabel: 'Card First Message Preview', scroll: true, minHeight: 220, maxHeight: 0, fillStageHeight: true })">
                                 </div>
                                 
                                 <!-- 阅览模式 - 只读文本 -->

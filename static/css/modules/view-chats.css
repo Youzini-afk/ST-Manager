@@ -664,8 +664,8 @@
 .chat-reader-app-stage-frame {
     display: block;
     width: 100%;
-    min-height: calc(100vh - 300px);
-    height: calc(100vh - 300px);
+    min-height: 0;
+    height: auto;
     border: none;
     background: transparent
 }

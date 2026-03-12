@@ -79,6 +79,14 @@ function classifyPreviewFrontendText(text, options = {}) {
         return null;
     }
 
+    const resolvePreviewBound = (value, fallback) => {
+        if (value === null || value === undefined || value === '') {
+            return fallback;
+        }
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : fallback;
+    };
+
     const normalized = source
         .replace(/^```(?:html|text|xml)?\s*/i, '')
         .replace(/```$/i, '')
@@ -90,8 +98,8 @@ function classifyPreviewFrontendText(text, options = {}) {
 
     return {
         type: 'app-stage',
-        minHeight: Number(options.minHeight || 260),
-        maxHeight: Number(options.maxHeight || 3200),
+        minHeight: resolvePreviewBound(options.minHeight, 260),
+        maxHeight: resolvePreviewBound(options.maxHeight, 3200),
     };
 }
 
@@ -101,6 +109,14 @@ function buildMixedPreviewParts(content, options = {}) {
     if (!trimmedContent) {
         return [];
     }
+
+    const resolvePreviewBound = (value, fallback) => {
+        if (value === null || value === undefined || value === '') {
+            return fallback;
+        }
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : fallback;
+    };
 
     const htmlFragmentRegex = /^\s*<(?:div|style|details|section|article|main|link|table|script|iframe|svg|html|body|head|canvas)/i;
     const codeBlockRegex = /```(?:html|xml|text|js|css|json)?\s*([\s\S]*?)```/gi;
@@ -157,8 +173,8 @@ function buildMixedPreviewParts(content, options = {}) {
         parts.push({
             type: 'app-stage',
             text: cleanedPayload,
-            minHeight: Number(options.minHeight || 260),
-            maxHeight: Number(options.maxHeight || 3200),
+            minHeight: resolvePreviewBound(options.minHeight, 260),
+            maxHeight: resolvePreviewBound(options.maxHeight, 3200),
         });
     }
 
@@ -498,10 +514,20 @@ export function updateMixedPreviewContent(el, content, options = {}) {
         el.attachShadow({ mode: 'open' });
     }
 
+    const resolvePreviewCssBound = (value) => {
+        if (value === null || value === undefined || value === '') {
+            return 'none';
+        }
+        const numeric = Number.parseInt(value, 10);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            return 'none';
+        }
+        return `${Math.max(0, numeric)}px`;
+    };
+
     const minHeight = Number.parseInt(options.minHeight, 10);
-    const maxHeight = Number.parseInt(options.maxHeight, 10);
     const hostMinHeight = Number.isFinite(minHeight) ? `${Math.max(0, minHeight)}px` : '0px';
-    const hostMaxHeight = Number.isFinite(maxHeight) ? `${Math.max(0, maxHeight)}px` : 'none';
+    const hostMaxHeight = resolvePreviewCssBound(options.maxHeight);
     const shadow = el.shadowRoot;
 
     shadow.innerHTML = `
@@ -537,6 +563,12 @@ export function updateMixedPreviewContent(el, content, options = {}) {
                 overflow-wrap: anywhere;
                 word-break: break-word;
             }
+            .mixed-preview-host[data-fill-stage="true"] {
+                display: flex;
+                flex-direction: column;
+                min-height: 100%;
+                height: auto;
+            }
             .mixed-preview-host .chat-message-render-chunk {
                 display: block;
                 width: 100%;
@@ -544,6 +576,9 @@ export function updateMixedPreviewContent(el, content, options = {}) {
                 margin: 0;
                 overflow-wrap: anywhere;
                 word-break: break-word;
+            }
+            .mixed-preview-host[data-fill-stage="true"] .chat-message-render-chunk {
+                flex: 0 0 auto;
             }
             .mixed-preview-host .chat-message-render-chunk + .chat-message-render-chunk,
             .mixed-preview-host .chat-message-render-chunk + .chat-message-pre-anchor,
@@ -559,6 +594,11 @@ export function updateMixedPreviewContent(el, content, options = {}) {
                 overflow: hidden;
                 overflow-wrap: anywhere;
                 word-break: break-word;
+            }
+            .mixed-preview-host[data-fill-stage="true"] .chat-message-pre-anchor {
+                flex: 1 1 auto;
+                min-height: 100%;
+                height: auto;
             }
             .mixed-preview-host .chat-reader-app-stage-shell,
             .mixed-preview-host .chat-reader-app-stage-frame,
@@ -624,6 +664,12 @@ export function updateMixedPreviewContent(el, content, options = {}) {
         return;
     }
 
+    if (options.fillStageHeight === true) {
+        host.dataset.fillStage = 'true';
+    } else {
+        delete host.dataset.fillStage;
+    }
+
     el.__stmMixedPreviewHost = host;
 
     const source = String(content || '');
@@ -647,6 +693,7 @@ export function updateMixedPreviewContent(el, content, options = {}) {
                 classifyFrontendText: (text) => classifyPreviewFrontendText(text, options),
                 assetBase: options.assetBase || '',
                 embeddedStageStyle: options.embeddedStageStyle === true,
+                fillStageHeight: options.fillStageHeight === true,
                 runtimeOwner: options.runtimeOwner || 'preview',
                 runtimeLabel: options.runtimeLabel || 'Preview Segment',
             });
