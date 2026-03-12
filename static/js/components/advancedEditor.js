@@ -6,6 +6,7 @@
 import { ManagerScriptRuntime } from '../runtime/scriptRuntime.js';
 import { subscribeRuntimeManager } from '../runtime/runtimeManager.js';
 import { updateShadowContent, updateMixedPreviewContent } from '../utils/dom.js';
+import { applyDisplayRules } from './chatGrid.js';
 
 export default function advancedEditor() {
     return {
@@ -572,14 +573,9 @@ export default function advancedEditor() {
             if (!this.regexTestInput) { this.regexTestResult = ""; return; }
             if (!script.findRegex) { this.regexTestResult = this.regexTestInput; return; }
             try {
-                const flags = "g" + (script.caseSensitive ? "" : "i") + "m";
-                const regex = new RegExp(script.findRegex, flags);
-                let result = this.regexTestInput;
-                if (script.trimStrings && Array.isArray(script.trimStrings)) {
-                    script.trimStrings.forEach(trimStr => { if (trimStr) result = result.split(trimStr).join(""); });
-                }
-                result = result.replace(regex, script.replaceString || "");
-                this.regexTestResult = result;
+                this.regexTestResult = applyDisplayRules(this.regexTestInput, {
+                    displayRules: [script],
+                });
             } catch (e) {
                 this.regexTestResult = "❌ 正则表达式错误: " + e.message;
             }

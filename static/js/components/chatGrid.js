@@ -577,7 +577,7 @@ function getDisplayRuleRegexSource(rule, options = {}) {
 }
 
 
-function applyDisplayRules(text, config) {
+export function applyDisplayRules(text, config) {
     let content = String(text || '');
     const rules = Array.isArray(config?.displayRules) ? config.displayRules : [];
     const options = arguments[2] && typeof arguments[2] === 'object' ? arguments[2] : {};
