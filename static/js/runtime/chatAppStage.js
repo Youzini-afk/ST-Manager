@@ -684,6 +684,7 @@ export class ChatAppStage {
         this.callbacks = callbacks;
         this.minHeight = Number.isFinite(Number(callbacks.minHeight)) ? Number(callbacks.minHeight) : 0;
         this.maxHeight = Number.isFinite(Number(callbacks.maxHeight)) ? Number(callbacks.maxHeight) : 0;
+        this.embeddedStageStyle = callbacks.embeddedStageStyle === true;
         this.host = null;
         this.shell = null;
         this.iframe = null;
@@ -725,6 +726,10 @@ export class ChatAppStage {
 
     isViewportStage() {
         return Boolean(this.host && this.host.classList.contains('chat-reader-app-stage-host'));
+    }
+
+    shouldApplyEmbeddedStageStyle() {
+        return !this.isViewportStage() && this.embeddedStageStyle;
     }
 
     resolveViewportStageHeight() {
@@ -797,10 +802,12 @@ export class ChatAppStage {
             return;
         }
 
-        this.host.style.width = '100%';
-        this.host.style.maxWidth = '100%';
-        this.host.style.minWidth = '0';
-        this.host.style.overflow = 'hidden';
+        if (this.shouldApplyEmbeddedStageStyle()) {
+            this.host.style.width = '100%';
+            this.host.style.maxWidth = '100%';
+            this.host.style.minWidth = '0';
+            this.host.style.overflow = 'hidden';
+        }
 
         if (!this.shell) {
             const shell = document.createElement('div');
@@ -890,7 +897,7 @@ export class ChatAppStage {
             activeContext: this.activeRuntimeContext,
             storageState: this.storageState,
             initialViewportHeight: window.innerHeight,
-            embedded: !this.isViewportStage(),
+            embedded: this.shouldApplyEmbeddedStageStyle(),
         });
     }
 

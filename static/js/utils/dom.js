@@ -646,6 +646,7 @@ export function updateMixedPreviewContent(el, content, options = {}) {
                 parts,
                 classifyFrontendText: (text) => classifyPreviewFrontendText(text, options),
                 assetBase: options.assetBase || '',
+                embeddedStageStyle: true,
                 runtimeOwner: options.runtimeOwner || 'preview',
                 runtimeLabel: options.runtimeLabel || 'Preview Segment',
             });

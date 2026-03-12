@@ -37,6 +37,7 @@ function mountAnchorContent(anchor, classification, text, options = {}) {
             onAppError: options.onAppError,
             minHeight: Number(classification.minHeight || 0),
             maxHeight: Number(classification.maxHeight || 0),
+            embeddedStageStyle: options.embeddedStageStyle === true,
         });
         stage.attachHost(anchor);
         stage.update({
