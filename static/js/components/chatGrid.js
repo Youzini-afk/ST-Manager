@@ -994,6 +994,44 @@ function createReaderManifestMessages(messageIndex, totalCount = 0) {
 }
 
 
+function mergeReaderManifestIntoMessage(existingMessage, manifest, options = {}) {
+    const existing = existingMessage && typeof existingMessage === 'object' ? existingMessage : null;
+    const nextManifest = manifest && typeof manifest === 'object' ? manifest : createReaderManifestMessage(null, 0);
+    if (!existing) {
+        return {
+            ...nextManifest,
+        };
+    }
+
+    const preserveLoadedPayload = Boolean(options.preserveLoadedPayload) && Boolean(existing.__loaded);
+    return {
+        ...existing,
+        floor: Number(nextManifest.floor || existing.floor || 0),
+        name: String(nextManifest.name || existing.name || 'Unknown'),
+        is_user: Boolean(nextManifest.is_user),
+        is_system: Boolean(nextManifest.is_system),
+        send_date: String(nextManifest.send_date || existing.send_date || ''),
+        preview_text: nextManifest.preview_text || existing.preview_text || '',
+        has_runtime_candidate: Boolean(nextManifest.has_runtime_candidate || existing.has_runtime_candidate),
+        ...(preserveLoadedPayload ? {} : {
+            mes: nextManifest.mes,
+            content: nextManifest.content,
+            display_source: nextManifest.display_source,
+            display_source_cache_key: nextManifest.display_source_cache_key,
+            rendered_display_html: nextManifest.rendered_display_html,
+            tail_depth: nextManifest.tail_depth,
+            time_bar: nextManifest.time_bar,
+            summary: nextManifest.summary,
+            thinking: nextManifest.thinking,
+            choices: Array.isArray(nextManifest.choices) ? nextManifest.choices : [],
+            swipes: Array.isArray(nextManifest.swipes) ? nextManifest.swipes : [],
+            extra: nextManifest.extra && typeof nextManifest.extra === 'object' ? nextManifest.extra : {},
+            __loaded: false,
+        }),
+    };
+}
+
+
 function createReaderPageGroup(floors = [], index = 0, mode = READER_BROWSE_MODES.SCROLL) {
     const normalizedFloors = [...new Set(
         (Array.isArray(floors) ? floors : [])
@@ -3530,6 +3568,7 @@ export default function chatGrid() {
             const parsedMessages = Array.isArray(range.messages) ? range.messages : [];
             const rawMessages = Array.isArray(range.raw_messages) ? range.raw_messages : [];
             const indexItems = Array.isArray(range.index_items) ? range.index_items : [];
+            const includeMessages = range.include_messages === true;
 
             indexItems.forEach((indexItem, index) => {
                 const fallbackFloor = Number(range.start_floor || 1) + index;
@@ -3538,11 +3577,9 @@ export default function chatGrid() {
 
                 nextMessageIndex[floor - 1] = indexItem && typeof indexItem === 'object' ? { ...indexItem, floor } : null;
                 const manifest = createReaderManifestMessage(indexItem, floor);
-                nextMessages[floor - 1] = {
-                    ...nextMessages[floor - 1],
-                    ...manifest,
-                    preview_text: manifest.preview_text || nextMessages[floor - 1]?.preview_text || '',
-                };
+                nextMessages[floor - 1] = mergeReaderManifestIntoMessage(nextMessages[floor - 1], manifest, {
+                    preserveLoadedPayload: !includeMessages,
+                });
             });
 
             parsedMessages.forEach((parsedMessage, index) => {
