@@ -34,7 +34,11 @@
                     </div>
                     <div class="chat-reader-mini-stat">
                         <span>定位</span>
-                        <strong x-text="activeChat?.last_view_floor ? ('#' + activeChat.last_view_floor) : '未记录'"></strong>
+                        <strong x-text="readerViewportStatusText"></strong>
+                    </div>
+                    <div class="chat-reader-mini-stat">
+                        <span>锚点</span>
+                        <strong x-text="readerAnchorStatusText"></strong>
                     </div>
                 </div>
                 <button class="chat-toolbar-btn chat-toolbar-btn--primary" @click="saveChatMeta()">保存备注</button>
@@ -79,6 +83,19 @@
                         <span>本地备注</span>
                         <textarea x-model="detailDraftNotes" class="form-textarea" style="min-height: 8rem;"></textarea>
                     </label>
+                </div>
+
+                <div class="chat-reader-panel" x-show="activeChat">
+                    <div class="chat-reader-panel-title">阅读锚点</div>
+                    <div class="chat-inline-actions">
+                        <button class="chat-toolbar-btn" :class="readerAnchorMode === 'follow_viewport' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('follow_viewport')">跟随视口</button>
+                        <button class="chat-toolbar-btn" :class="readerAnchorMode === 'locked_floor' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('locked_floor')">锁定当前</button>
+                        <button class="chat-toolbar-btn" :class="readerAnchorMode === 'tail_compatible' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('tail_compatible')">末楼兼容</button>
+                    </div>
+                    <div class="chat-inline-actions">
+                        <button class="chat-toolbar-btn" @click="reanchorToCurrentFloor()">以当前楼层重锚</button>
+                    </div>
+                    <div class="chat-reader-replace-status" x-text="readerAnchorStatusText"></div>
                 </div>
 
                 <div class="chat-reader-panel" x-show="activeChat">
@@ -141,7 +158,7 @@
                     </div>
                     <div class="chat-reader-bookmark-list">
                         <template x-for="bookmark in (activeChat?.bookmarks || [])" :key="bookmark.id">
-                            <button type="button" class="chat-bookmark-chip" @click="scrollToFloor(bookmark.floor)">
+                            <button type="button" class="chat-bookmark-chip" @click="scrollToFloor(bookmark.floor, true, 'smooth', 'bookmark')">
                                 <span x-text="'#' + bookmark.floor"></span>
                                 <span x-show="bookmark.label" x-text="bookmark.label"></span>
                             </button>
@@ -264,7 +281,7 @@
                     <div class="chat-reader-panel-title">楼层导航</div>
                     <div class="chat-floor-nav-list">
                         <template x-for="message in (activeChat?.messages || [])" :key="'nav-' + message.floor">
-                            <button type="button" class="chat-floor-nav-item" @click="scrollToFloor(message.floor)">
+                            <button type="button" class="chat-floor-nav-item" @click="scrollToFloor(message.floor, true, 'smooth', 'jump')">
                                 <span class="chat-floor-nav-index" x-text="'#' + message.floor"></span>
                                 <span class="chat-floor-nav-text" x-text="(message.content || message.mes || '').trim().slice(0, 48) || '空内容'"></span>
                             </button>
@@ -292,11 +309,11 @@
 
         <div class="chat-reader-editor-section">
             <label class="chat-reader-field">
-                <span>完整显示楼层数</span>
-                <input type="number" min="3" max="40" x-model.number="readerViewSettings.fullDisplayCount" class="form-input">
+                <span>尾部保活楼层数</span>
+                <input type="number" min="0" max="20" x-model.number="readerViewSettings.fullDisplayCount" class="form-input">
             </label>
             <label class="chat-reader-field">
-                <span>当前视口附近高渲染楼层半径</span>
+                <span>锚点附近完整渲染半径</span>
                 <input type="number" min="1" max="20" x-model.number="readerViewSettings.renderNearbyCount" class="form-input">
             </label>
             <label class="chat-reader-field">
@@ -308,16 +325,16 @@
                 <input type="number" min="0" max="50" x-model.number="readerViewSettings.instanceRenderDepth" class="form-input">
             </label>
             <label class="chat-reader-field">
-                <span>简化渲染半径</span>
+                <span>锚点附近简化渲染半径</span>
                 <input type="number" min="0" max="60" x-model.number="readerViewSettings.simpleRenderRadius" class="form-input">
             </label>
             <label class="chat-reader-field">
                 <span>历史楼层隐藏阈值</span>
                 <input type="number" min="0" max="120" x-model.number="readerViewSettings.hiddenHistoryThreshold" class="form-input">
             </label>
-            <div class="chat-reader-replace-status">建议策略：只完整保留最近楼层；越远的历史楼层只显示缩略，滚动靠近后再进入完整渲染。</div>
-            <div class="chat-reader-replace-status">仅让最近 N 层真正执行前端实例。`0` 表示全部楼层都执行；默认 `1`</div>
-            <div class="chat-reader-replace-status">建议大聊天使用三层策略：最近楼层完整渲染，附近楼层简化渲染，更早历史仅显示楼层+摘要。</div>
+            <div class="chat-reader-replace-status">建议策略：主逻辑围绕阅读锚点，尾部只保留少量保活楼层。</div>
+            <div class="chat-reader-replace-status">实例执行跟随锚点优先级。`0` 表示全部实例楼层都执行；默认 `1`</div>
+            <div class="chat-reader-replace-status">建议大聊天使用三层策略：锚点附近完整渲染，外围轻量渲染，更远历史仅显示楼层+摘要。</div>
             <div class="chat-reader-replace-status">`简化渲染半径` 使用轻量 markdown；`历史楼层隐藏阈值` 之外仅保留楼层与摘要，滚动靠近后再升级渲染。</div>
         </div>
     </div>
@@ -417,6 +434,25 @@
                                             <span>禁用</span>
                                         </label>
                                         <button class="chat-toolbar-btn chat-toolbar-btn--danger" @click="removeRegexDisplayRule(index)">删除</button>
+                                    </div>
+                                    <div class="chat-reader-editor-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem;">
+                                        <label class="chat-reader-field">
+                                            <span>阅读器深度模式</span>
+                                            <select class="form-input" :value="rule.readerDepthMode || ''" @change="updateRegexDisplayRuleDepthMode(index, $event.target.value)">
+                                                <option value="">关闭</option>
+                                                <option value="anchor_abs">锚点绝对距离</option>
+                                                <option value="anchor_backward">仅锚点之前</option>
+                                                <option value="anchor_relative">锚点相对距离</option>
+                                            </select>
+                                        </label>
+                                        <label class="chat-reader-field">
+                                            <span>阅读器最小深度</span>
+                                            <input type="number" class="form-input" :value="rule.readerMinDepth ?? ''" @input="updateRegexDisplayRule(index, 'readerMinDepth', $event.target.value === '' ? null : Number($event.target.value))">
+                                        </label>
+                                        <label class="chat-reader-field">
+                                            <span>阅读器最大深度</span>
+                                            <input type="number" class="form-input" :value="rule.readerMaxDepth ?? ''" @input="updateRegexDisplayRule(index, 'readerMaxDepth', $event.target.value === '' ? null : Number($event.target.value))">
+                                        </label>
                                     </div>
                                 </div>
                             </div>

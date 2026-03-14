@@ -16,8 +16,12 @@ from core.data.ui_store import load_ui_data, save_ui_data
 from core.services.card_service import resolve_ui_key
 from core.utils.chat_parser import (
     build_chat_stats,
+    build_chat_stats_from_index,
+    get_chat_jsonl_index,
+    invalidate_chat_jsonl_index,
     parse_messages,
     read_chat_jsonl,
+    read_chat_jsonl_range,
     write_chat_jsonl,
 )
 from core.utils.filesystem import safe_move_to_trash, sanitize_filename
@@ -29,6 +33,7 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('chats', __name__)
 
 CHAT_BINDING_FIELD = 'chat_ids'
+CHAT_RANGE_PAGE_SIZE = 96
 
 
 def _get_chats_root() -> str:
@@ -274,11 +279,23 @@ def _refresh_chat_entry(chat_id: str, full_path: str, chat_data: dict, need_mess
     changed = False
 
     if stale or need_messages:
-        metadata, raw_messages = read_chat_jsonl(full_path)
-        parsed_messages = parse_messages(raw_messages)
+        if stale and not need_messages:
+            index_data = get_chat_jsonl_index(full_path)
+            metadata = index_data.get('metadata') if isinstance(index_data.get('metadata'), dict) else {}
+        else:
+            metadata, raw_messages = read_chat_jsonl(full_path)
+            parsed_messages = parse_messages(raw_messages)
 
     if stale:
-        stats = build_chat_stats(full_path, metadata, raw_messages, parsed_messages)
+        if need_messages:
+            stats = build_chat_stats(full_path, metadata, raw_messages, parsed_messages)
+        else:
+            index_data = get_chat_jsonl_index(full_path)
+            stats = build_chat_stats_from_index(
+                full_path,
+                metadata,
+                index_data.get('message_index') if isinstance(index_data, dict) else [],
+            )
         fallback = {
             **stats,
             'character_name': _derive_character_name_from_chat_id(chat_id),
@@ -509,7 +526,9 @@ def api_list_chats():
 @bp.route('/api/chats/detail', methods=['POST'])
 def api_chat_detail():
     try:
-        chat_id = _normalize_chat_id((request.get_json() or {}).get('id'))
+        data = request.get_json() or {}
+        chat_id = _normalize_chat_id(data.get('id'))
+        include_messages = bool(data.get('include_messages', False))
         if not _is_safe_chat_rel(chat_id):
             return jsonify({'success': False, 'msg': '非法聊天路径'}), 400
 
@@ -523,20 +542,94 @@ def api_chat_detail():
             chat_id,
             full_path,
             chat_data,
-            need_messages=True,
+            need_messages=include_messages,
         )
         if changed:
             save_chat_data(chat_data)
 
+        index_data = get_chat_jsonl_index(full_path)
         item = _build_chat_item(chat_id, entry, ui_data, full_path=full_path)
-        item['metadata'] = metadata if isinstance(metadata, dict) else {}
-        item['raw_messages'] = raw_messages
-        item['messages'] = parsed_messages
+        item['metadata'] = metadata if include_messages and isinstance(metadata, dict) else (
+            index_data.get('metadata') if isinstance(index_data.get('metadata'), dict) else {}
+        )
         item['bookmarks'] = list((entry or {}).get('bookmarks') or [])
+        item['message_index'] = index_data.get('message_index') if isinstance(index_data.get('message_index'), list) else []
+        item['page_size'] = CHAT_RANGE_PAGE_SIZE
+        if include_messages:
+            item['raw_messages'] = raw_messages
+            item['messages'] = parsed_messages
 
         return jsonify({'success': True, 'chat': item})
     except Exception as e:
         logger.error(f'聊天详情读取失败: {e}')
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/chats/range', methods=['POST'])
+def api_chat_range():
+    try:
+        data = request.get_json() or {}
+        chat_id = _normalize_chat_id(data.get('id'))
+        if not _is_safe_chat_rel(chat_id):
+            return jsonify({'success': False, 'msg': '非法聊天路径'}), 400
+
+        full_path = _chat_abs_path(chat_id)
+        if not _is_under_base(full_path, _get_chats_root()) or not os.path.exists(full_path):
+            return jsonify({'success': False, 'msg': '聊天记录不存在'}), 404
+
+        try:
+            page_size = max(1, min(200, int(data.get('page_size') or CHAT_RANGE_PAGE_SIZE)))
+        except Exception:
+            page_size = CHAT_RANGE_PAGE_SIZE
+        try:
+            page = max(1, int(data.get('page') or 1))
+        except Exception:
+            page = 1
+
+        chat_data = load_chat_data()
+        entry, changed, _, _, _ = _refresh_chat_entry(chat_id, full_path, chat_data, need_messages=False)
+        if changed:
+            save_chat_data(chat_data)
+
+        index_data = get_chat_jsonl_index(full_path)
+        message_index = index_data.get('message_index') if isinstance(index_data.get('message_index'), list) else []
+        total_messages = len(message_index)
+        total_pages = max(1, (total_messages + page_size - 1) // page_size) if total_messages > 0 else 0
+        if total_pages > 0:
+            page = min(page, total_pages)
+        else:
+            page = 1
+
+        start_floor = (page - 1) * page_size + 1 if total_messages > 0 else 0
+        end_floor = min(total_messages, start_floor + page_size - 1) if total_messages > 0 else 0
+        metadata, raw_messages, parsed_messages = read_chat_jsonl_range(
+            full_path,
+            start_floor=start_floor,
+            end_floor=end_floor,
+            index_data=index_data,
+        )
+
+        return jsonify({
+            'success': True,
+            'range': {
+                'chat_id': chat_id,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+                'total_messages': total_messages,
+                'start_floor': start_floor,
+                'end_floor': end_floor,
+                'metadata': metadata if isinstance(metadata, dict) else {},
+                'index_items': message_index[start_floor - 1:end_floor] if start_floor > 0 else [],
+                'raw_messages': raw_messages,
+                'messages': parsed_messages,
+                'has_previous': start_floor > 1,
+                'has_next': end_floor < total_messages,
+                'last_view_floor': int((entry or {}).get('last_view_floor') or 0),
+            }
+        })
+    except Exception as e:
+        logger.error(f'聊天范围读取失败: {e}')
         return jsonify({'success': False, 'msg': str(e)})
 
 
@@ -745,23 +838,25 @@ def api_save_chat():
 
         if not write_chat_jsonl(full_path, target_metadata, raw_messages):
             return jsonify({'success': False, 'msg': '写入聊天文件失败'})
+        invalidate_chat_jsonl_index(full_path)
 
         chat_data = load_chat_data()
         ui_data = load_ui_data()
-        entry, changed, metadata_out, raw_messages_out, parsed_messages = _refresh_chat_entry(
+        entry, changed, _, _, _ = _refresh_chat_entry(
             chat_id,
             full_path,
             chat_data,
-            need_messages=True,
+            need_messages=False,
         )
         if changed:
             save_chat_data(chat_data)
 
+        index_data = get_chat_jsonl_index(full_path)
         item = _build_chat_item(chat_id, entry, ui_data, full_path=full_path)
-        item['metadata'] = metadata_out if isinstance(metadata_out, dict) else {}
-        item['raw_messages'] = raw_messages_out
-        item['messages'] = parsed_messages
+        item['metadata'] = index_data.get('metadata') if isinstance(index_data.get('metadata'), dict) else {}
         item['bookmarks'] = list((entry or {}).get('bookmarks') or [])
+        item['message_index'] = index_data.get('message_index') if isinstance(index_data.get('message_index'), list) else []
+        item['page_size'] = CHAT_RANGE_PAGE_SIZE
 
         return jsonify({'success': True, 'chat': item})
     except Exception as e:

@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,11 @@ CONTENT_PATTERN = r'<content>([\s\S]*?)</content>'
 SUMMARY_PATTERN = r'<details>\s*<summary>\s*小总结\s*</summary>([\s\S]*?)</details>'
 CHOICE_PATTERN = r'<choice>([\s\S]*?)</choice>'
 TIMEBAR_PATTERN = r'```([^`·]+·[^`]+)```'
+RUNTIME_CANDIDATE_PATTERN = r'<!doctype html|<html|<head|<body|<iframe|<script|<style'
+CHAT_INDEX_PREVIEW_LIMIT = 160
+
+_CHAT_JSONL_INDEX_CACHE = {}
+_CHAT_JSONL_INDEX_LOCK = threading.Lock()
 
 
 def _looks_like_chat_metadata(payload):
@@ -145,6 +151,33 @@ def parse_messages(raw_messages):
     return result
 
 
+def _normalize_preview_text(text, limit=CHAT_INDEX_PREVIEW_LIMIT):
+    source = re.sub(r'\s+', ' ', str(text or '')).strip()
+    return source[:max(40, int(limit or CHAT_INDEX_PREVIEW_LIMIT))]
+
+
+def _looks_like_runtime_candidate(message_text):
+    if not isinstance(message_text, str) or not message_text:
+        return False
+    return re.search(RUNTIME_CANDIDATE_PATTERN, message_text, re.IGNORECASE) is not None
+
+
+def build_chat_message_index_item(raw_message, floor):
+    source = raw_message if isinstance(raw_message, dict) else {}
+    message_text = source.get('mes', '') or ''
+    preview = _normalize_preview_text(extract_content(message_text) or message_text)
+
+    return {
+        'floor': int(floor),
+        'name': source.get('name') or 'Unknown',
+        'is_user': bool(source.get('is_user', False)),
+        'is_system': bool(source.get('is_system', False)),
+        'send_date': source.get('send_date') or '',
+        'preview': preview,
+        'has_runtime_candidate': _looks_like_runtime_candidate(message_text),
+    }
+
+
 def _message_preview(parsed_messages):
     for item in parsed_messages:
         content = (item.get('content') or item.get('mes') or '').strip()
@@ -204,6 +237,123 @@ def build_chat_stats(file_path, metadata, raw_messages, parsed_messages):
     }
 
 
+def build_chat_stats_from_index(file_path, metadata, message_index):
+    source_messages = message_index if isinstance(message_index, list) else []
+    created_at = ''
+    if isinstance(metadata, dict):
+        chat_meta = metadata.get('chat_metadata') if isinstance(metadata.get('chat_metadata'), dict) else {}
+        for key in ('create_date', 'created_at', 'created', 'start_date'):
+            value = chat_meta.get(key) or metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                created_at = value.strip()
+                break
+
+    first_message_at = ''
+    last_message_at = ''
+    user_count = 0
+    assistant_count = 0
+    preview = ''
+
+    for item in source_messages:
+        send_date = item.get('send_date') or ''
+        if send_date and not first_message_at:
+            first_message_at = send_date
+        if send_date:
+            last_message_at = send_date
+
+        if item.get('is_user'):
+            user_count += 1
+        elif not item.get('is_system'):
+            assistant_count += 1
+
+        if not preview:
+            preview = _normalize_preview_text(item.get('preview') or '')
+
+    return {
+        'chat_name': _guess_chat_name(file_path, metadata),
+        'message_count': len(source_messages),
+        'user_count': user_count,
+        'assistant_count': assistant_count,
+        'created_at': created_at,
+        'first_message_at': first_message_at,
+        'last_message_at': last_message_at,
+        'preview': preview,
+        'metadata': metadata if isinstance(metadata, dict) else {},
+    }
+
+
+def invalidate_chat_jsonl_index(file_path):
+    if not file_path:
+        return
+
+    abs_path = os.path.abspath(file_path)
+    with _CHAT_JSONL_INDEX_LOCK:
+        _CHAT_JSONL_INDEX_CACHE.pop(abs_path, None)
+
+
+def get_chat_jsonl_index(file_path):
+    abs_path = os.path.abspath(file_path)
+    stat = os.stat(abs_path)
+    file_mtime = float(stat.st_mtime)
+    file_size = int(stat.st_size)
+
+    with _CHAT_JSONL_INDEX_LOCK:
+        cached = _CHAT_JSONL_INDEX_CACHE.get(abs_path)
+        if (
+            isinstance(cached, dict)
+            and float(cached.get('file_mtime') or 0) == file_mtime
+            and int(cached.get('file_size') or 0) == file_size
+        ):
+            return cached
+
+    metadata = None
+    message_index = []
+    offsets = []
+
+    with open(abs_path, 'rb') as f:
+        line_number = 0
+        while True:
+            offset = f.tell()
+            line = f.readline()
+            if not line:
+                break
+
+            line_number += 1
+            text = line.decode('utf-8', errors='ignore').strip()
+            if not text:
+                continue
+
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError as e:
+                logger.warning(f'聊天记录索引解析失败 {abs_path}:{line_number}: {e}')
+                continue
+
+            if metadata is None and _looks_like_chat_metadata(payload):
+                metadata = payload
+                continue
+
+            if not isinstance(payload, dict):
+                continue
+
+            floor = len(message_index) + 1
+            message_index.append(build_chat_message_index_item(payload, floor))
+            offsets.append(int(offset))
+
+    result = {
+        'file_mtime': file_mtime,
+        'file_size': file_size,
+        'metadata': metadata if isinstance(metadata, dict) else {},
+        'message_index': message_index,
+        'offsets': offsets,
+    }
+
+    with _CHAT_JSONL_INDEX_LOCK:
+        _CHAT_JSONL_INDEX_CACHE[abs_path] = result
+
+    return result
+
+
 def read_chat_jsonl(file_path):
     metadata = None
     messages = []
@@ -228,6 +378,50 @@ def read_chat_jsonl(file_path):
                 messages.append(payload)
 
     return metadata, messages
+
+
+def read_chat_jsonl_range(file_path, start_floor=1, end_floor=None, index_data=None):
+    index_info = index_data if isinstance(index_data, dict) else get_chat_jsonl_index(file_path)
+    offsets = index_info.get('offsets') if isinstance(index_info.get('offsets'), list) else []
+    total = len(offsets)
+    if total <= 0:
+        return index_info.get('metadata') if isinstance(index_info.get('metadata'), dict) else {}, [], []
+
+    try:
+        start_value = int(start_floor or 1)
+    except (TypeError, ValueError):
+        start_value = 1
+    try:
+        end_value = int(end_floor if end_floor is not None else total)
+    except (TypeError, ValueError):
+        end_value = total
+
+    start_value = max(1, min(total, start_value))
+    end_value = max(start_value, min(total, end_value))
+
+    metadata = index_info.get('metadata') if isinstance(index_info.get('metadata'), dict) else {}
+    raw_messages = []
+    parsed_messages = []
+
+    with open(file_path, 'rb') as f:
+        for floor in range(start_value, end_value + 1):
+            try:
+                f.seek(offsets[floor - 1])
+                line = f.readline().decode('utf-8', errors='ignore').strip()
+                if not line:
+                    continue
+                payload = json.loads(line)
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f'聊天记录范围读取失败 {file_path}#{floor}: {e}')
+                continue
+
+            if not isinstance(payload, dict):
+                continue
+
+            raw_messages.append(payload)
+            parsed_messages.append(parse_message(payload, floor))
+
+    return metadata, raw_messages, parsed_messages
 
 
 def write_chat_jsonl(file_path, metadata, raw_messages):

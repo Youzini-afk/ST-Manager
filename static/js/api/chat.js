@@ -9,11 +9,20 @@ export async function listChats(params = {}) {
     return res.json();
 }
 
-export async function getChatDetail(id) {
+export async function getChatDetail(id, options = {}) {
     const res = await fetch('/api/chats/detail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
+        body: JSON.stringify({ id, ...options })
+    });
+    return res.json();
+}
+
+export async function getChatRange(id, options = {}) {
+    const res = await fetch('/api/chats/range', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...options })
     });
     return res.json();
 }
