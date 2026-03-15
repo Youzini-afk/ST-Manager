@@ -2111,11 +2111,21 @@ function resolveReaderRegexPlacement(message) {
 }
 
 
+function isReaderDepthEligibleMessage(message) {
+    const source = message && typeof message === 'object' ? message : {};
+    if (!source.is_system) {
+        return true;
+    }
+
+    return isReaderRenderableSystemMessage(source);
+}
+
+
 function resolveReaderMessageDepth(rawMessages, floor) {
     const list = Array.isArray(rawMessages) ? rawMessages : [];
     const usableMessages = list
         .map((item, index) => ({ message: item, index: index + 1 }))
-        .filter(entry => !entry.message?.is_system);
+        .filter(entry => isReaderDepthEligibleMessage(entry.message));
     const currentIndex = usableMessages.findIndex(entry => entry.index === Number(floor || 0));
     if (currentIndex === -1) {
         return null;
@@ -2153,7 +2163,7 @@ function createReaderDepthLookup(rawMessages, anchorFloor = 0) {
     const usableMessages = trimReaderIgnorableTailEntries(
         list
             .map((item, index) => ({ message: item, index: index + 1 }))
-            .filter(entry => !entry.message?.is_system),
+            .filter(entry => isReaderDepthEligibleMessage(entry.message)),
     );
     const floorPositionMap = new Map();
     usableMessages.forEach((entry, position) => {
