@@ -90,3 +90,23 @@ def test_chat_reader_css_defines_workbench_theme_tokens():
 
             if any(stripped_line.startswith(prefix) for prefix in derived_token_prefixes):
                 assert '#' not in stripped_line
+
+
+def test_chat_reader_template_contains_workbench_regions():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+
+    assert 'chat-reader-left' in reader_template
+    assert 'chat-reader-center' in reader_template
+    assert 'chat-reader-right' in reader_template
+    assert 'chat-reader-header' in reader_template
+
+
+def test_chat_reader_template_groups_desktop_workbench_controls():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+
+    assert 'chat-reader-header-context' in reader_template
+    assert 'chat-reader-header-primary' in reader_template
+    assert 'chat-reader-header-secondary' in reader_template
+    assert 'chat-reader-panel-group' in reader_template
+    assert 'chat-reader-danger-zone' in reader_template
+    assert 'chat-reader-icon-button' in reader_template

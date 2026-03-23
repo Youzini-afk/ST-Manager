@@ -2,47 +2,57 @@
     <div class="chat-reader-modal chat-reader-modal--fullscreen">
         <div class="chat-reader-header">
             <div class="chat-reader-header-main">
-                <div class="chat-reader-title-block">
-                    <div class="chat-reader-kicker-row">
-                        <div class="chat-grid-kicker">Chat Reader</div>
-                        <template x-if="activeChat">
-                            <div class="chat-reader-source-badge" :class="activeChat?.bound_card_id ? 'is-linked' : 'is-standalone'"
-                                x-text="activeChat?.bound_card_id ? '已绑定角色' : '独立聊天'"></div>
-                        </template>
+                <div class="chat-reader-header-context">
+                    <div class="chat-reader-title-block">
+                        <div class="chat-reader-kicker-row">
+                            <div class="chat-grid-kicker">Chat Reader</div>
+                            <template x-if="activeChat">
+                                <div class="chat-reader-source-badge" :class="activeChat?.bound_card_id ? 'is-linked' : 'is-standalone'"
+                                    x-text="activeChat?.bound_card_id ? '已绑定角色' : '独立聊天'"></div>
+                            </template>
+                        </div>
+                        <div class="chat-reader-title-wrap">
+                            <h3 class="chat-reader-title" x-text="activeChat ? (activeChat.title || activeChat.chat_name) : '聊天记录'"></h3>
+                            <div class="chat-reader-subtitle" x-text="activeChat ? ((activeChat.bound_card_name || activeChat.character_name || '未绑定角色') + ' · ' + (activeChat.message_count || 0) + ' 层') : ''"></div>
+                        </div>
                     </div>
-                    <div class="chat-reader-title-wrap">
-                        <h3 class="chat-reader-title" x-text="activeChat ? (activeChat.title || activeChat.chat_name) : '聊天记录'"></h3>
-                        <div class="chat-reader-subtitle" x-text="activeChat ? ((activeChat.bound_card_name || activeChat.character_name || '未绑定角色') + ' · ' + (activeChat.message_count || 0) + ' 层') : ''"></div>
+                    <div class="chat-reader-header-stats" x-show="activeChat">
+                        <div class="chat-reader-mini-stat">
+                            <span>层数</span>
+                            <strong x-text="activeChat?.message_count || 0"></strong>
+                        </div>
+                        <div class="chat-reader-mini-stat">
+                            <span>定位</span>
+                            <strong x-text="readerViewportStatusText"></strong>
+                        </div>
+                        <div class="chat-reader-mini-stat">
+                            <span>锚点</span>
+                            <strong x-text="readerAnchorStatusText"></strong>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="chat-reader-header-actions">
-                <div class="chat-reader-header-tools">
-                    <button class="chat-reader-toggle" :class="readerShowLeftPanel ? 'is-active' : ''" @click="toggleReaderPanel('left')">工具</button>
-                    <button class="chat-reader-toggle" :class="readerShowRightPanel ? 'is-active' : ''" @click="toggleReaderPanel('right')">检索</button>
-                    <button class="chat-reader-toggle" :class="readerAppMode ? 'is-active' : ''"
-                        @click="readerAppMode ? deactivateChatAppStage() : activateChatAppStage()">
-                        整页实例
+                <div class="chat-reader-header-primary">
+                    <div class="chat-reader-header-tools">
+                        <button class="chat-reader-toggle" :class="readerShowLeftPanel ? 'is-active' : ''" @click="toggleReaderPanel('left')">工具</button>
+                        <button class="chat-reader-toggle" :class="readerShowRightPanel ? 'is-active' : ''" @click="toggleReaderPanel('right')">检索</button>
+                        <button class="chat-reader-toggle" :class="readerAppMode ? 'is-active' : ''"
+                            @click="readerAppMode ? deactivateChatAppStage() : activateChatAppStage()">
+                            整页实例
+                        </button>
+                        <button class="chat-reader-toggle" x-show="$store.global.deviceType === 'mobile'" @click="hideReaderPanels()">阅读</button>
+                    </div>
+                    <button class="chat-toolbar-btn chat-toolbar-btn--primary" @click="saveChatMeta()">保存备注</button>
+                </div>
+                <div class="chat-reader-header-secondary">
+                    <button type="button" class="chat-reader-icon-button" @click="closeChatDetail()" aria-label="关闭聊天阅读器" title="关闭聊天阅读器">
+                        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                            <path d="M5.5 5.5l9 9m0-9l-9 9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"></path>
+                        </svg>
                     </button>
-                    <button class="chat-reader-toggle" x-show="$store.global.deviceType === 'mobile'" @click="hideReaderPanels()">阅读</button>
                 </div>
-                <div class="chat-reader-header-stats" x-show="activeChat">
-                    <div class="chat-reader-mini-stat">
-                        <span>层数</span>
-                        <strong x-text="activeChat?.message_count || 0"></strong>
-                    </div>
-                    <div class="chat-reader-mini-stat">
-                        <span>定位</span>
-                        <strong x-text="readerViewportStatusText"></strong>
-                    </div>
-                    <div class="chat-reader-mini-stat">
-                        <span>锚点</span>
-                        <strong x-text="readerAnchorStatusText"></strong>
-                    </div>
-                </div>
-                <button class="chat-toolbar-btn chat-toolbar-btn--primary" @click="saveChatMeta()">保存备注</button>
-                <button class="chat-toolbar-btn" @click="closeChatDetail()">✕ 关闭</button>
             </div>
         </div>
 
@@ -53,119 +63,136 @@
                         <div class="chat-grid-kicker">Tool Rail</div>
                         <div class="chat-reader-rail-title">聊天工具栏</div>
                     </div>
-                    <button type="button" class="chat-reader-rail-close" @click="readerShowLeftPanel = false; updateReaderLayoutMetrics()">✕</button>
+                    <button type="button" class="chat-reader-icon-button chat-reader-rail-close" @click="readerShowLeftPanel = false; updateReaderLayoutMetrics()" aria-label="收起工具栏" title="收起工具栏">
+                        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                            <path d="M5.5 5.5l9 9m0-9l-9 9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"></path>
+                        </svg>
+                    </button>
                 </div>
 
-                <div class="chat-reader-panel">
-                    <div class="chat-reader-panel-title">聊天信息</div>
-                    <div class="chat-reader-info-grid" x-show="activeChat">
-                        <div class="chat-reader-info-row"><span>角色</span><strong x-text="activeChat?.bound_card_name || activeChat?.character_name || '未绑定'"></strong></div>
-                        <div class="chat-reader-info-row"><span>聊天名</span><strong x-text="activeChat?.chat_name || activeChat?.filename"></strong></div>
-                        <div class="chat-reader-info-row"><span>创建</span><strong x-text="formatChatDate(activeChat?.created_at || activeChat?.file_mtime)"></strong></div>
-                        <div class="chat-reader-info-row"><span>导入</span><strong x-text="formatChatDate(activeChat?.import_time || activeChat?.file_mtime)"></strong></div>
+                <div class="chat-reader-panel-group">
+                    <div class="chat-reader-panel chat-reader-panel--quiet">
+                        <div class="chat-reader-panel-title">聊天信息</div>
+                        <div class="chat-reader-info-grid" x-show="activeChat">
+                            <div class="chat-reader-info-row"><span>角色</span><strong x-text="activeChat?.bound_card_name || activeChat?.character_name || '未绑定'"></strong></div>
+                            <div class="chat-reader-info-row"><span>聊天名</span><strong x-text="activeChat?.chat_name || activeChat?.filename"></strong></div>
+                            <div class="chat-reader-info-row"><span>创建</span><strong x-text="formatChatDate(activeChat?.created_at || activeChat?.file_mtime)"></strong></div>
+                            <div class="chat-reader-info-row"><span>导入</span><strong x-text="formatChatDate(activeChat?.import_time || activeChat?.file_mtime)"></strong></div>
+                        </div>
+
+                        <div class="chat-reader-actions">
+                            <button class="chat-toolbar-btn" @click="activeChat && jumpToBoundCard(activeChat)" :disabled="!activeChat || !activeChat.bound_card_id">跳到角色卡</button>
+                            <button class="chat-toolbar-btn" @click="activeChat && openBindPicker(activeChat)" :disabled="!activeChat">修改绑定</button>
+                            <button class="chat-toolbar-btn" @click="activeChat && openChatFolder(activeChat)" :disabled="!activeChat">打开目录</button>
+                        </div>
                     </div>
 
+                    <div class="chat-reader-panel chat-reader-panel--quiet" x-show="activeChat">
+                        <div class="chat-reader-panel-title">本地信息</div>
+                        <label class="chat-reader-field">
+                            <span>显示名称</span>
+                            <input type="text" x-model="detailDraftName" class="form-input">
+                        </label>
+                        <label class="chat-reader-field">
+                            <span>本地备注</span>
+                            <textarea x-model="detailDraftNotes" class="form-textarea" style="min-height: 8rem;"></textarea>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="chat-reader-panel-group" x-show="activeChat">
+                    <div class="chat-reader-panel chat-reader-panel--quiet">
+                        <div class="chat-reader-panel-title">阅读锚点</div>
+                        <div class="chat-inline-actions">
+                            <button class="chat-toolbar-btn" :class="readerAnchorMode === 'locked_floor' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('locked_floor')">锁定当前</button>
+                            <button class="chat-toolbar-btn" :class="readerAnchorMode === 'tail_compatible' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('tail_compatible')">末楼兼容</button>
+                        </div>
+                        <div class="chat-inline-actions">
+                            <button class="chat-toolbar-btn" @click="reanchorToCurrentFloor()">以当前楼层重锚</button>
+                        </div>
+                        <div class="chat-reader-replace-status" x-text="readerAnchorStatusText"></div>
+                    </div>
+
+                    <div class="chat-reader-panel chat-reader-panel--quiet">
+                        <div class="chat-reader-panel-title">楼层跳转</div>
+                        <div class="chat-inline-actions">
+                            <input type="text" x-model="jumpFloorInput" class="chat-inline-input chat-inline-input--compact" placeholder="#856" @keydown.enter.prevent="jumpToInputFloor()">
+                            <button class="chat-toolbar-btn" @click="jumpToInputFloor()">跳转</button>
+                        </div>
+                        <div class="chat-inline-actions">
+                            <button class="chat-toolbar-btn" @click="jumpToEdge('first')">首层</button>
+                            <button class="chat-toolbar-btn" @click="jumpToEdge('last')">末层</button>
+                        </div>
+                    </div>
+
+                    <div class="chat-reader-panel chat-reader-panel--quiet">
+                        <div class="chat-reader-panel-title">收藏楼层</div>
+                        <div class="chat-reader-bookmark-input">
+                            <input type="text" x-model="bookmarkDraft" class="form-input" placeholder="收藏标签（可选）">
+                            <button class="chat-toolbar-btn" @click="detailBookmarkedOnly = !detailBookmarkedOnly"
+                                :class="detailBookmarkedOnly ? 'chat-toolbar-btn--primary' : ''">只看收藏</button>
+                        </div>
+                        <div class="chat-reader-bookmark-list">
+                            <template x-for="bookmark in (activeChat?.bookmarks || [])" :key="bookmark.id">
+                                <button type="button" class="chat-bookmark-chip" @click="scrollToFloor(bookmark.floor, true, 'smooth', 'bookmark')">
+                                    <span x-text="'#' + bookmark.floor"></span>
+                                    <span x-show="bookmark.label" x-text="bookmark.label"></span>
+                                </button>
+                            </template>
+                            <div x-show="!activeChat?.bookmarks || activeChat.bookmarks.length === 0" class="chat-bookmark-empty">还没有收藏楼层</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-reader-panel-group" x-show="activeChat">
+                    <div class="chat-reader-panel chat-reader-panel--quiet">
+                        <div class="chat-reader-panel-title">本地编辑模式</div>
+                        <div class="chat-inline-actions">
+                            <input type="text" x-model="replaceQuery" class="chat-inline-input chat-inline-input--wide" placeholder="查找内容">
+                            <input type="text" x-model="replaceReplacement" class="chat-inline-input chat-inline-input--wide" placeholder="替换为">
+                        </div>
+                        <div class="chat-inline-actions">
+                            <label class="chat-inline-checkbox">
+                                <input type="checkbox" x-model="replaceCaseSensitive">
+                                <span>区分大小写</span>
+                            </label>
+                            <label class="chat-inline-checkbox">
+                                <input type="checkbox" x-model="replaceUseRegex">
+                                <span>正则替换</span>
+                            </label>
+                            <button class="chat-toolbar-btn" @click="replaceAllInChat()">全部替换</button>
+                        </div>
+                        <div class="chat-reader-replace-status" x-text="replaceStatus || '会直接写回当前聊天文件。'"></div>
+                    </div>
+
+                    <div class="chat-reader-panel chat-reader-panel--quiet">
+                        <div class="chat-reader-panel-title">解析与渲染</div>
+                        <div class="chat-inline-actions">
+                            <button class="chat-toolbar-btn" :class="readerRenderMode === 'plain' ? 'chat-toolbar-btn--primary' : ''" @click="readerRenderMode = 'plain'">纯文本</button>
+                            <button class="chat-toolbar-btn" :class="readerRenderMode === 'markdown' ? 'chat-toolbar-btn--primary' : ''" @click="readerRenderMode = 'markdown'">渲染</button>
+                            <label class="chat-inline-checkbox">
+                                <input type="checkbox" x-model="readerComponentMode">
+                                <span>后挂载实例</span>
+                            </label>
+                            <button class="chat-toolbar-btn" :class="effectiveReaderBrowseMode === 'scroll' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderBrowseMode('scroll')">滚动</button>
+                            <button class="chat-toolbar-btn" :class="effectiveReaderBrowseMode === 'page_non_user' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderBrowseMode('page_non_user')">单页·非用户</button>
+                            <button class="chat-toolbar-btn" :class="effectiveReaderBrowseMode === 'page_pair' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderBrowseMode('page_pair')">单页·对话</button>
+                            <button class="chat-toolbar-btn" @click="openRegexConfig()">解析规则</button>
+                            <button class="chat-toolbar-btn" @click="readerViewSettingsOpen = true">显示策略</button>
+                        </div>
+                        <div class="chat-reader-replace-status" x-text="readerVisibleSummary"></div>
+                        <div class="chat-reader-replace-status" x-show="readerAppMode" x-text="activeAppMessage ? ('当前实例楼层 #' + activeAppMessage.floor) : '未检测到实例楼层'"></div>
+                        <div class="chat-reader-replace-status" x-text="readerAppDebug.status"></div>
+                        <div class="chat-reader-replace-status" x-show="readerAppDebug.matchedFloors && readerAppDebug.matchedFloors.length > 0"
+                            x-text="'命中楼层: ' + readerAppDebug.matchedFloors.join(', ')"></div>
+                    </div>
+                </div>
+
+                <div class="chat-reader-panel chat-reader-danger-zone" x-show="activeChat">
+                    <div class="chat-reader-panel-title">危险操作</div>
+                    <div class="chat-reader-replace-status">删除会直接移除当前聊天记录，请确认不再需要后再执行。</div>
                     <div class="chat-reader-actions">
-                        <button class="chat-toolbar-btn" @click="activeChat && jumpToBoundCard(activeChat)" :disabled="!activeChat || !activeChat.bound_card_id">跳到角色卡</button>
-                        <button class="chat-toolbar-btn" @click="activeChat && openBindPicker(activeChat)" :disabled="!activeChat">修改绑定</button>
-                        <button class="chat-toolbar-btn" @click="activeChat && openChatFolder(activeChat)" :disabled="!activeChat">打开目录</button>
                         <button class="chat-toolbar-btn chat-toolbar-btn--danger" @click="activeChat && deleteChat(activeChat)" :disabled="!activeChat">删除聊天</button>
-                    </div>
-                </div>
-
-                <div class="chat-reader-panel" x-show="activeChat">
-                    <div class="chat-reader-panel-title">本地信息</div>
-                    <label class="chat-reader-field">
-                        <span>显示名称</span>
-                        <input type="text" x-model="detailDraftName" class="form-input">
-                    </label>
-                    <label class="chat-reader-field">
-                        <span>本地备注</span>
-                        <textarea x-model="detailDraftNotes" class="form-textarea" style="min-height: 8rem;"></textarea>
-                    </label>
-                </div>
-
-                <div class="chat-reader-panel" x-show="activeChat">
-                    <div class="chat-reader-panel-title">阅读锚点</div>
-                    <div class="chat-inline-actions">
-                        <button class="chat-toolbar-btn" :class="readerAnchorMode === 'locked_floor' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('locked_floor')">锁定当前</button>
-                        <button class="chat-toolbar-btn" :class="readerAnchorMode === 'tail_compatible' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('tail_compatible')">末楼兼容</button>
-                    </div>
-                    <div class="chat-inline-actions">
-                        <button class="chat-toolbar-btn" @click="reanchorToCurrentFloor()">以当前楼层重锚</button>
-                    </div>
-                    <div class="chat-reader-replace-status" x-text="readerAnchorStatusText"></div>
-                </div>
-
-                <div class="chat-reader-panel" x-show="activeChat">
-                    <div class="chat-reader-panel-title">楼层跳转</div>
-                    <div class="chat-inline-actions">
-                        <input type="text" x-model="jumpFloorInput" class="chat-inline-input chat-inline-input--compact" placeholder="#856" @keydown.enter.prevent="jumpToInputFloor()">
-                        <button class="chat-toolbar-btn" @click="jumpToInputFloor()">跳转</button>
-                    </div>
-                    <div class="chat-inline-actions">
-                        <button class="chat-toolbar-btn" @click="jumpToEdge('first')">首层</button>
-                        <button class="chat-toolbar-btn" @click="jumpToEdge('last')">末层</button>
-                    </div>
-                </div>
-
-                <div class="chat-reader-panel" x-show="activeChat">
-                    <div class="chat-reader-panel-title">本地编辑模式</div>
-                    <div class="chat-inline-actions">
-                        <input type="text" x-model="replaceQuery" class="chat-inline-input chat-inline-input--wide" placeholder="查找内容">
-                        <input type="text" x-model="replaceReplacement" class="chat-inline-input chat-inline-input--wide" placeholder="替换为">
-                    </div>
-                    <div class="chat-inline-actions">
-                        <label class="chat-inline-checkbox">
-                            <input type="checkbox" x-model="replaceCaseSensitive">
-                            <span>区分大小写</span>
-                        </label>
-                        <label class="chat-inline-checkbox">
-                            <input type="checkbox" x-model="replaceUseRegex">
-                            <span>正则替换</span>
-                        </label>
-                        <button class="chat-toolbar-btn" @click="replaceAllInChat()">全部替换</button>
-                    </div>
-                    <div class="chat-reader-replace-status" x-text="replaceStatus || '会直接写回当前聊天文件。'"></div>
-                </div>
-
-                <div class="chat-reader-panel" x-show="activeChat">
-                    <div class="chat-reader-panel-title">解析与渲染</div>
-                    <div class="chat-inline-actions">
-                        <button class="chat-toolbar-btn" :class="readerRenderMode === 'plain' ? 'chat-toolbar-btn--primary' : ''" @click="readerRenderMode = 'plain'">纯文本</button>
-                        <button class="chat-toolbar-btn" :class="readerRenderMode === 'markdown' ? 'chat-toolbar-btn--primary' : ''" @click="readerRenderMode = 'markdown'">渲染</button>
-                        <label class="chat-inline-checkbox">
-                            <input type="checkbox" x-model="readerComponentMode">
-                            <span>后挂载实例</span>
-                        </label>
-                        <button class="chat-toolbar-btn" :class="effectiveReaderBrowseMode === 'scroll' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderBrowseMode('scroll')">滚动</button>
-                        <button class="chat-toolbar-btn" :class="effectiveReaderBrowseMode === 'page_non_user' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderBrowseMode('page_non_user')">单页·非用户</button>
-                        <button class="chat-toolbar-btn" :class="effectiveReaderBrowseMode === 'page_pair' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderBrowseMode('page_pair')">单页·对话</button>
-                        <button class="chat-toolbar-btn" @click="openRegexConfig()">解析规则</button>
-                        <button class="chat-toolbar-btn" @click="readerViewSettingsOpen = true">显示策略</button>
-                    </div>
-                    <div class="chat-reader-replace-status" x-text="readerVisibleSummary"></div>
-                    <div class="chat-reader-replace-status" x-show="readerAppMode" x-text="activeAppMessage ? ('当前实例楼层 #' + activeAppMessage.floor) : '未检测到实例楼层'"></div>
-                    <div class="chat-reader-replace-status" x-text="readerAppDebug.status"></div>
-                    <div class="chat-reader-replace-status" x-show="readerAppDebug.matchedFloors && readerAppDebug.matchedFloors.length > 0"
-                        x-text="'命中楼层: ' + readerAppDebug.matchedFloors.join(', ')"></div>
-                </div>
-
-                <div class="chat-reader-panel" x-show="activeChat">
-                    <div class="chat-reader-panel-title">收藏楼层</div>
-                    <div class="chat-reader-bookmark-input">
-                        <input type="text" x-model="bookmarkDraft" class="form-input" placeholder="收藏标签（可选）">
-                        <button class="chat-toolbar-btn" @click="detailBookmarkedOnly = !detailBookmarkedOnly"
-                            :class="detailBookmarkedOnly ? 'chat-toolbar-btn--primary' : ''">只看收藏</button>
-                    </div>
-                    <div class="chat-reader-bookmark-list">
-                        <template x-for="bookmark in (activeChat?.bookmarks || [])" :key="bookmark.id">
-                            <button type="button" class="chat-bookmark-chip" @click="scrollToFloor(bookmark.floor, true, 'smooth', 'bookmark')">
-                                <span x-text="'#' + bookmark.floor"></span>
-                                <span x-show="bookmark.label" x-text="bookmark.label"></span>
-                            </button>
-                        </template>
-                        <div x-show="!activeChat?.bookmarks || activeChat.bookmarks.length === 0" class="chat-bookmark-empty">还没有收藏楼层</div>
                     </div>
                 </div>
             </aside>
@@ -210,7 +237,11 @@
                                 <div class="chat-message-head">
                                     <div class="chat-message-floor-wrap">
                                         <button type="button" class="chat-floor-chip" @click="scrollToFloor(message.floor)">#<span x-text="message.floor"></span></button>
-                                        <button type="button" class="chat-bookmark-toggle" :class="isBookmarked(message.floor) ? 'is-active' : ''" @click="toggleBookmark(message)">☆</button>
+                                        <button type="button" class="chat-bookmark-toggle chat-reader-icon-button" :class="isBookmarked(message.floor) ? 'is-active' : ''" @click="toggleBookmark(message)" :aria-label="isBookmarked(message.floor) ? '取消收藏楼层' : '收藏楼层'" :title="isBookmarked(message.floor) ? '取消收藏楼层' : '收藏楼层'">
+                                            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                                                <path d="M10 2.8l2.24 4.54 5.01.73-3.62 3.53.86 4.99L10 14.22 5.51 16.59l.86-4.99-3.62-3.53 5.01-.73L10 2.8z" fill="currentColor"></path>
+                                            </svg>
+                                        </button>
                                         <button type="button" class="chat-floor-chip" x-show="executableMessageFloors.includes(message.floor)" @click="openMessageAsAppStage(message)">实例</button>
                                         <button type="button" class="chat-floor-chip" @click="openFloorEditor(message)">编辑</button>
                                     </div>
@@ -269,7 +300,11 @@
                         <div class="chat-grid-kicker">Navigator</div>
                         <div class="chat-reader-rail-title">检索与目录</div>
                     </div>
-                    <button type="button" class="chat-reader-rail-close" @click="readerShowRightPanel = false; updateReaderLayoutMetrics()">✕</button>
+                    <button type="button" class="chat-reader-icon-button chat-reader-rail-close" @click="readerShowRightPanel = false; updateReaderLayoutMetrics()" aria-label="收起检索栏" title="收起检索栏">
+                        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                            <path d="M5.5 5.5l9 9m0-9l-9 9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"></path>
+                        </svg>
+                    </button>
                 </div>
 
                 <div class="chat-reader-rail-tabs">
