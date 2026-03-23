@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,12 @@ def extract_css_block(css_source, selector):
     block_start = css_source.index('{', selector_start)
     block_end = css_source.index('}', block_start)
     return css_source[block_start + 1:block_end]
+
+
+def extract_chat_reader_shell(template_source):
+    shell_start = template_source.index('<div class="chat-reader-modal chat-reader-modal--fullscreen">')
+    settings_overlay_start = template_source.index('<div x-show="readerViewSettingsOpen"')
+    return template_source[shell_start:settings_overlay_start]
 
 
 def test_header_template_does_not_expose_runtime_inspector_controls():
@@ -94,11 +101,23 @@ def test_chat_reader_css_defines_workbench_theme_tokens():
 
 def test_chat_reader_template_contains_workbench_regions():
     reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+    shell = extract_chat_reader_shell(reader_template)
 
-    assert 'chat-reader-left' in reader_template
-    assert 'chat-reader-center' in reader_template
-    assert 'chat-reader-right' in reader_template
-    assert 'chat-reader-header' in reader_template
+    shell_pattern = re.compile(
+        r'<div class="chat-reader-header">.*?'
+        r'<div class="chat-reader-body" :style="readerBodyGridStyle">.*?'
+        r'<aside x-show="readerShowLeftPanel" class="chat-reader-left custom-scrollbar">.*?'
+        r'<main class="chat-reader-center custom-scrollbar" @scroll.passive="handleReaderScroll\(\)">.*?'
+        r'<aside x-show="readerShowRightPanel" class="chat-reader-right custom-scrollbar">',
+        re.DOTALL,
+    )
+
+    assert shell_pattern.search(shell)
+    assert shell.count('<aside ') == 2
+    assert shell.index('class="chat-reader-header"') < shell.index('class="chat-reader-body"')
+    assert '<div class="chat-reader-body" :style="readerBodyGridStyle">\n            <aside x-show="readerShowLeftPanel" class="chat-reader-left custom-scrollbar">' in shell
+    assert '\n            </aside>\n\n            <main class="chat-reader-center custom-scrollbar" @scroll.passive="handleReaderScroll()">' in shell
+    assert '\n            </main>\n\n            <aside x-show="readerShowRightPanel" class="chat-reader-right custom-scrollbar">' in shell
 
 
 def test_chat_reader_template_groups_desktop_workbench_controls():
