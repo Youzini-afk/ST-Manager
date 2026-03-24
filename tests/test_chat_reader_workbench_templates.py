@@ -164,3 +164,15 @@ def test_chat_grid_reconciles_reader_panel_state_on_device_type_changes():
     assert "this.readerMobilePanel = this.readerShowLeftPanel ? 'tools' : (this.readerRightTab === 'floors' ? 'navigator' : 'search');" in chat_grid_source
     assert "this.readerShowLeftPanel = this.readerMobilePanel === 'tools';" in chat_grid_source
     assert "this.readerShowRightPanel = true;" in chat_grid_source
+
+
+def test_chat_reader_template_keeps_all_nested_modal_entry_points():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+
+    for entry_point in (
+        'readerViewSettingsOpen',
+        'regexConfigOpen',
+        'editingFloor',
+        'bindPickerOpen',
+    ):
+        assert entry_point in reader_template
