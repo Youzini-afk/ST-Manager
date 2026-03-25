@@ -142,7 +142,7 @@ def test_chat_reader_template_contains_workbench_regions():
     shell = extract_chat_reader_shell(reader_template)
 
     shell_pattern = re.compile(
-        r'<div class="chat-reader-header" :class="\'is-\' \+ readerResponsiveMode">.*?'
+        r'<div class="chat-reader-header" :class=".*?readerResponsiveMode.*?">.*?'
         r'<div class="chat-reader-body" :style="readerBodyGridStyle">.*?'
         r'<aside x-show="readerShowLeftPanel" class="chat-reader-left custom-scrollbar".*?>.*?'
         r'<main class="chat-reader-center custom-scrollbar" :style="readerCenterPaneStyle" @scroll.passive="handleReaderScroll\(\)">.*?'
@@ -261,7 +261,7 @@ def test_chat_reader_template_keeps_header_identity_and_action_groups():
     assert 'chat-reader-header-context' in reader_template
     assert 'chat-reader-header-actions' in reader_template
     assert 'chat-reader-header-tools' in reader_template
-    assert 'chat-reader-header-stats' in reader_template
+    assert 'chat-reader-shell-status-text' in reader_template
 
 
 def test_chat_reader_css_promotes_shell_status_to_second_header_row():
@@ -379,8 +379,7 @@ def test_chat_reader_css_mobile_drawer_starts_below_header_instead_of_centering_
 def test_chat_reader_template_moves_mobile_meta_out_of_the_header_shell():
     reader_template = read_project_file('templates/modals/detail_chat_reader.html')
 
-    assert 'x-show="readerResponsiveMode !== \'mobile\' && activeChat"' in reader_template
-    assert 'x-show="readerResponsiveMode !== \'mobile\'"' in reader_template
+    assert 'readerShellStatusLineText' in reader_template
     assert 'x-show="readerResponsiveMode === \'mobile\'"' in reader_template
     assert '聊天概览' in reader_template
 
@@ -397,7 +396,8 @@ def test_chat_reader_css_compacts_mobile_header_for_reading_first_layout():
     assert 'align-items: center;' in mobile_block
     assert '.chat-reader-header-tools {' in mobile_block
     assert 'flex-direction: row;' in mobile_block
-    assert 'display: none' in mobile_block
+    assert '.chat-reader-header-secondary {' in mobile_block
+    assert 'position: absolute;' in mobile_block
 
 
 def test_chat_reader_css_mobile_toggle_buttons_use_compact_chip_widths():
@@ -408,6 +408,51 @@ def test_chat_reader_css_mobile_toggle_buttons_use_compact_chip_widths():
     assert 'width: auto;' in mobile_block
     assert 'min-width: 0;' in mobile_block
     assert '.chat-toolbar-btn--primary.chat-reader-mobile-save {' in mobile_block
+
+
+def test_chat_reader_template_removes_duplicate_top_stats_and_keeps_single_status_row():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+
+    assert 'chat-reader-header-stats' not in reader_template
+    assert 'x-text="readerShellStatusLineText"' in reader_template
+    assert 'chat-reader-state-pill' not in reader_template
+    assert 'x-text="readerViewportStatusText"' not in reader_template.split('chat-reader-header', 1)[1].split('chat-reader-body', 1)[0]
+    assert 'x-text="readerAnchorStatusText"' not in reader_template.split('chat-reader-header', 1)[1].split('chat-reader-body', 1)[0]
+
+
+def test_chat_grid_exposes_status_line_text_with_message_count_and_anchor_summary():
+    chat_grid_source = read_project_file('static/js/components/chatGrid.js')
+
+    assert 'get readerShellStatusLineText() {' in chat_grid_source
+    assert 'activeChat?.message_count' in chat_grid_source
+    assert 'readerAnchorStatusText' in chat_grid_source
+
+
+def test_chat_reader_css_positions_mobile_close_button_in_header_corner():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+    mobile_block = extract_media_block(chat_reader_css, '@media (max-width: 899px)')
+
+    assert '.chat-reader-header {' in mobile_block
+    assert 'position: sticky;' in mobile_block or 'position: sticky' in mobile_block
+    assert '.chat-reader-header-secondary {' in mobile_block
+    assert 'position: absolute;' in mobile_block
+    assert 'top: 0.62rem;' in mobile_block
+    assert 'right: 0.72rem;' in mobile_block
+
+
+def test_chat_grid_tracks_mobile_header_visibility_state_for_scroll_hiding():
+    chat_grid_source = read_project_file('static/js/components/chatGrid.js')
+
+    assert 'readerMobileHeaderHidden:' in chat_grid_source
+    assert 'readerLastScrollTop:' in chat_grid_source
+    assert 'readerMobileHeaderHidden = true' in chat_grid_source
+    assert 'readerMobileHeaderHidden = false' in chat_grid_source
+
+
+def test_chat_reader_template_binds_mobile_header_hidden_class():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+
+    assert "'is-' + readerResponsiveMode + ((readerResponsiveMode === 'mobile' && readerMobileHeaderHidden) ? ' is-mobile-hidden' : '')" in reader_template
 
 
 def test_chat_reader_template_desktop_header_exposes_independent_tools_search_and_navigator_toggles():

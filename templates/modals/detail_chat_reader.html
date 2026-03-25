@@ -2,7 +2,7 @@
     <div class="chat-reader-modal chat-reader-modal--fullscreen" role="dialog" aria-modal="true" aria-label="聊天阅读器">
         <div class="chat-reader-live-region" role="status" aria-live="polite" x-text="readerShellStatusText"></div>
         <div class="chat-reader-live-region" role="alert" aria-live="assertive" x-text="readerSaveFeedbackTone === 'error' ? readerShellStatusText : ''"></div>
-        <div class="chat-reader-header" :class="'is-' + readerResponsiveMode">
+        <div class="chat-reader-header" :class="'is-' + readerResponsiveMode + ((readerResponsiveMode === 'mobile' && readerMobileHeaderHidden) ? ' is-mobile-hidden' : '')">
             <div class="chat-reader-header-main">
                 <div class="chat-reader-header-context">
                     <div class="chat-reader-title-block">
@@ -16,20 +16,6 @@
                         <div class="chat-reader-title-wrap">
                             <h3 class="chat-reader-title" x-text="activeChat ? (activeChat.title || activeChat.chat_name) : '聊天记录'"></h3>
                             <div class="chat-reader-subtitle" x-text="activeChat ? ((activeChat.bound_card_name || activeChat.character_name || '未绑定角色') + ' · ' + (activeChat.message_count || 0) + ' 层') : ''"></div>
-                        </div>
-                    </div>
-                    <div class="chat-reader-header-stats" x-show="readerResponsiveMode !== 'mobile' && activeChat">
-                        <div class="chat-reader-mini-stat">
-                            <span>层数</span>
-                            <strong x-text="activeChat?.message_count || 0"></strong>
-                        </div>
-                        <div class="chat-reader-mini-stat">
-                            <span>定位</span>
-                            <strong x-text="readerViewportStatusText"></strong>
-                        </div>
-                        <div class="chat-reader-mini-stat">
-                            <span>锚点</span>
-                            <strong x-text="readerAnchorStatusText"></strong>
                         </div>
                     </div>
                 </div>
@@ -61,26 +47,8 @@
                 </div>
             </div>
 
-            <div class="chat-reader-shell-status" x-show="readerResponsiveMode !== 'mobile'" :class="'is-' + readerSaveFeedbackTone" role="status" aria-live="polite">
-                <div class="chat-reader-state-group" aria-label="阅读器状态概览">
-                    <span class="chat-reader-state-pill chat-reader-state-pill--page">
-                        <span aria-hidden="true">P</span>
-                        <strong x-text="readerPageGroupStatusText"></strong>
-                    </span>
-                    <span class="chat-reader-state-pill chat-reader-state-pill--window">
-                        <span aria-hidden="true">W</span>
-                        <strong x-text="readerViewportStatusText"></strong>
-                    </span>
-                    <span class="chat-reader-state-pill chat-reader-state-pill--batch">
-                        <span aria-hidden="true">B</span>
-                        <strong x-text="readerNavBatchStatusText"></strong>
-                    </span>
-                    <span class="chat-reader-state-pill chat-reader-state-pill--anchor">
-                        <span aria-hidden="true">A</span>
-                        <strong x-text="readerAnchorStatusText"></strong>
-                    </span>
-                </div>
-                <div class="chat-reader-shell-status-text" x-text="readerShellStatusText"></div>
+            <div class="chat-reader-shell-status" :class="'is-' + readerSaveFeedbackTone" role="status" aria-live="polite">
+                <div class="chat-reader-shell-status-text" x-text="readerShellStatusLineText"></div>
             </div>
         </div>
 

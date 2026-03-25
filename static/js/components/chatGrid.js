@@ -2584,6 +2584,8 @@ export default function chatGrid() {
         readerShowRightPanel: true,
         readerMobilePanel: '',
         readerRightTab: 'search',
+        readerMobileHeaderHidden: false,
+        readerLastScrollTop: 0,
         readerAppMode: false,
         readerAppFloor: 0,
         readerAppSignature: '',
@@ -2821,6 +2823,14 @@ export default function chatGrid() {
                 return '正在读取聊天内容...';
             }
             return `阅读定位 ${this.readerViewportStatusText} · 锚点 ${this.readerAnchorStatusText}`;
+        },
+
+        get readerShellStatusLineText() {
+            if (!this.activeChat) {
+                return '未载入聊天';
+            }
+            const count = Number(this.activeChat?.message_count || this.readerTotalMessages || 0);
+            return `${count} 层 · 阅读定位 ${this.readerViewportStatusText} · 锚点 ${this.readerAnchorStatusText}`;
         },
 
         get readerMobilePanelCloseLabel() {
@@ -5466,6 +5476,19 @@ export default function chatGrid() {
             if (this.isReaderPageMode) {
                 return;
             }
+
+            const center = document.querySelector('.chat-reader-center');
+            if (this.readerResponsiveMode === 'mobile' && center && !this.readerMobilePanel) {
+                const nextTop = Math.max(0, Number(center.scrollTop || 0));
+                const delta = nextTop - Number(this.readerLastScrollTop || 0);
+                if (nextTop <= 24 || delta < -14) {
+                    this.readerMobileHeaderHidden = false;
+                } else if (delta > 18 && nextTop > 72) {
+                    this.readerMobileHeaderHidden = true;
+                }
+                this.readerLastScrollTop = nextTop;
+            }
+
             this.scheduleReaderViewportSync();
         },
 
@@ -5567,6 +5590,7 @@ export default function chatGrid() {
             const responsiveMode = this.readerResponsiveMode;
 
             if (responsiveMode === 'mobile') {
+                this.readerMobileHeaderHidden = false;
                 if (!this.readerMobilePanel && (this.readerShowLeftPanel || this.readerShowRightPanel)) {
                     this.readerMobilePanel = this.readerShowLeftPanel ? 'tools' : (this.readerRightTab === 'floors' ? 'navigator' : 'search');
                 }
@@ -5616,6 +5640,7 @@ export default function chatGrid() {
 
         setReaderMobilePanel(panel) {
             if (this.readerResponsiveMode !== 'mobile') return;
+            this.readerMobileHeaderHidden = false;
             this.syncMobileReaderPanelState(panel);
         },
 
@@ -5624,6 +5649,7 @@ export default function chatGrid() {
                 this.readerMobilePanel = '';
                 this.readerShowLeftPanel = false;
                 this.readerShowRightPanel = false;
+                this.readerMobileHeaderHidden = false;
                 this.updateReaderLayoutMetrics();
                 return;
             }
