@@ -16,6 +16,25 @@ def extract_css_block(css_source, selector):
     return css_source[block_start + 1:block_end]
 
 
+def extract_media_block(css_source, media_query):
+    media_start = css_source.index(media_query)
+    block_start = css_source.index('{', media_start)
+    depth = 1
+    index = block_start + 1
+
+    while depth > 0:
+        current_char = css_source[index]
+
+        if current_char == '{':
+            depth += 1
+        elif current_char == '}':
+            depth -= 1
+
+        index += 1
+
+    return css_source[block_start + 1:index - 1]
+
+
 def extract_chat_reader_shell(template_source):
     shell_start = template_source.index('<div class="chat-reader-modal chat-reader-modal--fullscreen" role="dialog" aria-modal="true" aria-label="聊天阅读器">')
     settings_overlay_start = template_source.index('<div x-show="readerViewSettingsOpen"')
@@ -231,6 +250,42 @@ def test_chat_reader_template_keeps_header_identity_and_action_groups():
     assert 'chat-reader-header-actions' in reader_template
     assert 'chat-reader-header-tools' in reader_template
     assert 'chat-reader-header-stats' in reader_template
+
+
+def test_chat_reader_css_rebalances_header_rows_at_narrow_widths():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+    tablet_block = extract_media_block(chat_reader_css, '@media (max-width: 1179px)')
+    mobile_block = extract_media_block(chat_reader_css, '@media (max-width: 899px)')
+
+    assert '.chat-reader-header-main,\n    .chat-reader-header-actions,\n    .chat-reader-header-context,\n    .chat-reader-header-primary,\n    .chat-reader-header-tools,\n    .chat-reader-header-stats {' not in tablet_block
+
+    header_block = extract_css_block(tablet_block, '.chat-reader-header')
+    assert 'flex-wrap: wrap' in header_block
+    assert 'align-items: stretch' in header_block
+    assert '.chat-grid-toolbar-actions,\n    .chat-reader-header,\n    .chat-reader-header-main {' not in tablet_block
+
+    assert '.chat-reader-title-wrap {' in tablet_block
+    assert 'width: 100%' in extract_css_block(tablet_block, '.chat-reader-title-wrap')
+
+    title_block = extract_css_block(tablet_block, '.chat-reader-title')
+    assert 'overflow-wrap: break-word' in title_block
+    assert 'word-break: keep-all' in title_block
+
+    assert '.chat-reader-header-actions {' in tablet_block
+    assert '        width: 100%;' in tablet_block
+    assert '        flex-wrap: wrap;' in tablet_block
+
+    assert '.chat-reader-shell-status {' in tablet_block
+    assert '        display: flex;' in tablet_block
+    assert '        width: 100%;' in tablet_block
+    assert '        flex-basis: 100%;' in tablet_block
+    assert '        margin-top: 0;' in tablet_block
+
+    assert '.chat-reader-header-main,\n    .chat-reader-header-actions,\n    .chat-reader-header-primary,\n    .chat-reader-header-tools,\n    .chat-reader-shell-status {' in mobile_block
+    assert '        width: 100%' in mobile_block
+    assert '.chat-reader-header-actions,\n    .chat-reader-header-primary,\n    .chat-reader-header-tools,\n    .chat-reader-shell-status {' in mobile_block
+    assert '        flex-direction: column;' in mobile_block
+    assert '        align-items: stretch' in mobile_block
 
 
 def test_chat_grid_reader_mobile_mode_is_not_only_ua_driven():

@@ -2687,23 +2687,28 @@ html.light-mode .chat-reader-danger-copy {
     .chat-reader-header {
         min-height: 0;
         padding: 0.7rem 0.8rem;
+        flex-wrap: wrap;
+        align-items: stretch;
     }
 
     .chat-reader-title {
         font-size: 1rem;
-        text-wrap: pretty
+        text-wrap: pretty;
+        overflow-wrap: break-word;
+        word-break: keep-all
     }
 
     .chat-reader-subtitle {
         font-size: 0.76rem
     }
 
+    .chat-reader-title-wrap {
+        width: 100%
+    }
+
     .chat-reader-header-main,
     .chat-reader-header-actions,
-    .chat-reader-header-context,
-    .chat-reader-header-primary,
-    .chat-reader-header-tools,
-    .chat-reader-header-stats {
+    .chat-reader-shell-status {
         width: 100%
     }
 
@@ -2713,6 +2718,8 @@ html.light-mode .chat-reader-danger-copy {
     }
 
     .chat-reader-header-actions {
+        width: 100%;
+        flex-wrap: wrap;
         justify-content: space-between;
         align-items: flex-start;
         gap: 0.7rem
@@ -2733,6 +2740,10 @@ html.light-mode .chat-reader-danger-copy {
     }
 
     .chat-reader-shell-status {
+        display: flex;
+        width: 100%;
+        flex-basis: 100%;
+        margin-top: 0;
         gap: 0.65rem
     }
 
@@ -2810,7 +2821,6 @@ html.light-mode .chat-reader-danger-copy {
         padding: 0.4rem 0.6rem;
     }
     .chat-grid-toolbar-actions,
-    .chat-reader-header,
     .chat-reader-header-main {
         align-items: flex-start;
     }
@@ -2887,6 +2897,22 @@ html.light-mode .chat-reader-danger-copy {
     .chat-reader-header {
         padding: 0.68rem 0.72rem;
         gap: 0.7rem
+    }
+
+    .chat-reader-header-main,
+    .chat-reader-header-actions,
+    .chat-reader-header-primary,
+    .chat-reader-header-tools,
+    .chat-reader-shell-status {
+        width: 100%
+    }
+
+    .chat-reader-header-actions,
+    .chat-reader-header-primary,
+    .chat-reader-header-tools,
+    .chat-reader-shell-status {
+        flex-direction: column;
+        align-items: stretch
     }
 
     .chat-reader-title {
