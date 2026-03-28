@@ -71,6 +71,45 @@ def extract_chat_reader_shell(template_source):
     return template_source[shell_start:settings_overlay_start]
 
 
+def extract_balanced_tag_block(source, opening_tag):
+    block_start = source.index(opening_tag)
+    tag_name = opening_tag[1:opening_tag.index(' ')]
+    opening_pattern = re.compile(rf'<{tag_name}(?:\s|>)')
+    closing_tag = f'</{tag_name}>'
+    depth = 0
+
+    for match in opening_pattern.finditer(source, block_start):
+        if match.start() == block_start:
+            depth = 1
+            index = match.end()
+            break
+    else:
+        raise ValueError(f'Opening tag not found: {opening_tag}')
+
+    while depth > 0:
+        next_open = opening_pattern.search(source, index)
+        next_close = source.find(closing_tag, index)
+
+        if next_close == -1:
+            raise ValueError(f'Closing tag not found for: {opening_tag}')
+
+        if next_open and next_open.start() < next_close:
+            depth += 1
+            index = next_open.end()
+            continue
+
+        depth -= 1
+        index = next_close + len(closing_tag)
+
+    return source[block_start:index]
+
+
+def extract_first_chat_message_card(template_source):
+    floor_loop_start = template_source.index('<template x-for="message in visibleDetailMessages"')
+    floor_markup = template_source[floor_loop_start:]
+    return extract_balanced_tag_block(floor_markup, '<article class="chat-message-card"')
+
+
 def test_header_template_does_not_expose_runtime_inspector_controls():
     header_template = read_project_file('templates/components/header.html')
 
@@ -154,6 +193,46 @@ def test_chat_reader_icon_buttons_define_focus_visible_state():
     assert '.chat-reader-icon-button:focus-visible' in chat_reader_css
     assert 'outline: 2px solid var(--chat-reader-focus-ring)' in chat_reader_css
     assert 'outline-offset: 2px' in chat_reader_css
+
+
+def test_chat_reader_css_caps_message_stream_width_with_reader_token():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+    reader_overlay_block = extract_css_block(chat_reader_css, '.chat-reader-overlay')
+    message_list_block = extract_exact_css_block(chat_reader_css, '.chat-message-list')
+
+    assert '--chat-reader-reading-max-width:' in reader_overlay_block
+    assert 'width: 100%;' in message_list_block
+    assert 'max-width: var(--chat-reader-reading-max-width);' in message_list_block
+    assert 'margin: 0 auto;' in message_list_block
+
+
+def test_chat_reader_css_flattens_floor_cards_into_stream_sections():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+    message_card_block = extract_exact_css_block(chat_reader_css, '.chat-message-card')
+    message_card_before_block = extract_exact_css_block(chat_reader_css, '.chat-message-card::before')
+    user_card_block = extract_exact_css_block(chat_reader_css, '.chat-message-card.is-user')
+    assistant_card_block = extract_exact_css_block(chat_reader_css, '.chat-message-card.is-assistant')
+    system_card_block = extract_exact_css_block(chat_reader_css, '.chat-message-card.is-system')
+
+    assert 'border-radius: 0;' in message_card_block
+    assert 'padding: 0;' in message_card_block
+    assert 'background: transparent;' in message_card_block
+    assert 'box-shadow: none;' in message_card_block
+    assert 'content: none;' in message_card_before_block
+    assert 'background: transparent;' in user_card_block
+    assert 'background: transparent;' in assistant_card_block
+    assert 'background: transparent;' in system_card_block
+    assert '.chat-message-card + .chat-message-card {' in chat_reader_css
+
+
+def test_chat_reader_css_light_mode_message_cards_do_not_restore_card_shadows():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+
+    assert not re.search(
+        r'html\.light-mode\s+[^\{]*\.chat-message-card[^\{]*\{[^\}]*box-shadow\s*:',
+        chat_reader_css,
+        re.DOTALL,
+    )
 
 
 def test_chat_reader_template_contains_workbench_regions():
@@ -391,6 +470,77 @@ def test_chat_reader_template_assigns_dynamic_grid_columns_to_center_and_right_p
     assert ":style=\"readerLeftPaneStyle\"" in reader_template
 
 
+def test_chat_reader_template_keeps_floor_anchor_article_and_actions():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+    floor_markup = extract_first_chat_message_card(reader_template)
+    header_block = extract_balanced_tag_block(floor_markup, '<div class="chat-message-head">')
+
+    assert '<article class="chat-message-card"' in floor_markup
+    assert ':data-chat-floor="message.floor"' in floor_markup
+
+    for action_hook in (
+        '@click="scrollToFloor(message.floor)"',
+        '@click="toggleBookmark(message)"',
+        '@click="openMessageAsAppStage(message)"',
+        '@click="openFloorEditor(message)"',
+    ):
+        assert action_hook in header_block
+
+
+def test_chat_reader_template_wraps_floor_content_in_message_body():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+
+    assert '<div class="chat-message-body">' in reader_template
+
+
+def test_chat_reader_template_keeps_header_actions_ahead_of_message_body():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+    floor_markup = extract_first_chat_message_card(reader_template)
+
+    assert floor_markup.index('class="chat-message-head"') < floor_markup.index('class="chat-message-body"')
+
+
+def test_chat_reader_template_places_timebar_inside_message_body():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+    floor_markup = extract_first_chat_message_card(reader_template)
+    body_block = extract_balanced_tag_block(floor_markup, '<div class="chat-message-body">')
+
+    assert 'class="chat-message-timebar"' in body_block
+
+
+def test_chat_reader_css_keeps_floor_chip_as_primary_reader_anchor():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+
+    floor_chip_block = extract_exact_css_block(chat_reader_css, '.chat-floor-chip')
+
+    assert 'padding: 0.34rem 0.62rem;' in floor_chip_block
+    assert 'font-weight: 700;' in floor_chip_block
+
+
+def test_chat_reader_css_softens_bookmark_button_and_secondary_floor_actions():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+
+    bookmark_toggle_block = extract_exact_css_block(chat_reader_css, '.chat-bookmark-toggle')
+    secondary_floor_chip_block = extract_exact_css_block(
+        chat_reader_css,
+        '.chat-message-floor-wrap .chat-floor-chip:not(:first-child)',
+    )
+    light_mode_secondary_floor_chip_block = extract_exact_css_block(
+        chat_reader_css,
+        'html.light-mode .chat-message-floor-wrap .chat-floor-chip:not(:first-child)',
+    )
+
+    assert 'background: transparent;' in bookmark_toggle_block
+    assert 'border-color: transparent;' in bookmark_toggle_block
+    assert 'color: var(--text-dim);' in bookmark_toggle_block
+
+    assert 'padding: 0.28rem 0.52rem;' in secondary_floor_chip_block
+    assert 'font-weight: 600;' in secondary_floor_chip_block
+    assert 'color: color-mix(in srgb, var(--text-dim), var(--text-main) 22%);' in secondary_floor_chip_block
+
+    assert 'color: #475569;' in light_mode_secondary_floor_chip_block
+
+
 def test_chat_reader_css_mobile_drawer_starts_below_header_instead_of_centering_content():
     chat_reader_css = read_project_file('static/css/modules/view-chats.css')
     mobile_block = extract_media_block(chat_reader_css, '@media (max-width: 899px)')
@@ -526,6 +676,44 @@ def test_chat_reader_css_mobile_shell_keeps_main_reader_area_as_scroll_container
     assert '.chat-reader-center {' in mobile_block
     assert 'overflow-y: auto;' in mobile_block
     assert '-webkit-overflow-scrolling: touch;' in mobile_block
+
+
+def test_chat_reader_css_mobile_stream_uses_tight_safe_gutters():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+    mobile_block = extract_media_block(chat_reader_css, '@media (max-width: 899px)')
+
+    center_block = extract_exact_css_block(mobile_block, '.chat-reader-center')
+    list_block = extract_exact_css_block(mobile_block, '.chat-message-list')
+    card_spacing_block = extract_exact_css_block(mobile_block, '.chat-message-card + .chat-message-card')
+
+    assert 'padding: 0.55rem 0.45rem 1rem;' in center_block
+    assert 'max-width: none;' in list_block
+    assert 'margin-top: 1.1rem;' in card_spacing_block
+    assert 'padding-top: 1rem;' in card_spacing_block
+
+
+def test_chat_reader_css_mobile_floor_header_wraps_actions_and_meta():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+    mobile_block = extract_media_block(chat_reader_css, '@media (max-width: 899px)')
+
+    head_block = extract_exact_css_block(mobile_block, '.chat-message-head')
+    floor_wrap_block = extract_exact_css_block(mobile_block, '.chat-message-floor-wrap')
+    meta_block = extract_exact_css_block(mobile_block, '.chat-message-meta')
+
+    assert 'flex-wrap: wrap;' in head_block
+    assert 'flex-wrap: wrap;' in floor_wrap_block
+    assert 'width: 100%;' in meta_block
+    assert 'align-items: flex-start;' in meta_block
+    assert 'text-align: left;' in meta_block
+
+
+def test_chat_reader_css_tablet_stream_keeps_moderate_reading_cap():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+    tablet_block = extract_media_block(chat_reader_css, '@media (max-width: 1179px)')
+
+    list_block = extract_exact_css_block(tablet_block, '.chat-message-list')
+
+    assert 'max-width: 64rem;' in list_block
 
 
 def test_chat_reader_css_mobile_nested_modals_expose_internal_scroll_regions():

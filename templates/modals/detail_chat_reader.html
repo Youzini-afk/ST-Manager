@@ -283,32 +283,34 @@
                                     </div>
                                 </div>
 
-                                <div class="chat-message-timebar" x-show="message.time_bar" x-text="message.time_bar"></div>
-                                <template x-if="message.is_full_display">
-                                    <div>
-                                        <template x-if="message.should_render_full">
-                                            <div class="chat-message-content markdown-body" :class="'st-reader-floor-' + message.floor" x-effect="syncMessageDisplay($el, message, 'full')"></div>
-                                        </template>
+                                <div class="chat-message-body">
+                                    <div class="chat-message-timebar" x-show="message.time_bar" x-text="message.time_bar"></div>
+                                    <template x-if="message.is_full_display">
+                                        <div>
+                                            <template x-if="message.should_render_full">
+                                                <div class="chat-message-content markdown-body" :class="'st-reader-floor-' + message.floor" x-effect="syncMessageDisplay($el, message, 'full')"></div>
+                                            </template>
 
-                                        <template x-if="message.should_render_simple">
-                                            <div class="chat-message-content markdown-body chat-message-content--simple" :class="'st-reader-floor-' + message.floor" x-effect="syncMessageDisplay($el, message, 'simple')"></div>
-                                        </template>
+                                            <template x-if="message.should_render_simple">
+                                                <div class="chat-message-content markdown-body chat-message-content--simple" :class="'st-reader-floor-' + message.floor" x-effect="syncMessageDisplay($el, message, 'simple')"></div>
+                                            </template>
 
-                                        <template x-if="message.is_compact_display">
-                                            <div class="chat-message-content chat-message-content--compact">
-                                                <div x-text="message.compact_preview"></div>
-                                                <button type="button" class="chat-inline-link" @click="scrollToFloor(message.floor)">滚动到此处并完整渲染</button>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </template>
+                                            <template x-if="message.is_compact_display">
+                                                <div class="chat-message-content chat-message-content--compact">
+                                                    <div x-text="message.compact_preview"></div>
+                                                    <button type="button" class="chat-inline-link" @click="scrollToFloor(message.floor)">滚动到此处并完整渲染</button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
 
-                                <template x-if="!message.is_full_display">
-                                    <div class="chat-message-content chat-message-content--collapsed">
-                                        <div x-text="message.placeholder_preview || message.compact_preview"></div>
-                                        <button type="button" class="chat-inline-link" @click="scrollToFloor(message.floor)">查看该楼层</button>
-                                    </div>
-                                </template>
+                                    <template x-if="!message.is_full_display">
+                                        <div class="chat-message-content chat-message-content--collapsed">
+                                            <div x-text="message.placeholder_preview || message.compact_preview"></div>
+                                            <button type="button" class="chat-inline-link" @click="scrollToFloor(message.floor)">查看该楼层</button>
+                                        </div>
+                                    </template>
+                                </div>
                             </article>
                         </template>
 
