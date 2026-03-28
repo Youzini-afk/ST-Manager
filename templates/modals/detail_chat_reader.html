@@ -112,11 +112,14 @@
                         <div class="chat-reader-panel-title">阅读锚点</div>
                         <div class="chat-reader-option-group">
                             <div class="chat-reader-option-group-label">锚点模式</div>
-                            <div class="chat-inline-actions">
-                                <button class="chat-toolbar-btn" :class="readerAnchorMode === 'locked_floor' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('locked_floor')">锁定当前</button>
-                                <button class="chat-toolbar-btn" :class="readerAnchorMode === 'tail_compatible' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('tail_compatible')">末楼兼容</button>
-                            </div>
-                        </div>
+                             <div class="chat-inline-actions">
+                                 <button class="chat-toolbar-btn" :class="readerAnchorMode === 'locked_floor' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('locked_floor')">锁定当前</button>
+                                 <button class="chat-toolbar-btn" :class="readerAnchorMode === 'tail_compatible' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('tail_compatible')">末楼兼容</button>
+                                 <button class="chat-toolbar-btn"
+                                     :class="readerAnchorMode === 'semi_auto' ? 'chat-toolbar-btn--primary' : ''"
+                                     @click="setReaderAnchorMode('semi_auto')">半自动迁移</button>
+                             </div>
+                         </div>
                         <div class="chat-reader-option-group">
                             <div class="chat-reader-option-group-label">锚点操作</div>
                             <div class="chat-inline-actions">
@@ -153,7 +156,7 @@
                         </div>
                         <div class="chat-reader-bookmark-list">
                             <template x-for="bookmark in (activeChat?.bookmarks || [])" :key="bookmark.id">
-                                <button type="button" class="chat-bookmark-chip" @click="scrollToFloor(bookmark.floor, true, 'smooth', 'bookmark')">
+                                <button type="button" class="chat-bookmark-chip" @click="jumpToBookmarkFloor(bookmark.floor)">
                                     <span x-text="'#' + bookmark.floor"></span>
                                     <span x-show="bookmark.label" x-text="bookmark.label"></span>
                                 </button>
@@ -386,11 +389,14 @@
                         <div class="chat-reader-panel-title">阅读锚点</div>
                         <div class="chat-reader-option-group">
                             <div class="chat-reader-option-group-label">锚点模式</div>
-                            <div class="chat-inline-actions">
-                                <button class="chat-toolbar-btn" :class="readerAnchorMode === 'locked_floor' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('locked_floor')">锁定当前</button>
-                                <button class="chat-toolbar-btn" :class="readerAnchorMode === 'tail_compatible' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('tail_compatible')">末楼兼容</button>
-                            </div>
-                        </div>
+                             <div class="chat-inline-actions">
+                                 <button class="chat-toolbar-btn" :class="readerAnchorMode === 'locked_floor' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('locked_floor')">锁定当前</button>
+                                 <button class="chat-toolbar-btn" :class="readerAnchorMode === 'tail_compatible' ? 'chat-toolbar-btn--primary' : ''" @click="setReaderAnchorMode('tail_compatible')">末楼兼容</button>
+                                 <button class="chat-toolbar-btn"
+                                     :class="readerAnchorMode === 'semi_auto' ? 'chat-toolbar-btn--primary' : ''"
+                                     @click="setReaderAnchorMode('semi_auto')">半自动迁移</button>
+                             </div>
+                         </div>
                         <div class="chat-reader-option-group">
                             <div class="chat-reader-option-group-label">锚点操作</div>
                             <div class="chat-inline-actions">
@@ -427,7 +433,7 @@
                         </div>
                         <div class="chat-reader-bookmark-list">
                             <template x-for="bookmark in (activeChat?.bookmarks || [])" :key="bookmark.id">
-                                <button type="button" class="chat-bookmark-chip" @click="scrollToFloor(bookmark.floor, true, 'smooth', 'bookmark')">
+                                <button type="button" class="chat-bookmark-chip" @click="jumpToBookmarkFloor(bookmark.floor)">
                                     <span x-text="'#' + bookmark.floor"></span>
                                     <span x-show="bookmark.label" x-text="bookmark.label"></span>
                                 </button>
@@ -526,7 +532,7 @@
                     <div class="chat-floor-nav-list">
                         <div x-show="readerNavBatchLoading" class="chat-reader-search-meta" role="status" aria-live="polite">Loading batch index...</div>
                         <template x-for="message in (readerNavBatchItems || [])" :key="'nav-' + message.floor">
-                            <button type="button" class="chat-floor-nav-item" @click="scrollToFloor(message.floor, true, 'smooth', 'jump')">
+                            <button type="button" class="chat-floor-nav-item" @click="jumpToNavigatorFloor(message.floor)">
                                 <span class="chat-floor-nav-index" x-text="'#' + message.floor"></span>
                                 <span class="chat-floor-nav-text" x-text="(message.content || message.mes || '').trim().slice(0, 48) || '空内容'"></span>
                             </button>
@@ -584,6 +590,20 @@
             <label class="chat-reader-field">
                 <span>历史楼层隐藏阈值</span>
                 <input type="number" min="0" max="120" x-model.number="readerViewSettings.hiddenHistoryThreshold" class="form-input">
+            </label>
+            <label class="chat-reader-field">
+                <span>Reasoning 默认折叠</span>
+                <label class="chat-inline-checkbox">
+                    <input type="checkbox" x-model="readerViewSettings.reasoningDefaultCollapsed">
+                    <span>启用</span>
+                </label>
+            </label>
+            <label class="chat-reader-field">
+                <span>长代码自动折叠</span>
+                <label class="chat-inline-checkbox">
+                    <input type="checkbox" x-model="readerViewSettings.autoCollapseLongCode">
+                    <span>启用</span>
+                </label>
             </label>
             <div class="chat-reader-nested-help">
                 <div class="chat-reader-replace-status">建议策略：主逻辑围绕阅读锚点，尾部只保留少量保活楼层。</div>

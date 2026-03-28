@@ -602,6 +602,59 @@ def test_chat_grid_exposes_status_line_text_with_message_count_and_anchor_summar
     assert 'readerAnchorStatusText' in chat_grid_source
 
 
+def test_chat_reader_template_exposes_semi_auto_anchor_mode_in_both_anchor_control_groups():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+    anchor_mode_groups = re.findall(
+        r'<div class="chat-reader-option-group-label">锚点模式</div>\s*<div class="chat-inline-actions">(.*?)</div>',
+        reader_template,
+        re.DOTALL,
+    )
+
+    assert len(anchor_mode_groups) >= 2
+    assert sum('半自动迁移' in group for group in anchor_mode_groups) >= 2
+    assert sum("@click=\"setReaderAnchorMode('semi_auto')\"" in group for group in anchor_mode_groups) >= 2
+
+
+def test_chat_reader_template_reasoningDefaultCollapsed_view_strategy_control_matches_approved_label():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+    settings_modal = extract_balanced_tag_block(
+        reader_template,
+        '<div x-show="readerViewSettingsOpen"',
+    )
+
+    assert re.search(
+        r'<label class="chat-reader-field">\s*<span>Reasoning 默认折叠</span>\s*<label class="chat-inline-checkbox">.*?<input type="checkbox" x-model="readerViewSettings\.reasoningDefaultCollapsed">',
+        settings_modal,
+        re.DOTALL,
+    )
+
+
+def test_chat_reader_template_autoCollapseLongCode_view_strategy_control_uses_settings_modal_checkbox_structure():
+    reader_template = read_project_file('templates/modals/detail_chat_reader.html')
+    settings_modal = extract_balanced_tag_block(
+        reader_template,
+        '<div x-show="readerViewSettingsOpen"',
+    )
+
+    assert re.search(
+        r'<label class="chat-reader-field">\s*<span>长代码自动折叠</span>\s*<label class="chat-inline-checkbox">.*?<input type="checkbox" x-model="readerViewSettings\.autoCollapseLongCode">',
+        settings_modal,
+        re.DOTALL,
+    )
+
+
+def test_chat_reader_css_exposes_reasoning_and_code_collapse_primitives():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+
+    for selector in (
+        '.chat-message-reasoning',
+        '.chat-message-reasoning-summary',
+        '.chat-message-code-collapse',
+        '.chat-message-meta-flags',
+    ):
+        assert selector in chat_reader_css
+
+
 def test_chat_reader_css_positions_mobile_close_button_in_header_corner():
     chat_reader_css = read_project_file('static/css/modules/view-chats.css')
     mobile_block = extract_media_block(chat_reader_css, '@media (max-width: 899px)')
@@ -1154,6 +1207,24 @@ def test_chat_reader_css_replaces_tall_regex_status_stack_with_optional_feedback
 
     assert '.chat-reader-regex-summary-feedback' in chat_reader_css
     assert '.chat-reader-regex-summary-status' not in chat_reader_css
+
+
+def test_chat_reader_scroll_disclosures_use_compact_chip_like_summaries_before_expansion():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+    reasoning_block = extract_exact_css_block(
+        chat_reader_css,
+        '.chat-message-reasoning-summary,\n.chat-message-code-collapse-toggle',
+    )
+    body_block = extract_exact_css_block(chat_reader_css, '.chat-message-reasoning-body')
+
+    assert 'display: inline-flex;' in reasoning_block
+    assert 'align-items: center;' in reasoning_block
+    assert 'min-height: 28px;' in reasoning_block
+    assert 'border-radius: 999px;' in reasoning_block
+    assert 'width: fit-content;' in reasoning_block
+    assert 'padding: 0.22rem 0.68rem;' in reasoning_block
+    assert 'background: color-mix(in srgb, var(--bg-sub), transparent 8%);' in reasoning_block
+    assert 'border-top: 1px solid' in body_block
 
 
 def test_mobile_header_template_uses_title_block_for_sidebar_and_search_upload_cluster():

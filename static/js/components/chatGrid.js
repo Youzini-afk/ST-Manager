@@ -19,6 +19,11 @@ import { openPath } from '../api/system.js';
 import { formatDate } from '../utils/format.js';
 import { ChatAppStage } from '../runtime/chatAppStage.js';
 import { renderMarkdown, updateInlineRenderContent, clearInlineIsolatedHtml } from '../utils/dom.js';
+import {
+    extractReaderEnhancementMetadata,
+    buildReaderEnhancementPolicy,
+    decorateReaderRenderedHtml,
+} from '../utils/chatReaderEnhancements.js';
 import { formatScopedDisplayedHtml } from '../utils/stDisplayFormatter.js';
 import { clearActiveRuntimeContext, setActiveRuntimeContext } from '../runtime/runtimeContext.js';
 
@@ -58,6 +63,8 @@ const DEFAULT_CHAT_READER_VIEW_SETTINGS = {
     instanceRenderDepth: 1,
     simpleRenderRadius: 12,
     hiddenHistoryThreshold: 28,
+    reasoningDefaultCollapsed: true,
+    autoCollapseLongCode: true,
 };
 
 const DEFAULT_CHAT_READER_RENDER_PREFS = {
@@ -78,6 +85,7 @@ const READER_VIEWPORT_TOP_PROBE_OFFSET = 72;
 const READER_ANCHOR_MODES = {
     LOCKED_FLOOR: 'locked_floor',
     TAIL_COMPATIBLE: 'tail_compatible',
+    SEMI_AUTO: 'semi_auto',
 };
 
 const READER_ANCHOR_SOURCES = {
@@ -86,6 +94,7 @@ const READER_ANCHOR_SOURCES = {
     SEARCH: 'search',
     BOOKMARK: 'bookmark',
     APP_STAGE: 'app_stage',
+    NAVIGATOR: 'navigator',
 };
 
 const READER_BROWSE_MODES = {
@@ -102,6 +111,9 @@ function normalizeReaderAnchorMode(mode) {
             return READER_ANCHOR_MODES.LOCKED_FLOOR;
         case READER_ANCHOR_MODES.TAIL_COMPATIBLE:
             return READER_ANCHOR_MODES.TAIL_COMPATIBLE;
+        case 'semi_auto':
+        case READER_ANCHOR_MODES.SEMI_AUTO:
+            return READER_ANCHOR_MODES.SEMI_AUTO;
         default:
             return READER_ANCHOR_MODES.LOCKED_FLOOR;
     }
@@ -897,6 +909,8 @@ function normalizeViewSettings(raw) {
     const instanceRenderDepth = Number.parseInt(source.instanceRenderDepth, 10);
     const simpleRenderRadius = Number.parseInt(source.simpleRenderRadius, 10);
     const hiddenHistoryThreshold = Number.parseInt(source.hiddenHistoryThreshold, 10);
+    const reasoningDefaultCollapsed = source.reasoningDefaultCollapsed;
+    const autoCollapseLongCode = source.autoCollapseLongCode;
 
     return {
         fullDisplayCount: Number.isFinite(fullDisplayCount)
@@ -917,7 +931,46 @@ function normalizeViewSettings(raw) {
         hiddenHistoryThreshold: Number.isFinite(hiddenHistoryThreshold)
             ? Math.min(120, Math.max(0, hiddenHistoryThreshold))
             : DEFAULT_CHAT_READER_VIEW_SETTINGS.hiddenHistoryThreshold,
+        reasoningDefaultCollapsed: reasoningDefaultCollapsed === undefined
+            ? DEFAULT_CHAT_READER_VIEW_SETTINGS.reasoningDefaultCollapsed
+            : Boolean(reasoningDefaultCollapsed),
+        autoCollapseLongCode: autoCollapseLongCode === undefined
+            ? DEFAULT_CHAT_READER_VIEW_SETTINGS.autoCollapseLongCode
+            : Boolean(autoCollapseLongCode),
     };
+}
+
+
+function shouldPromoteReaderAnchorForSource(anchorMode, anchorSource) {
+    if (anchorMode === READER_ANCHOR_MODES.TAIL_COMPATIBLE) return false;
+    if (anchorMode === READER_ANCHOR_MODES.LOCKED_FLOOR) return true;
+    return [
+        READER_ANCHOR_SOURCES.JUMP,
+        READER_ANCHOR_SOURCES.SEARCH,
+        READER_ANCHOR_SOURCES.BOOKMARK,
+        READER_ANCHOR_SOURCES.APP_STAGE,
+        READER_ANCHOR_SOURCES.NAVIGATOR,
+    ].includes(anchorSource);
+}
+
+
+function shouldResetReaderWindowForAnchorTarget({
+    targetFloor,
+    windowStartFloor,
+    windowEndFloor,
+    totalMessages,
+    safetyBand = CHAT_READER_WINDOW_OVERLAP,
+}) {
+    const target = Number(targetFloor || 0);
+    const start = Math.max(1, Number(windowStartFloor || 1));
+    const total = Math.max(1, Number(totalMessages || 1));
+    const end = Math.min(total, Math.max(start, Number(windowEndFloor || total)));
+    const margin = Math.max(1, Number(safetyBand || 0));
+
+    if (!target) return false;
+    if (target < start || target > end) return true;
+
+    return target <= start + margin || target >= end - margin;
 }
 
 
@@ -1824,12 +1877,21 @@ function wrapRuntimeHostsInContainer(container, floor) {
         const analysis = analyzeRuntimeCandidate(normalizedText);
         if (!analysis.isCandidate) return;
 
-        const existingWrapper = preNode.parentElement?.classList.contains('chat-inline-runtime-wrap')
-            ? preNode.parentElement
-            : null;
+        const existingWrapper = preNode.closest('.chat-inline-runtime-wrap');
         if (existingWrapper) {
             const existingHost = existingWrapper.querySelector('.chat-inline-runtime-host');
             if (existingHost instanceof Element) {
+                let existingPlaceholder = existingWrapper.querySelector('.chat-inline-runtime-placeholder');
+                const existingDisclosure = existingWrapper.querySelector('.chat-inline-runtime-disclosure');
+                if (!(existingPlaceholder instanceof Element)) {
+                    existingPlaceholder = document.createElement('div');
+                    existingPlaceholder.className = 'chat-inline-runtime-placeholder';
+                    if (existingDisclosure instanceof Element) {
+                        existingWrapper.insertBefore(existingPlaceholder, existingDisclosure);
+                    } else {
+                        existingWrapper.appendChild(existingPlaceholder);
+                    }
+                }
                 existingHost.id = buildRuntimeHostId(floor, runtimeIndex);
                 wrappedHosts.push(existingHost);
                 runtimeIndex += 1;
@@ -1839,14 +1901,27 @@ function wrapRuntimeHostsInContainer(container, floor) {
 
         const wrapper = document.createElement('div');
         wrapper.className = 'chat-inline-runtime-wrap';
+        const disclosure = document.createElement('details');
+        disclosure.className = 'chat-inline-runtime-disclosure';
+        const summary = document.createElement('summary');
+        summary.className = 'chat-inline-runtime-summary';
+        summary.textContent = '源码';
+        const sourceShell = document.createElement('div');
+        sourceShell.className = 'chat-inline-runtime-source-shell';
         const host = document.createElement('div');
         host.id = buildRuntimeHostId(floor, runtimeIndex);
         host.className = 'chat-inline-runtime-host';
-        preNode.classList.add('chat-inline-runtime-source');
+        const placeholder = document.createElement('div');
+        placeholder.className = 'chat-inline-runtime-placeholder';
+        preNode.classList.add('chat-inline-runtime-source', 'is-collapsible');
 
         preNode.replaceWith(wrapper);
         wrapper.appendChild(host);
-        wrapper.appendChild(preNode);
+        wrapper.appendChild(placeholder);
+        wrapper.appendChild(disclosure);
+        disclosure.appendChild(summary);
+        disclosure.appendChild(sourceShell);
+        sourceShell.appendChild(preNode);
         wrappedHosts.push(host);
         runtimeIndex += 1;
     });
@@ -1859,6 +1934,24 @@ function setRuntimeWrapperActive(host, active) {
     const wrapper = host instanceof Element ? host.closest('.chat-inline-runtime-wrap') : null;
     if (wrapper instanceof Element) {
         wrapper.classList.toggle('is-active', Boolean(active));
+    }
+}
+
+
+function clearDeferredRuntimePlaceholder(host) {
+    const wrapper = host instanceof Element ? host.closest('.chat-inline-runtime-wrap') : null;
+    const placeholderHost = wrapper instanceof Element ? wrapper.querySelector('.chat-inline-runtime-placeholder') : null;
+    if (placeholderHost instanceof Element) {
+        placeholderHost.innerHTML = '';
+    }
+}
+
+
+function setDeferredRuntimePlaceholder(host, message, viewSettings) {
+    const wrapper = host instanceof Element ? host.closest('.chat-inline-runtime-wrap') : null;
+    const placeholderHost = wrapper instanceof Element ? wrapper.querySelector('.chat-inline-runtime-placeholder') : null;
+    if (placeholderHost instanceof Element) {
+        placeholderHost.innerHTML = buildDeferredInstancePlaceholder(message, viewSettings);
     }
 }
 
@@ -1955,14 +2048,9 @@ function shouldExecuteMessageSegments(
 function buildDeferredInstancePlaceholder(message, viewSettings) {
     const floor = Number(message?.floor || 0);
     const depth = Number(viewSettings?.instanceRenderDepth ?? DEFAULT_CHAT_READER_VIEW_SETTINGS.instanceRenderDepth);
-    const scopeText = depth === 0 ? '全部实例楼层都会执行。' : `当前只执行锚点附近最接近的 ${depth} 个实例楼层。`;
-
-    return [
-        '### 实例预览已折叠',
-        `楼层 #${floor} 的前端实例未进入当前执行范围。`,
-        scopeText,
-        '可点击楼层头部的“实例”按钮，或切换到整页实例模式查看该楼层。',
-    ].join('\n\n');
+    const chipLabel = depth === 0 ? '实例待激活' : `实例待激活 · 邻近 ${depth} 层`;
+    const floorLabel = floor > 0 ? `#${floor}` : '当前楼层';
+    return `<div class="chat-inline-runtime-placeholder-chip" title="${floorLabel} 未进入当前执行范围">${chipLabel}</div>`;
 }
 
 
@@ -2808,7 +2896,9 @@ export default function chatGrid() {
             if (!floor) return '未定位';
             const modeLabel = this.readerAnchorMode === READER_ANCHOR_MODES.LOCKED_FLOOR
                 ? '锁定楼层'
-                : '末楼兼容';
+                : this.readerAnchorMode === READER_ANCHOR_MODES.SEMI_AUTO
+                    ? '半自动迁移'
+                    : '末楼兼容';
             return `#${floor} · ${modeLabel}`;
         },
 
@@ -3040,6 +3130,20 @@ export default function chatGrid() {
                     renderTier = 'compact';
                 }
 
+                const enhancementPolicy = buildReaderEnhancementPolicy(
+                    renderTier,
+                    message.__readerEnhancementMeta || {},
+                    {
+                        anchorFloor,
+                        floor,
+                        floorDistance,
+                        browseMode,
+                    },
+                );
+                enhancementPolicy.metaFlags = Array.isArray(enhancementPolicy.metaFlags)
+                    ? enhancementPolicy.metaFlags
+                    : (enhancementPolicy.showMetaFlags ? ['summary'] : []);
+
                 return {
                     ...message,
                     compact_preview: buildCompactPreview({
@@ -3056,6 +3160,10 @@ export default function chatGrid() {
                     should_render_simple: renderTier === 'simple',
                     should_render_placeholder: renderTier === 'hidden',
                     is_compact_display: renderTier === 'compact',
+                    __readerEnhancementPolicy: enhancementPolicy,
+                    meta_flags: enhancementPolicy.metaFlags,
+                    reasoning_mode: enhancementPolicy.reasoningMode,
+                    code_mode: enhancementPolicy.codeMode,
                 };
             });
 
@@ -5315,7 +5423,7 @@ export default function chatGrid() {
 
             const previousStart = Number(this.readerWindowStartFloor || 1);
             await this.extendReaderWindow('backward', previousStart);
-            this.$nextTick(() => this.scrollToFloor(previousStart, false, 'auto'));
+            this.$nextTick(() => this.scrollToFloor(previousStart, false, 'auto', READER_ANCHOR_SOURCES.NAVIGATOR));
         },
 
         async loadNextReaderWindow() {
@@ -5323,7 +5431,7 @@ export default function chatGrid() {
 
             const previousEnd = Number(this.readerWindowEndFloor || 0);
             await this.extendReaderWindow('forward', previousEnd);
-            this.$nextTick(() => this.scrollToFloor(previousEnd, false, 'auto'));
+            this.$nextTick(() => this.scrollToFloor(previousEnd, false, 'auto', READER_ANCHOR_SOURCES.NAVIGATOR));
         },
 
         resolveReaderViewportFloor(container, reason = 'generic') {
@@ -5968,7 +6076,13 @@ export default function chatGrid() {
 
             this.readerAppFloor = targetFloor;
             this.readerAppMode = true;
-            this.updateReaderAnchorFloor(targetFloor, READER_ANCHOR_SOURCES.APP_STAGE);
+            const shouldPromoteAnchor = shouldPromoteReaderAnchorForSource(this.readerAnchorMode, READER_ANCHOR_SOURCES.APP_STAGE);
+            if (shouldPromoteAnchor) {
+                this.updateReaderAnchorFloor(targetFloor, READER_ANCHOR_SOURCES.APP_STAGE);
+            } else {
+                this.readerViewportFloor = targetFloor;
+                this.readerAnchorSource = READER_ANCHOR_SOURCES.APP_STAGE;
+            }
             this.$nextTick(() => {
                 this.mountChatAppStage();
                 this.syncChatAppStage();
@@ -6188,6 +6302,15 @@ export default function chatGrid() {
                         __loaded: false,
                         __readerRegexConfig: nextConfig,
                         __readerDepthInfo: runtimeDepthInfo,
+                        __readerEnhancementMeta: {
+                            hasReasoning: false,
+                            reasoningText: '',
+                            reasoningPreview: '',
+                            reasoningState: 'none',
+                            hasLongCode: false,
+                            hasRuntimeCandidate: false,
+                            codeBlockCount: 0,
+                        },
                     };
                 }
 
@@ -6196,6 +6319,25 @@ export default function chatGrid() {
                     macroContext,
                     tailDepth: depthInfo.tailDepth,
                 });
+                const enhancementMeta = extractReaderEnhancementMetadata(rawMessage, parsedMessage);
+                const normalizedEnhancementMeta = {
+                    hasReasoning: false,
+                    reasoningText: '',
+                    reasoningPreview: '',
+                    reasoningState: 'none',
+                    hasLongCode: false,
+                    hasRuntimeCandidate: false,
+                    codeBlockCount: 0,
+                    ...(enhancementMeta && typeof enhancementMeta === 'object' ? enhancementMeta : {}),
+                };
+                if (
+                    normalizedEnhancementMeta.hasReasoning
+                    && !String(normalizedEnhancementMeta.reasoningText || '').trim()
+                ) {
+                    Object.assign(normalizedEnhancementMeta, {
+                        reasoningState: 'missing',
+                    });
+                }
 
                 return {
                     ...manifest,
@@ -6204,6 +6346,7 @@ export default function chatGrid() {
                     __loaded: true,
                     __readerRegexConfig: nextConfig,
                     __readerDepthInfo: runtimeDepthInfo,
+                    __readerEnhancementMeta: normalizedEnhancementMeta,
                 };
             });
             this.activeChat.messages = nextMessages;
@@ -6700,27 +6843,57 @@ export default function chatGrid() {
                 hidePromptBias: flags.hidePromptBias,
                 reasoningMarkers: flags.reasoningMarkers,
             });
+            const enhancementMeta = message?.__readerEnhancementMeta || extractReaderEnhancementMetadata(message, message);
+            const enhancementPolicy = buildReaderEnhancementPolicy(
+                'full',
+                enhancementMeta,
+                {
+                    viewportWidth: window.innerWidth,
+                    reasoningDefaultCollapsed: this.readerViewSettings?.reasoningDefaultCollapsed,
+                    autoCollapseLongCode: this.readerViewSettings?.autoCollapseLongCode,
+                },
+            );
+            const decoratedHtml = this.isReaderPageMode
+                ? html
+                : decorateReaderRenderedHtml(html, enhancementMeta, enhancementPolicy, {
+                    viewportWidth: window.innerWidth,
+                    reasoningStartExpanded: this.readerViewSettings?.reasoningDefaultCollapsed === false,
+                });
             const floor = Number(message?.floor || 0);
 
             if (floor > 0) {
                 const previousHtml = String(this.renderedFloorHtmlCache.get(floor) || message?.rendered_display_html || '');
-                if (previousHtml !== html) {
+                if (previousHtml !== decoratedHtml) {
                     const cacheKey = buildReaderCacheScopeKey(this.activeChat, floor, message);
-                    this.renderedFloorHtmlCache.set(floor, html);
+                    this.renderedFloorHtmlCache.set(floor, decoratedHtml);
                     if (message && typeof message === 'object') {
-                        message.rendered_display_html = html;
+                        message.rendered_display_html = decoratedHtml;
                     }
                     if (Array.isArray(this.activeChat?.messages)) {
                         const originalMessage = this.activeChat.messages.find(item => Number(item?.floor || 0) === floor);
                         if (originalMessage && originalMessage !== message) {
-                            originalMessage.rendered_display_html = html;
+                            originalMessage.rendered_display_html = decoratedHtml;
                         }
                     }
                     this.runtimeCandidateCache.floorMap.delete(cacheKey);
                     this.runtimeCandidateCache.executableFloorsKey = '';
                 }
             }
-            return html;
+            return decoratedHtml;
+        },
+
+        resolveSimpleReaderRenderMode(message, source, enhancementMeta) {
+            void message;
+
+            const normalizedSource = String(source || '');
+            const lineCount = normalizedSource.replace(/\r\n/g, '\n').split('\n').length;
+            const looksLikeStructuredCode = lineCount >= 8 && /(^|\n)\s*(const |let |var |function\b|class\b|def\b|import\b|export\b|return\b|if\b|for\b|while\b|<\/?[A-Za-z][^>]*>)/.test(normalizedSource);
+
+            if (enhancementMeta?.hasLongCode || source.includes("```") || looksLikeStructuredCode) {
+                return 'literal';
+            }
+
+            return 'plain';
         },
 
         renderMessageSimpleHtml(message) {
@@ -6734,9 +6907,19 @@ export default function chatGrid() {
 
             const scopeClass = `st-reader-floor-${Number(message?.floor || 0) || 0}`;
             const flags = resolveReaderFormatFlags(message);
-            return formatScopedDisplayedHtml(source, {
+            const enhancementMeta = message?.__readerEnhancementMeta || extractReaderEnhancementMetadata(message, message);
+            const enhancementPolicy = buildReaderEnhancementPolicy(
+                'simple',
+                enhancementMeta,
+                {
+                    viewportWidth: window.innerWidth,
+                    reasoningDefaultCollapsed: true,
+                    autoCollapseLongCode: this.readerViewSettings?.autoCollapseLongCode,
+                },
+            );
+            const baseHtml = formatScopedDisplayedHtml(source, {
                 scopeClass,
-                renderMode: 'literal',
+                renderMode: this.resolveSimpleReaderRenderMode(message, source, enhancementMeta),
                 speakerName: flags.speakerName,
                 stripSpeakerPrefix: flags.stripSpeakerPrefix,
                 encodeTags: flags.encodeTags,
@@ -6745,6 +6928,12 @@ export default function chatGrid() {
                 reasoningMarkers: flags.reasoningMarkers,
                 blockMedia: true,
             });
+            const previewedHtml = this.isReaderPageMode
+                ? baseHtml
+                : decorateReaderRenderedHtml(baseHtml, enhancementMeta, enhancementPolicy, {
+                    viewportWidth: window.innerWidth,
+                });
+            return previewedHtml;
         },
 
         syncMessageDisplay(el, message, variant = 'full') {
@@ -6927,7 +7116,8 @@ export default function chatGrid() {
                 wrappedHosts.forEach((host) => {
                     if (host instanceof Element) {
                         setRuntimeWrapperActive(host, false);
-                        host.innerHTML = this.renderReaderContent(buildDeferredInstancePlaceholder(message, this.readerViewSettings));
+                        clearDeferredRuntimePlaceholder(host);
+                        setDeferredRuntimePlaceholder(host, message, this.readerViewSettings);
                     }
                 });
                 this.readerSegmentRegistry.set(el, { signature, children: [el] });
@@ -6949,6 +7139,7 @@ export default function chatGrid() {
                 }
 
                 setRuntimeWrapperActive(runtimeHost, true);
+                clearDeferredRuntimePlaceholder(runtimeHost);
 
                 let stage = this.readerPartStages.get(runtimeHost);
                 if (!stage) {
@@ -7002,6 +7193,7 @@ export default function chatGrid() {
                 }
                 if (host instanceof Element) {
                     setRuntimeWrapperActive(host, false);
+                    clearDeferredRuntimePlaceholder(host);
                 }
             });
 
@@ -7429,6 +7621,13 @@ export default function chatGrid() {
                 Math.max(1, rawTargetFloor),
                 Math.max(1, this.readerTotalMessages || rawTargetFloor),
             );
+            const shouldPromoteAnchor = shouldPromoteReaderAnchorForSource(this.readerAnchorMode, anchorSource);
+            const shouldResetWindow = shouldResetReaderWindowForAnchorTarget({
+                targetFloor,
+                windowStartFloor: this.readerWindowStartFloor,
+                windowEndFloor: this.readerWindowEndFloor,
+                totalMessages: this.readerTotalMessages || this.activeChat?.messages?.length || 0,
+            });
             const shouldHideMobilePanel = this.readerResponsiveMode === 'mobile' && Boolean(this.readerMobilePanel);
             if (shouldHideMobilePanel) {
                 this.hideReaderPanels();
@@ -7444,7 +7643,11 @@ export default function chatGrid() {
             if (this.readerAppMode) {
                 this.jumpFloorInput = String(targetFloor);
                 if (this.executableMessageFloors.includes(targetFloor)) {
-                    this.updateReaderAnchorFloor(targetFloor, READER_ANCHOR_SOURCES.APP_STAGE);
+                    if (shouldPromoteAnchor) {
+                        this.updateReaderAnchorFloor(targetFloor, READER_ANCHOR_SOURCES.APP_STAGE);
+                    } else {
+                        this.readerViewportFloor = targetFloor;
+                    }
                     this.setReaderAppFloor(targetFloor);
                     if (persist) {
                         this.activeChat.last_view_floor = targetFloor;
@@ -7452,7 +7655,7 @@ export default function chatGrid() {
                 } else {
                     this.$store.global.showToast(`楼层 #${targetFloor} 没有可执行实例，已退出整页实例模式`, 2200);
                     this.deactivateChatAppStage();
-                    this.$nextTick(() => this.scrollToFloor(targetFloor, persist, behavior));
+                    this.$nextTick(() => this.scrollToFloor(targetFloor, persist, behavior, anchorSource));
                 }
                 return;
             }
@@ -7500,8 +7703,17 @@ export default function chatGrid() {
 
             this.jumpFloorInput = String(targetFloor);
             void this.syncReaderNavBatchForFloor(targetFloor);
-            this.updateReaderAnchorFloor(targetFloor, anchorSource);
-            await this.ensureReaderWindowForFloor(targetFloor, 'center');
+            if (shouldPromoteAnchor) {
+                this.updateReaderAnchorFloor(targetFloor, anchorSource);
+            } else {
+                this.readerViewportFloor = targetFloor;
+                this.readerAnchorSource = anchorSource;
+            }
+            if (shouldResetWindow) {
+                await this.setReaderWindowAroundFloor(targetFloor, 'center');
+            } else {
+                await this.ensureReaderWindowForFloor(targetFloor, 'center');
+            }
             this.logReaderScrollDebug('scroll_to_floor_after_window', {
                 targetFloor,
             });
@@ -7534,7 +7746,15 @@ export default function chatGrid() {
                 alert('请输入有效的楼层编号');
                 return;
             }
-            this.scrollToFloor(floor);
+            this.scrollToFloor(floor, true, 'smooth', READER_ANCHOR_SOURCES.JUMP);
+        },
+
+        jumpToBookmarkFloor(floor) {
+            this.scrollToFloor(floor, true, 'smooth', READER_ANCHOR_SOURCES.BOOKMARK);
+        },
+
+        jumpToNavigatorFloor(floor) {
+            this.scrollToFloor(floor, true, 'smooth', READER_ANCHOR_SOURCES.NAVIGATOR);
         },
 
         openMessageAsAppStage(message) {
@@ -7546,7 +7766,6 @@ export default function chatGrid() {
                 return;
             }
 
-            this.updateReaderAnchorFloor(floor, READER_ANCHOR_SOURCES.APP_STAGE);
             this.jumpFloorInput = String(floor);
             this.setReaderAppFloor(floor);
         },
@@ -7555,10 +7774,10 @@ export default function chatGrid() {
             const messages = Array.isArray(this.activeChat?.messages) ? this.activeChat.messages : [];
             if (!messages.length) return;
             if (which === 'first') {
-                this.scrollToFloor(messages[0].floor);
+                this.scrollToFloor(messages[0].floor, true, 'smooth', READER_ANCHOR_SOURCES.JUMP);
                 return;
             }
-            this.scrollToFloor(messages[messages.length - 1].floor);
+            this.scrollToFloor(messages[messages.length - 1].floor, true, 'smooth', READER_ANCHOR_SOURCES.JUMP);
         },
 
         toggleBookmark(message) {
