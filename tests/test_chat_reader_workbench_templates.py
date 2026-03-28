@@ -1126,6 +1126,173 @@ def test_base_css_stabilizes_mobile_text_inflation_and_dynamic_viewport_height()
     assert 'height: auto;' not in body_lines
 
 
+def test_global_state_syncs_visual_viewport_height_into_css_variable():
+    state_source = read_project_file('static/js/state.js')
+
+    assert 'syncViewportHeight() {' in state_source
+    sync_block = extract_js_function_block(state_source, 'syncViewportHeight() {')
+    init_block = extract_js_function_block(state_source, 'init() {')
+
+    assert 'window.visualViewport' in sync_block
+    assert 'window.visualViewport.height' in sync_block
+    assert "updateCssVariable('--app-viewport-height'" in sync_block
+    assert "updateCssVariable('--app-viewport-height-safe'" in sync_block
+    assert 'window.innerHeight || 0' in sync_block
+    assert 'Math.max(0, roundedHeight - 1)' in sync_block
+    assert 'this.syncViewportHeight();' in init_block
+    assert "window.visualViewport.addEventListener('resize', this._visualViewportResizeHandler" in init_block
+    assert "window.addEventListener('orientationchange', this._visualViewportResizeHandler" in init_block
+
+
+def test_mobile_modal_components_css_defines_shared_fullscreen_dynamic_viewport_baseline():
+    components_css = read_project_file('static/css/modules/components.css')
+    assert '@media (max-width: 768px)' in components_css
+    mobile_components_css = extract_media_block(components_css, '@media (max-width: 768px)')
+
+    assert '.modal-overlay {' in mobile_components_css
+    assert '.modal-container {' in mobile_components_css
+    overlay_block = extract_exact_css_block(mobile_components_css, '.modal-overlay')
+    container_block = extract_exact_css_block(mobile_components_css, '.modal-container')
+
+    assert 'padding: 0;' in overlay_block
+    assert 'align-items: stretch;' in overlay_block
+    assert 'justify-content: flex-start;' in overlay_block
+    assert 'overflow: hidden;' in overlay_block
+
+    assert 'width: 100vw;' in container_block
+    assert 'max-width: 100vw;' in container_block
+    assert 'height: 100vh;' in container_block
+    assert 'height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));' in container_block
+    assert 'height: 100dvh;' in container_block
+    assert 'min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));' in container_block
+    assert container_block.index('height: 100dvh;') < container_block.index('height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));')
+    assert 'border-radius: 0;' in container_block
+
+
+def test_detail_modal_mobile_css_uses_dynamic_viewport_and_safe_area_spacing():
+    detail_css = read_project_file('static/css/modules/modal-detail.css')
+    mobile_detail_css = extract_media_block(detail_css, '@media (max-width: 768px)')
+
+    detail_modal_block = extract_exact_css_block(mobile_detail_css, '.detail-modal')
+    detail_toolbar_block = extract_exact_css_block(mobile_detail_css, '.detail-left-toolbar')
+    detail_zoombar_block = extract_exact_css_block(mobile_detail_css, '.detail-zoombar')
+    detail_content_block = extract_exact_css_block(mobile_detail_css, '.detail-content')
+
+    assert 'width: 100vw;' in detail_modal_block
+    assert 'height: 100vh;' in detail_modal_block
+    assert 'height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));' in detail_modal_block
+    assert 'height: 100dvh;' in detail_modal_block
+    assert 'min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));' in detail_modal_block
+    assert detail_modal_block.index('height: 100dvh;') < detail_modal_block.index('height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));')
+    assert 'max-width: 100vw;' in detail_modal_block
+    assert 'margin: 0 !important;' in detail_modal_block
+    assert 'top: calc(env(safe-area-inset-top, 0px) + 0.5rem);' in detail_toolbar_block
+    assert 'bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);' in detail_zoombar_block
+    assert 'padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);' in detail_content_block
+
+
+def test_mobile_tool_and_custom_modal_variants_prefer_dynamic_viewport_height():
+    tools_css = read_project_file('static/css/modules/modal-tools.css')
+    settings_css = read_project_file('static/css/modules/modal-settings.css')
+    automation_css = read_project_file('static/css/modules/modal-automation.css')
+
+    mobile_tools_css = extract_media_block(tools_css, '@media (max-width: 768px)')
+    mobile_settings_css = extract_media_block(settings_css, '@media (max-width: 768px)')
+    mobile_automation_css = extract_media_block(automation_css, '@media (max-width: 768px)')
+
+    assert '.advanced-editor-container {' in mobile_tools_css
+    assert '.advanced-editor-header {' in mobile_tools_css
+    assert '.advanced-editor-footer {' in mobile_tools_css
+    assert '.adv-split-view {' in mobile_tools_css
+    assert '.adv-editor-pane {' in mobile_tools_css
+    assert '.large-editor-container {' in mobile_tools_css
+    advanced_editor_block = extract_exact_css_block(mobile_tools_css, '.advanced-editor-container')
+    advanced_header_block = extract_exact_css_block(mobile_tools_css, '.advanced-editor-header')
+    advanced_footer_block = extract_exact_css_block(mobile_tools_css, '.advanced-editor-footer')
+    advanced_split_block = extract_exact_css_block(mobile_tools_css, '.adv-split-view')
+    advanced_editor_pane_block = extract_exact_css_block(mobile_tools_css, '.adv-editor-pane')
+    large_editor_block = extract_exact_css_block(mobile_tools_css, '.large-editor-container')
+    settings_block = extract_exact_css_block(mobile_settings_css, '.settings-modal-container')
+    automation_block = extract_exact_css_block(mobile_automation_css, '.automation-container')
+
+    assert 'height: 100dvh !important;' in advanced_editor_block
+    assert 'height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh)) !important;' in advanced_editor_block
+    assert 'min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));' in advanced_editor_block
+    assert advanced_editor_block.index('height: 100dvh !important;') < advanced_editor_block.index('height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh)) !important;')
+    assert 'padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem) !important;' in advanced_header_block
+    assert 'padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem) !important;' in advanced_footer_block
+    assert 'min-height: 0;' in advanced_split_block
+    assert 'min-height: 0;' in advanced_editor_pane_block
+    assert '-webkit-overflow-scrolling: touch;' in advanced_editor_pane_block
+
+    assert 'height: 100dvh !important;' in large_editor_block
+    assert 'height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh)) !important;' in large_editor_block
+    assert 'min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));' in large_editor_block
+    assert 'height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));' in settings_block
+    assert 'height: 100dvh;' in settings_block
+    assert 'min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));' in settings_block
+    assert 'height: 100dvh !important;' in automation_block
+    assert 'height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh)) !important;' in automation_block
+    assert 'min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh)) !important;' in automation_block
+
+
+def test_detail_modal_template_marks_multicard_mobile_tabs_for_stacked_layout():
+    detail_template = read_project_file('templates/modals/detail_card.html')
+
+    assert '<section x-show="tab===\'basic\'" x-transition.opacity class="detail-section detail-section-fill detail-section-mobile-stack">' in detail_template
+    assert '<section x-show="tab===\'persona\'" x-transition.opacity class="detail-section detail-section-fill detail-section-mobile-stack">' in detail_template
+    assert '<section x-show="tab===\'dialog\'" x-transition.opacity class="detail-section detail-section-fill detail-section-mobile-stack">' in detail_template
+
+
+def test_detail_modal_mobile_css_releases_equal_height_card_splits_for_stacked_tabs():
+    detail_css = read_project_file('static/css/modules/modal-detail.css')
+    mobile_detail_css = extract_media_block(detail_css, '@media (max-width: 768px)')
+
+    detail_left_block = extract_exact_css_block(mobile_detail_css, '.detail-left')
+    stack_section_block = extract_exact_css_block(mobile_detail_css, '.detail-section-mobile-stack')
+    stack_scroll_block = extract_exact_css_block(mobile_detail_css, '.detail-section-mobile-stack .detail-tab-scroll')
+    stack_card_block = extract_exact_css_block(mobile_detail_css, '.detail-section-mobile-stack .detail-tab-scroll > .detail-card')
+    stack_textarea_block = extract_exact_css_block(mobile_detail_css, '.detail-section-mobile-stack .detail-card .form-textarea')
+    stack_dialog_block = extract_exact_css_block(mobile_detail_css, '.detail-section-mobile-stack .detail-card .detail-dialog-grow-box')
+    stack_large_block = extract_exact_css_block(mobile_detail_css, '.detail-section-mobile-stack .detail-card--lg')
+    stack_small_block = extract_exact_css_block(mobile_detail_css, '.detail-section-mobile-stack .detail-card--sm')
+
+    assert 'height: clamp(220px, 34vh, 320px);' in detail_left_block
+    assert 'min-height: 220px;' in detail_left_block
+    assert 'max-height: 38vh;' in detail_left_block
+
+    assert 'flex: 0 0 auto;' in stack_section_block
+    assert 'overflow: visible;' in stack_section_block
+    assert 'flex: 0 0 auto;' in stack_scroll_block
+    assert 'min-height: auto;' in stack_scroll_block
+    assert 'overflow: visible;' in stack_scroll_block
+    assert 'padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);' in stack_scroll_block
+    assert 'flex: 0 0 auto;' in stack_card_block
+    assert 'min-height: auto;' in stack_card_block
+    assert 'flex: 0 0 auto;' in stack_textarea_block
+    assert 'min-height: clamp(6rem, 18vh, 9rem);' in stack_textarea_block
+    assert 'flex: 0 0 auto !important;' in stack_dialog_block
+    assert 'min-height: clamp(11rem, 30vh, 16rem) !important;' in stack_dialog_block
+    assert 'flex: 0 0 auto !important;' in stack_large_block
+    assert 'flex: 0 0 auto !important;' in stack_small_block
+
+
+def test_detail_modal_mobile_css_uses_border_box_chain_and_parent_relative_inner_shell():
+    detail_css = read_project_file('static/css/modules/modal-detail.css')
+    detail_modal_block = extract_exact_css_block(detail_css, '.detail-modal')
+    detail_inner_block = extract_exact_css_block(detail_css, '.detail-modal-inner')
+    mobile_detail_css = extract_media_block(detail_css, '@media (max-width: 768px)')
+    mobile_detail_modal_block = extract_exact_css_block(mobile_detail_css, '.detail-modal')
+    mobile_detail_inner_block = extract_exact_css_block(mobile_detail_css, '.detail-modal-inner')
+
+    assert 'box-sizing: border-box;' in detail_modal_block
+    assert 'box-sizing: border-box;' in detail_inner_block
+    assert 'height: 100%;' in detail_inner_block
+    assert 'max-height: 100%;' in mobile_detail_modal_block
+    assert 'height: 100%;' in mobile_detail_inner_block
+    assert 'max-height: 100%;' in mobile_detail_inner_block
+
+
 def test_mobile_layout_css_keeps_sidebar_shell_scrollable_inside_visual_viewport():
     layout_css = read_project_file('static/css/modules/layout.css')
     mobile_layout_css = extract_media_block(layout_css, '@media (max-width: 768px)')

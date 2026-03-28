@@ -106,6 +106,7 @@ export function initState() {
         showToastState: false,
         toastTimer: null,
         _resizeTimer: null,
+        _visualViewportResizeHandler: null,
 
         // 数据池 (供 Sidebar 和 Grid 共享)
         allTagsPool: [],
@@ -250,17 +251,41 @@ export function initState() {
         init() {
             this.checkServerStatus();
             this.loadUserPreferences();
+            this.syncViewportHeight();
+
+            if (!this._visualViewportResizeHandler) {
+                this._visualViewportResizeHandler = () => this.syncViewportHeight();
+            }
 
             // 监听窗口大小变化
             window.addEventListener('resize', () => {
                 this.windowWidth = window.innerWidth;
+                this.syncViewportHeight();
                 clearTimeout(this._resizeTimer);
                 this._resizeTimer = setTimeout(() => this.updateItemsPerPage(), 200);
             });
 
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', this._visualViewportResizeHandler, { passive: true });
+                window.visualViewport.addEventListener('scroll', this._visualViewportResizeHandler, { passive: true });
+            }
+
+            window.addEventListener('orientationchange', this._visualViewportResizeHandler, { passive: true });
+
             // 全局防止浏览器默认打开图片
             window.addEventListener('dragover', e => e.preventDefault());
             window.addEventListener('drop', e => e.preventDefault());
+        },
+
+        syncViewportHeight() {
+            const visualViewportHeight = window.visualViewport ? Number(window.visualViewport.height) : 0;
+            const nextHeight = visualViewportHeight > 0 ? visualViewportHeight : (window.innerHeight || 0);
+            if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+
+            const roundedHeight = Math.round(nextHeight);
+            const safeHeight = Math.max(0, roundedHeight - 1);
+            updateCssVariable('--app-viewport-height', `${roundedHeight}px`);
+            updateCssVariable('--app-viewport-height-safe', `${safeHeight}px`);
         },
 
         // 轮询服务器状态，准备就绪后执行 bootstrap

@@ -3,6 +3,7 @@
   height: 92vh;
   background: transparent;
   border: none;
+  box-sizing: border-box;
   box-shadow: none;
   display: block;
   position: relative;
@@ -14,6 +15,7 @@
 .detail-modal-inner {
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: 520px minmax(0, 1fr);
   overflow-x: auto;
@@ -2126,12 +2128,20 @@ html.light-mode .note-textarea:focus {
 
 @media (max-width: 768px) {
   .detail-modal {
+    margin: 0 !important;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
+    height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));
+    min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));
+    max-height: 100%;
     border-radius: 0;
     max-width: 100vw;
+    transform: none !important;
   }
   .detail-modal-inner {
+    height: 100%;
+    max-height: 100%;
     border-radius: 0;
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
@@ -2142,9 +2152,9 @@ html.light-mode .note-textarea:focus {
   .detail-left {
     display: flex !important;
     flex-direction: column;
-    height: 40vh;
-    min-height: 280px;
-    max-height: 45vh;
+    height: clamp(220px, 34vh, 320px);
+    min-height: 220px;
+    max-height: 38vh;
     border-right: none;
     border-bottom: 1px solid var(--border-light);
     flex-shrink: 0;
@@ -2306,6 +2316,7 @@ html.light-mode .note-textarea:focus {
   }
   .detail-content {
     padding: 0.75rem;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
     overflow-y: auto;
     overflow-x: hidden;
     flex: 1;
@@ -2332,6 +2343,37 @@ html.light-mode .note-textarea:focus {
     min-height: 0;
     max-height: none;
     padding-bottom: 1rem;
+  }
+  .detail-section-mobile-stack {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  .detail-section-mobile-stack .detail-tab-scroll {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+  }
+  .detail-section-mobile-stack .detail-tab-scroll > .detail-card {
+    flex: 0 0 auto;
+    min-height: auto;
+  }
+  .detail-section-mobile-stack .detail-card .form-textarea {
+    flex: 0 0 auto;
+    min-height: clamp(6rem, 18vh, 9rem);
+    height: auto !important;
+  }
+  .detail-section-mobile-stack .detail-card .detail-dialog-grow-box {
+    flex: 0 0 auto !important;
+    min-height: clamp(11rem, 30vh, 16rem) !important;
+    height: auto !important;
+  }
+  .detail-section-mobile-stack .detail-card--lg {
+    flex: 0 0 auto !important;
+  }
+  .detail-section-mobile-stack .detail-card--sm {
+    flex: 0 0 auto !important;
   }
   .detail-card {
     padding: 0.75rem;
@@ -2444,7 +2486,7 @@ html.light-mode .note-textarea:focus {
     height: 60px;
   }
   .detail-zoombar {
-    bottom: 0.5rem;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
     left: 50%;
     transform: translateX(-50%);
     padding: 0.2rem 0.3rem;
@@ -2466,7 +2508,7 @@ html.light-mode .note-textarea:focus {
     width: 36px;
   }
   .detail-left-toolbar {
-    top: 0.5rem;
+    top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
     right: 0.5rem;
     gap: 0.5rem;
     flex-direction: row;
