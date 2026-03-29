@@ -135,7 +135,8 @@
 ### 更多特性
 
 - 🔄 **实时同步** — 文件系统自动监听，变更即时同步到数据库
-- 🎨 **暗色 / 亮色主题** — 现代化响应式 UI，移动端适配
+- 🎨 **暗色 / 亮色主题** — 现代化响应式 UI，桌面端与移动端自适应
+- 📱 **移动端深度适配** — 抽屉式导航、底部操作栏、触控友好的交互控件，手机浏览器即可高效管理
 - 🔍 **智能搜索** — 名称、标签、创作者等多维度搜索，支持搜索范围控制
 - 🏷️ **标签系统** — 分类管理、颜色 / 透明度、自定义筛选与批量管理
 - 📦 **酒馆资源同步** — 从本地 SillyTavern 一键同步角色卡、聊天、世界书、预设等
@@ -190,6 +191,21 @@ docker-compose up -d
 <p align="center">
   <img src="docs/screenshots/gallery-automation.png" alt="自动化规则" width="420">&nbsp;
   <img src="docs/screenshots/gallery-settings.png" alt="设置界面" width="420">
+</p>
+
+### 📱 移动端适配
+
+所有页面均针对移动端进行了深度优化——抽屉式侧栏导航、底部操作栏、触控友好的卡片与列表交互，手机浏览器即可完成角色卡管理、聊天阅读、世界书编辑等全部操作。
+
+<p align="center">
+  <img src="docs/screenshots/mobile-cards.png" alt="移动端角色卡网格" width="260">&nbsp;
+  <img src="docs/screenshots/mobile-chat-reader.png" alt="移动端聊天阅读器" width="260">&nbsp;
+  <img src="docs/screenshots/mobile-sidebar.png" alt="移动端抽屉导航" width="260">
+</p>
+<p align="center">
+  <img src="docs/screenshots/mobile-card-detail.png" alt="移动端角色卡详情" width="260">&nbsp;
+  <img src="docs/screenshots/mobile-wi-editor.png" alt="移动端世界书编辑" width="260">&nbsp;
+  <img src="docs/screenshots/mobile-settings.png" alt="移动端设置" width="260">
 </p>
 
 ---
