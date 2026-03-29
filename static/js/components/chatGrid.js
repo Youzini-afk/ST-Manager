@@ -24,6 +24,12 @@ import {
     buildReaderEnhancementPolicy,
     decorateReaderRenderedHtml,
 } from '../utils/chatReaderEnhancements.js';
+import {
+    createFloorVariableSnapshotResolver,
+    getActiveMessageVariables,
+    getCardVariables,
+    getChatMetadataVariables,
+} from '../utils/chatReaderVariableSnapshots.js';
 import { formatScopedDisplayedHtml } from '../utils/stDisplayFormatter.js';
 import { clearActiveRuntimeContext, setActiveRuntimeContext } from '../runtime/runtimeContext.js';
 
@@ -78,6 +84,8 @@ const CHAT_READER_NAV_BATCH_SIZE = 200;
 const CHAT_READER_PAGE_NEIGHBOR_COUNT = 1;
 const CHAT_READER_WINDOW_SIZE = 120;
 const CHAT_READER_WINDOW_OVERLAP = 24;
+const CHAT_READER_VARIABLE_CHECKPOINT_INTERVAL = 25;
+const CHAT_READER_VARIABLE_RECENT_CACHE_SIZE = 24;
 const CHAT_READER_WINDOW_STEP = Math.max(1, CHAT_READER_WINDOW_SIZE - CHAT_READER_WINDOW_OVERLAP);
 const READER_VIEWPORT_SYNC_IDLE_MS = 120;
 const READER_VIEWPORT_TOP_PROBE_OFFSET = 72;
@@ -2131,36 +2139,22 @@ function scoreFullPageAppHtml(htmlPayload) {
 }
 
 
-function extractStatDataFromMessage(message) {
-    const source = message && typeof message === 'object' ? message : {};
-
-    if (source.extra && typeof source.extra === 'object' && source.extra.stat_data) {
-        return cloneValue(source.extra.stat_data);
-    }
-
-    const variables = Array.isArray(source.variables) ? source.variables : [];
-    for (const entry of variables) {
-        if (entry && typeof entry === 'object' && entry.stat_data) {
-            return cloneValue(entry.stat_data);
-        }
-    }
-
-    return null;
-}
+const chatReaderVariableSnapshotResolver = createFloorVariableSnapshotResolver({
+    checkpointInterval: CHAT_READER_VARIABLE_CHECKPOINT_INTERVAL,
+    maxRecentSnapshots: CHAT_READER_VARIABLE_RECENT_CACHE_SIZE,
+});
 
 
-function resolveLatestStatData(rawMessages, floor) {
-    const list = Array.isArray(rawMessages) ? rawMessages : [];
-    const startIndex = Math.min(list.length - 1, Math.max(0, Number(floor || 1) - 1));
-
-    for (let index = startIndex; index >= 0; index -= 1) {
-        const statData = extractStatDataFromMessage(list[index]);
-        if (statData) {
-            return statData;
-        }
-    }
-
-    return {};
+function resolveReaderFloorVariables(rawMessages, floor, activeChat, activeCardDetail = null) {
+    const chat = activeChat && typeof activeChat === 'object' ? activeChat : {};
+    const metadata = chat.metadata && typeof chat.metadata === 'object' ? chat.metadata : {};
+    return chatReaderVariableSnapshotResolver.resolve({
+        chatId: chat.id || chat.chat_id || '',
+        rawMessages: Array.isArray(rawMessages) ? rawMessages : [],
+        floor,
+        metadata,
+        cardDetail: activeCardDetail,
+    });
 }
 
 
@@ -2492,11 +2486,15 @@ function looksLikeFullPageChatApp(messageText) {
 }
 
 
-function buildChatAppCompatContext(rawMessages, floor, rawMessage, parsedMessage, activeChat) {
+function buildChatAppCompatContext(rawMessages, floor, rawMessage, parsedMessage, activeChat, activeCardDetail = null) {
     const source = rawMessage && typeof rawMessage === 'object' ? rawMessage : {};
     const parsed = parsedMessage && typeof parsedMessage === 'object' ? parsedMessage : {};
     const chat = activeChat && typeof activeChat === 'object' ? activeChat : {};
-    const statData = resolveLatestStatData(rawMessages, floor);
+    const floorVariables = resolveReaderFloorVariables(rawMessages, floor, chat, activeCardDetail);
+    const activeVariables = getActiveMessageVariables(source);
+    const statData = floorVariables && typeof floorVariables.stat_data === 'object'
+        ? cloneValue(floorVariables.stat_data)
+        : {};
 
     return {
         latestMessageData: {
@@ -2508,6 +2506,8 @@ function buildChatAppCompatContext(rawMessages, floor, rawMessage, parsedMessage
             mes: source.mes || '',
             extra: cloneValue(source.extra || {}),
             variables: cloneValue(source.variables || []),
+            active_variables: activeVariables,
+            merged_variables: cloneValue(floorVariables),
             is_user: Boolean(source.is_user),
             is_system: Boolean(source.is_system),
             chat_id: chat.id || '',
@@ -2517,6 +2517,10 @@ function buildChatAppCompatContext(rawMessages, floor, rawMessage, parsedMessage
             title: chat.title || chat.chat_name || '',
             bound_card_id: chat.bound_card_id || '',
             bound_card_name: chat.bound_card_name || chat.character_name || '',
+            variables: getChatMetadataVariables(chat.metadata),
+        },
+        character: {
+            variables: getCardVariables(activeCardDetail),
         },
     };
 }
@@ -2641,6 +2645,7 @@ export default function chatGrid() {
         regexTestInput: '',
         regexConfigSourceLabel: '',
         activeCardRegexConfig: normalizeRegexConfig(EMPTY_CHAT_READER_REGEX_CONFIG, { fillDefaults: false }),
+        activeBoundCardDetail: null,
         readerResolvedRegexConfig: normalizeRegexConfig(DEFAULT_CHAT_READER_REGEX_CONFIG),
         readerViewportFloor: 0,
         readerAnchorFloor: 0,
@@ -5012,6 +5017,7 @@ export default function chatGrid() {
             this.regexTestInput = '';
             this.regexConfigSourceLabel = '';
             this.activeCardRegexConfig = normalizeRegexConfig(EMPTY_CHAT_READER_REGEX_CONFIG, { fillDefaults: false });
+            this.activeBoundCardDetail = null;
             this.readerResolvedRegexConfig = normalizeRegexConfig(DEFAULT_CHAT_READER_REGEX_CONFIG);
             this.readerViewportFloor = 0;
             this.readerAnchorFloor = 0;
@@ -5929,6 +5935,7 @@ export default function chatGrid() {
             const target = chat || this.activeChat;
             if (!target?.bound_card_id) {
                 this.activeCardRegexConfig = normalizeRegexConfig(EMPTY_CHAT_READER_REGEX_CONFIG, { fillDefaults: false });
+                this.activeBoundCardDetail = null;
                 if (target && typeof target === 'object') {
                     target.bound_card_resource_folder = '';
                 }
@@ -5939,17 +5946,20 @@ export default function chatGrid() {
                 const detail = await getCardDetail(target.bound_card_id, { regex_only: true });
                 if (!detail?.success) {
                     this.activeCardRegexConfig = normalizeRegexConfig(EMPTY_CHAT_READER_REGEX_CONFIG, { fillDefaults: false });
+                    this.activeBoundCardDetail = null;
                     if (target && typeof target === 'object') {
                         target.bound_card_resource_folder = '';
                     }
                     return;
                 }
                 this.activeCardRegexConfig = dedupeRegexConfig(deriveReaderConfigFromCard(detail));
+                this.activeBoundCardDetail = detail;
                 if (target && typeof target === 'object') {
                     target.bound_card_resource_folder = detail.card?.resource_folder || '';
                 }
             } catch {
                 this.activeCardRegexConfig = normalizeRegexConfig(EMPTY_CHAT_READER_REGEX_CONFIG, { fillDefaults: false });
+                this.activeBoundCardDetail = null;
                 if (target && typeof target === 'object') {
                     target.bound_card_resource_folder = '';
                 }
@@ -6057,7 +6067,14 @@ export default function chatGrid() {
                 floor,
                 htmlPayload: String(selectedPart.text || ''),
                 assetBase: this.activeReaderAssetBase,
-                context: buildChatAppCompatContext(this.activeChat.raw_messages || [], floor, rawMessage, parsedMessageForFloor || parsedMessage, this.activeChat),
+                context: buildChatAppCompatContext(
+                    this.activeChat.raw_messages || [],
+                    floor,
+                    rawMessage,
+                    parsedMessageForFloor || parsedMessage,
+                    this.activeChat,
+                    this.activeBoundCardDetail,
+                ),
                 debug: {
                     score: partAnalysis.score,
                     reasons: partAnalysis.reasons,
@@ -7169,6 +7186,7 @@ export default function chatGrid() {
                         rawMessage,
                         message,
                         this.activeChat,
+                        this.activeBoundCardDetail,
                     ),
                 });
             });
