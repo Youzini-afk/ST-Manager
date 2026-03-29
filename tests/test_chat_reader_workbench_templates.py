@@ -1030,11 +1030,40 @@ def test_chat_grid_tracks_mobile_regex_header_visibility_separately_from_reader_
 
 def test_chat_reader_template_mobile_floor_editor_keeps_right_column_note_inside_section_head():
     template_source = read_project_file('templates/modals/detail_chat_reader.html')
-    editor_block = template_source.split('<div class="chat-reader-editor-section chat-reader-editor-section--wide chat-reader-nested-section">', 1)[1].split('<textarea x-model="editingMessageRawDraft"', 1)[0]
+    editor_block = template_source.split('<div class="chat-reader-editor-section chat-reader-editor-section--wide chat-reader-nested-section">', 1)[1].split('<div class="chat-inline-actions">', 1)[0]
 
     assert '<div class="chat-reader-section-head">' in editor_block
-    assert '<div class="chat-reader-panel-title">原始消息</div>' in editor_block
+    assert '<div class="chat-reader-panel-title">显示预览</div>' in editor_block
     assert 'chat-reader-editor-note' in editor_block
+
+
+def test_chat_reader_template_uses_raw_message_as_floor_editor_primary_input():
+    template_source = read_project_file('templates/modals/detail_chat_reader.html')
+    floor_editor_block = template_source.split('<div class="chat-bind-modal chat-reader-editor-modal chat-reader-nested-modal chat-reader-transition-surface chat-reader-editor-modal--floor"', 1)[1].split('</div>\n</div>\n\n<div x-show="bindPickerOpen"', 1)[0]
+
+    assert '<div class="chat-reader-panel-title">原始正文</div>' in floor_editor_block
+    assert '<textarea x-model="editingMessageRawDraft" @input="editingMessageDraft = extractDisplayContent($event.target.value)" class="form-textarea chat-reader-floor-editor"></textarea>' in floor_editor_block
+    assert '<div class="chat-reader-panel-title">显示预览</div>' in floor_editor_block
+    assert '<textarea x-model="editingMessageDraft" readonly class="form-textarea chat-reader-floor-editor chat-reader-floor-editor--raw"></textarea>' in floor_editor_block
+
+
+def test_chat_grid_open_floor_editor_seeds_primary_editor_from_raw_message_only():
+    chat_grid_source = read_project_file('static/js/components/chatGrid.js')
+    open_floor_editor_block = extract_js_function_block(chat_grid_source, 'openFloorEditor(message) {')
+
+    assert "this.editingMessageRawDraft = String(message.mes || '');" in open_floor_editor_block
+    assert "this.editingMessageDraft = this.extractDisplayContent(this.editingMessageRawDraft);" in open_floor_editor_block
+    assert "this.editingMessageDraft = String(message.content || message.mes || '');" not in open_floor_editor_block
+
+
+def test_chat_grid_save_floor_edit_persists_raw_message_and_rebuilds_rendered_reader_state():
+    chat_grid_source = read_project_file('static/js/components/chatGrid.js')
+    save_floor_edit_block = extract_js_function_block(chat_grid_source, 'async saveFloorEdit() {')
+
+    assert "target.mes = String(this.editingMessageRawDraft || '');" in save_floor_edit_block
+    assert 'focusFloor: this.editingFloor,' in save_floor_edit_block
+    assert 'this.rebuildActiveChatMessages(runtimeConfig);' in chat_grid_source
+    assert 'await this.setReaderWindowAroundFloor(focusFloor || 1, \'center\');' in chat_grid_source
 
 
 def test_chat_reader_css_mobile_stacks_floor_editor_sections_and_resets_note_overlap_spacing():

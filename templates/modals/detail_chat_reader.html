@@ -1198,24 +1198,24 @@
         <div class="chat-reader-editor-grid chat-reader-editor-grid--editor custom-scrollbar">
             <div class="chat-reader-editor-section chat-reader-editor-section--narrow chat-reader-nested-section">
                 <div class="chat-reader-section-head">
-                    <div class="chat-reader-panel-title">显示内容</div>
+                    <div class="chat-reader-panel-title">原始正文</div>
                 </div>
 
-                <textarea x-model="editingMessageDraft" class="form-textarea chat-reader-floor-editor"></textarea>
-                <div class="chat-reader-replace-status chat-reader-editor-note">左侧编辑显示内容，右侧同时查看原始消息与解析后的实时预览；“用显示内容覆盖正文”会尝试写回 `<content>` 区段。</div>
+                <textarea x-model="editingMessageRawDraft" @input="editingMessageDraft = extractDisplayContent($event.target.value)" class="form-textarea chat-reader-floor-editor"></textarea>
+                <div class="chat-reader-replace-status chat-reader-editor-note">左侧直接编辑原始消息；保存后会重新触发显示替换与渲染。右侧继续用于查看解析后的显示预览，必要时仍可反向用显示内容覆盖正文。</div>
             </div>
 
             <div class="chat-reader-editor-section chat-reader-editor-section--wide chat-reader-nested-section">
                 <div class="chat-reader-section-head">
-                    <div class="chat-reader-panel-title">原始消息</div>
-                    <div class="chat-reader-replace-status chat-reader-editor-note">切换原文渲染与解析预览，检查保存前后的展示差异。</div>
+                    <div class="chat-reader-panel-title">显示预览</div>
+                    <div class="chat-reader-replace-status chat-reader-editor-note">切换原文渲染与解析预览，检查保存前后的展示差异；“重新解析显示内容”只更新预览区，不会直接改动正文。</div>
                 </div>
                 <div class="chat-inline-actions">
                     <button class="chat-toolbar-btn" :class="editingMessagePreviewMode === 'source' ? 'chat-toolbar-btn--primary' : ''" @click="editingMessagePreviewMode = 'source'">原文渲染</button>
                     <button class="chat-toolbar-btn" @click="editingMessageDraft = extractDisplayContent(editingMessageRawDraft)">重新解析显示内容</button>
                     <button class="chat-toolbar-btn" :class="editingMessagePreviewMode === 'parsed' ? 'chat-toolbar-btn--primary' : ''" @click="editingMessagePreviewMode = 'parsed'">解析预览</button>
                 </div>
-                <textarea x-model="editingMessageRawDraft" class="form-textarea chat-reader-floor-editor chat-reader-floor-editor--raw"></textarea>
+                <textarea x-model="editingMessageDraft" readonly class="form-textarea chat-reader-floor-editor chat-reader-floor-editor--raw"></textarea>
                 <div x-show="editingMessagePreviewMode === 'source'" class="chat-reader-floor-preview markdown-body st-reader-floor-edit-source" x-html="editingMessageSourcePreviewHtml"></div>
                 <div x-show="editingMessagePreviewMode === 'parsed'" class="chat-reader-floor-preview markdown-body st-reader-floor-edit-preview" x-html="editingMessageParsedPreviewHtml"></div>
                 <div class="chat-reader-floor-diff">

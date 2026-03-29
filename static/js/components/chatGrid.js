@@ -7231,8 +7231,8 @@ export default function chatGrid() {
             }
 
             this.editingFloor = floor;
-            this.editingMessageDraft = String(message.content || message.mes || '');
             this.editingMessageRawDraft = String(message.mes || '');
+            this.editingMessageDraft = this.extractDisplayContent(this.editingMessageRawDraft);
             this.editingMessagePreviewMode = 'parsed';
         },
 
