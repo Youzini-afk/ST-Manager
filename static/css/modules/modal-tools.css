@@ -1327,14 +1327,10 @@ html.light-mode .preview-toggle-inactive {
   }
   .large-editor-container {
     width: 100vw !important;
-    height: var(
-      --app-viewport-height-safe,
-      var(--app-viewport-height, 100dvh)
-    ) !important;
-    min-height: var(
-      --app-viewport-height-safe,
-      var(--app-viewport-height, 100dvh)
-    );
+    height: 100vh !important;
+    height: 100dvh !important;
+    height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh)) !important;
+    min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));
     max-width: 100vw !important;
     border-radius: 0;
     border: none;
@@ -1410,14 +1406,10 @@ html.light-mode .preview-toggle-inactive {
   }
   .advanced-editor-container {
     width: 100vw !important;
-    height: var(
-      --app-viewport-height-safe,
-      var(--app-viewport-height, 100dvh)
-    ) !important;
-    min-height: var(
-      --app-viewport-height-safe,
-      var(--app-viewport-height, 100dvh)
-    );
+    height: 100vh !important;
+    height: 100dvh !important;
+    height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh)) !important;
+    min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));
     max-width: 100vw !important;
     border-radius: 0;
     border: none;

@@ -1602,6 +1602,63 @@ def test_card_pagination_mobile_css_anchors_bar_with_dynamic_viewport_and_box_si
     assert 'box-sizing: border-box;' in mobile_cards_css
 
 
+def test_card_hover_clarity_css_removes_backdrop_blur_from_tag_text_surfaces():
+    cards_css = read_project_file('static/css/modules/view-cards.css')
+    tag_block = extract_exact_css_block(cards_css, '.card-image-tags-wrap .card-tag')
+    neutral_tag_block = extract_exact_css_block(
+        cards_css,
+        '.card-image-tags-wrap .card-tag-filter:not(.is-included):not(.is-excluded)',
+    )
+    light_tag_block = extract_exact_css_block(
+        cards_css,
+        'html.light-mode .card-image-tags-wrap .card-tag',
+    )
+    light_neutral_tag_block = extract_exact_css_block(
+        cards_css,
+        'html.light-mode\n  .card-image-tags-wrap\n  .card-tag-filter:not(.is-included):not(.is-excluded)',
+    )
+
+    assert 'backdrop-filter: var(--tag-chip-backdrop);' not in tag_block
+    assert '-webkit-backdrop-filter: var(--tag-chip-backdrop);' not in tag_block
+    assert 'backdrop-filter: none;' in tag_block
+    assert '-webkit-backdrop-filter: none;' in tag_block
+    assert 'backdrop-filter: none;' in neutral_tag_block
+    assert '-webkit-backdrop-filter: none;' in neutral_tag_block
+    assert 'backdrop-filter: var(--tag-chip-backdrop);' not in light_tag_block
+    assert '-webkit-backdrop-filter: var(--tag-chip-backdrop);' not in light_tag_block
+    assert 'backdrop-filter: none;' in light_tag_block
+    assert '-webkit-backdrop-filter: none;' in light_tag_block
+    assert 'backdrop-filter: none;' in light_neutral_tag_block
+    assert '-webkit-backdrop-filter: none;' in light_neutral_tag_block
+
+
+def test_card_hover_clarity_css_keeps_back_note_surface_sharp_without_losing_hover_feedback():
+    cards_css = read_project_file('static/css/modules/view-cards.css')
+    hover_block = extract_exact_css_block(cards_css, '.st-card:hover')
+    back_block = extract_exact_css_block(cards_css, '.card-back')
+    flipped_back_block = extract_exact_css_block(cards_css, '.card-flip-inner.is-flipped .card-back')
+    note_block = extract_exact_css_block(cards_css, '.local-note-preview')
+
+    assert 'transform: translateY(-4px);' in hover_block
+    assert 'box-shadow:' in hover_block
+    assert 'brightness(0.9) saturate(0.94)' not in back_block
+    assert 'brightness(1) saturate(1)' not in flipped_back_block
+    assert 'background:' in note_block
+    assert 'border: 1px solid' in note_block
+    assert '.st-card:hover .card-source-link-fab,' in cards_css
+    assert '.st-card:hover .card-fav-overlay,' in cards_css
+
+
+def test_card_back_mobile_css_allows_local_note_to_fill_remaining_space():
+    cards_css = read_project_file('static/css/modules/view-cards.css')
+    mobile_cards_css = extract_media_block(cards_css, '@media (max-width: 768px)')
+    back_note_block = extract_exact_css_block(mobile_cards_css, '.card-back-note')
+
+    assert 'max-height: 3.2rem;' not in back_note_block
+    assert 'max-height: none;' in back_note_block
+    assert 'flex: 1 1 auto;' in back_note_block
+
+
 def test_card_sidebar_template_hides_complete_library_action_until_mobile_tags_panel_expands():
     sidebar_template = read_project_file('templates/components/sidebar.html')
 
