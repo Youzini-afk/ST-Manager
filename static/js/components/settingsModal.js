@@ -37,6 +37,7 @@ export default function settingsModal() {
         },
 
         get settingsForm() { return this.$store.global.settingsForm; },
+        get isolatedCategories() { return this.$store.global.isolatedCategories || []; },
         get showSettingsModal() { 
             return this.$store.global.showSettingsModal; 
         },
@@ -120,6 +121,20 @@ export default function settingsModal() {
                     if (res && res.success && closeModal) {
                         this.showSettingsModal = false; // 手动关闭
                     }
+                });
+        },
+
+        removeIsolatedCategory(path) {
+            return this.$store.global.removeIsolatedCategory(path);
+        },
+
+        clearIsolatedCategories() {
+            return this.$store.global.saveIsolatedCategories([])
+                .then(res => {
+                    if (res?.success) {
+                        this.$store.global.showToast('已清空隔离分类', 1800);
+                    }
+                    return res;
                 });
         },
 

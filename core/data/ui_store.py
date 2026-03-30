@@ -14,6 +14,7 @@ VERSION_REMARKS_KEY = '_version_remarks'
 IMPORT_TIME_KEY = 'import_time'
 LAST_SENT_TO_ST_KEY = 'last_sent_to_st'
 TAG_TAXONOMY_KEY = '_tag_taxonomy_v1'
+ISOLATED_CATEGORIES_KEY = '_isolated_categories_v1'
 
 DEFAULT_TAG_CATEGORY = '未分类'
 DEFAULT_TAG_CATEGORY_COLOR = '#64748b'
@@ -84,6 +85,65 @@ def _normalize_category_name(value):
     if value is None:
         return ''
     return str(value).strip()
+
+
+def _normalize_isolated_category_path(value):
+    path = _normalize_category_name(value).replace('\\', '/').strip('/')
+    if not path:
+        return ''
+
+    parts = [part.strip() for part in path.split('/') if str(part).strip()]
+    if not parts:
+        return ''
+
+    return '/'.join(parts)
+
+
+def _normalize_isolated_categories(raw):
+    source = raw
+    if isinstance(raw, list):
+        source = {'paths': raw}
+    elif not isinstance(raw, dict):
+        source = {}
+
+    raw_paths = source.get('paths')
+    if not isinstance(raw_paths, list):
+        raw_paths = []
+
+    normalized_paths = []
+    for raw_path in raw_paths:
+        path = _normalize_isolated_category_path(raw_path)
+        if not path:
+            continue
+        normalized_paths.append(path)
+
+    normalized_paths.sort(key=lambda item: (item.count('/'), item.lower()))
+
+    collapsed_paths = []
+    for path in normalized_paths:
+        if any(path == existing or path.startswith(existing + '/') for existing in collapsed_paths):
+            continue
+        collapsed_paths.append(path)
+
+    updated_at = 0
+    try:
+        updated_at = int(source.get('updated_at') or 0)
+    except (TypeError, ValueError):
+        updated_at = 0
+
+    if updated_at < 0:
+        updated_at = 0
+
+    return {
+        'paths': collapsed_paths,
+        'updated_at': updated_at,
+    }
+
+
+def _is_isolated_categories_equal(left, right):
+    left_norm = _normalize_isolated_categories(left)
+    right_norm = _normalize_isolated_categories(right)
+    return left_norm.get('paths') == right_norm.get('paths')
 
 
 def _normalize_tag_taxonomy(raw):
@@ -184,6 +244,28 @@ def _is_tag_taxonomy_equal(left, right):
         and left_norm.get('categories') == right_norm.get('categories')
         and left_norm.get('tag_to_category') == right_norm.get('tag_to_category')
     )
+
+
+def get_isolated_categories(ui_data):
+    if not isinstance(ui_data, dict):
+        return _normalize_isolated_categories({})
+    return _normalize_isolated_categories(ui_data.get(ISOLATED_CATEGORIES_KEY))
+
+
+def set_isolated_categories(ui_data, payload):
+    if not isinstance(ui_data, dict):
+        return False
+
+    previous_raw = ui_data.get(ISOLATED_CATEGORIES_KEY)
+    previous_norm = _normalize_isolated_categories(previous_raw)
+    next_norm = _normalize_isolated_categories(payload)
+
+    if _is_isolated_categories_equal(previous_norm, next_norm) and isinstance(previous_raw, dict):
+        return False
+
+    next_norm['updated_at'] = int(time.time())
+    ui_data[ISOLATED_CATEGORIES_KEY] = next_norm
+    return True
 
 
 def get_tag_taxonomy(ui_data):

@@ -28,6 +28,8 @@ from core.data.ui_store import (
     get_tag_taxonomy,
     set_tag_taxonomy,
     remove_tags_from_tag_taxonomy,
+    get_isolated_categories,
+    set_isolated_categories,
     DEFAULT_TAG_CATEGORY,
     DEFAULT_TAG_CATEGORY_COLOR,
     DEFAULT_TAG_CATEGORY_OPACITY,
@@ -256,6 +258,42 @@ def _append_new_tags_to_order(order, tags_to_add):
             base.append(tag)
             seen.add(tag)
     return base
+
+
+def _normalize_rel_category_path(path):
+    value = str(path or '').strip().replace('\\', '/')
+    if value == '根目录':
+        return ''
+
+    parts = [part.strip() for part in value.strip('/').split('/') if part.strip()]
+    if not parts:
+        return ''
+    return '/'.join(parts)
+
+
+def _is_same_or_descendant(path, root):
+    normalized_path = _normalize_rel_category_path(path)
+    normalized_root = _normalize_rel_category_path(root)
+    if not normalized_path or not normalized_root:
+        return False
+    return normalized_path == normalized_root or normalized_path.startswith(normalized_root + '/')
+
+
+def _should_hide_card_from_view(card_category, current_category, isolated_paths):
+    normalized_card_category = _normalize_rel_category_path(card_category)
+    normalized_current_category = _normalize_rel_category_path(current_category)
+
+    for isolated_path in isolated_paths or []:
+        normalized_isolated_path = _normalize_rel_category_path(isolated_path)
+        if not normalized_isolated_path:
+            continue
+        if not _is_same_or_descendant(normalized_card_category, normalized_isolated_path):
+            continue
+        if _is_same_or_descendant(normalized_current_category, normalized_isolated_path):
+            return False
+        return True
+
+    return False
 
 
 def _apply_global_tag_merge_for_card(card_id, tags, ui_data=None, runtime=None):
@@ -500,6 +538,7 @@ def api_list_cards():
         page, page_size = 1, 20
     
     category = request.args.get('category', '')
+    current_category = _normalize_rel_category_path(category)
     tags_param = request.args.get('tags', '')
     excluded_tags_param = request.args.get('excluded_tags', '')
     search = request.args.get('search', '').lower().strip()
@@ -521,6 +560,9 @@ def api_list_cards():
     with ctx.cache.lock:
         candidates = list(ctx.cache.cards)
     library_total = len(candidates)
+    ui_data_for_order = load_ui_data()
+    isolated_categories = get_isolated_categories(ui_data_for_order)
+    isolated_paths = isolated_categories.get('paths') or []
     
     # --- 全局目录排除逻辑 ---
     # full 模式下忽略所有筛选条件（只保留关键词搜索）
@@ -563,6 +605,12 @@ def api_list_cards():
                 # 根目录下不递归 = 只看 category 为空的卡片
                 candidates = [c for c in candidates if c['category'] == ""]
 
+    if isolated_paths:
+        candidates = [
+            c for c in candidates
+            if not _should_hide_card_from_view(c.get('category', ''), current_category, isolated_paths)
+        ]
+
     # === 在应用“搜索”和“标签”过滤之前，先计算当前分类下的标签池 ===
     # 这样标签池就只受“文件夹/分类”影响，而不会被“选中的标签”把自己给过滤没了
     sidebar_tags_set = set()
@@ -570,7 +618,6 @@ def api_list_cards():
         for t in c['tags']:
             sidebar_tags_set.add(t)
 
-    ui_data_for_order = load_ui_data()
     persisted_tag_order = _get_tag_order(ui_data_for_order)
     use_custom_tag_order = _is_tag_order_enabled(ui_data_for_order)
 
@@ -654,6 +701,7 @@ def api_list_cards():
         "cards": paginated,
         "global_tags": global_tags,
         "sidebar_tags": sidebar_tags,
+        "isolated_categories": isolated_categories,
         "tag_taxonomy": tag_taxonomy,
         "global_tag_groups": global_tag_groups,
         "sidebar_tag_groups": sidebar_tag_groups,
@@ -709,6 +757,40 @@ def api_get_tag_taxonomy():
         return jsonify({
             'success': True,
             'taxonomy': get_tag_taxonomy(ui_data),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/isolated_categories', methods=['GET'])
+def api_get_isolated_categories():
+    try:
+        ui_data = load_ui_data()
+        return jsonify({
+            'success': True,
+            'isolated_categories': get_isolated_categories(ui_data),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/isolated_categories', methods=['POST'])
+def api_save_isolated_categories():
+    try:
+        payload = request.json
+        if not isinstance(payload, (dict, list)):
+            return jsonify({'success': False, 'msg': '无效的隔离分类配置'}), 400
+
+        isolated_payload = payload.get('isolated_categories', payload) if isinstance(payload, dict) else payload
+
+        ui_data = load_ui_data()
+        changed = set_isolated_categories(ui_data, isolated_payload)
+        if changed:
+            save_ui_data(ui_data)
+
+        return jsonify({
+            'success': True,
+            'isolated_categories': get_isolated_categories(ui_data),
         })
     except Exception as e:
         return jsonify({'success': False, 'msg': str(e)})

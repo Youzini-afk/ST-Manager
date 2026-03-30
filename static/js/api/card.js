@@ -11,6 +11,20 @@ export async function listCards(params) {
     return res.json();
 }
 
+export async function getIsolatedCategories() {
+    const res = await fetch('/api/isolated_categories');
+    return res.json();
+}
+
+export async function saveIsolatedCategories(payload) {
+    const res = await fetch('/api/isolated_categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    return res.json();
+}
+
 // 获取原始元数据 (JSON)
 export async function getCardMetadata(id) {
     const res = await fetch('/api/get_raw_metadata', {

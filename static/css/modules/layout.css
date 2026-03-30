@@ -241,6 +241,40 @@
   transform: scale(1.02);
 }
 
+.folder-item--isolated {
+  color: color-mix(in srgb, var(--text-sub), var(--accent-main) 18%);
+}
+
+.folder-item--isolated:hover {
+  color: color-mix(in srgb, var(--text-main), var(--accent-main) 22%);
+}
+
+.folder-item.active.folder-item--isolated {
+  color: #ffffff;
+}
+
+.folder-isolated-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  margin-left: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent-main), transparent 42%);
+  background: color-mix(in srgb, var(--accent-main), transparent 88%);
+  color: color-mix(in srgb, var(--accent-main), var(--text-main) 16%);
+  font-size: 0.65rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.folder-item.active .folder-isolated-badge {
+  border-color: rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
 .sidebar-tag-cloud {
   display: flex;
   flex-wrap: wrap;

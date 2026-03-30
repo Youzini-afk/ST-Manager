@@ -93,7 +93,7 @@
                             @dragleave="folderDragLeave($event, folder)" @drop.prevent="folderDrop($event, folder)"
                             draggable="true" @dragstart="folderDragStart($event, folder)"
                             @dragend="draggedFolder = null; dragOverFolder = null"
-                            :class="['pl-level-' + Math.min(folder.level, 3), filterCategory === folder.path ? 'active' : '', dragOverFolder === folder.path ? 'drag-over' : '']"
+                            :class="['pl-level-' + Math.min(folder.level, 3), filterCategory === folder.path ? 'active' : '', dragOverFolder === folder.path ? 'drag-over' : '', folder.isIsolated ? 'folder-item--isolated' : '']"
                             class="folder-item flex items-center py-1.5 pr-2 rounded-lg cursor-pointer text-sm mb-0.5 group">
                             <button @click.stop="toggleFolder(folder.path)"
                                 class="w-6 h-6 flex items-center justify-center opacity-70 hover:opacity-100"
@@ -103,6 +103,8 @@
                             <span class="mr-2 text-yellow-500 opacity-80 group-hover:opacity-100">📁</span>
                             <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                                 x-text="folder.name"></span>
+                            <span x-show="folder.isIsolated" class="folder-isolated-badge" title="已设为隔离分类"
+                                aria-label="已设为隔离分类">隔</span>
                             <span class="text-xs opacity-50 ml-2" x-text="getCategoryCount(folder.path)"></span>
                             <!-- 移动端：三个点操作按钮 -->
                             <button x-show="$store.global.deviceType === 'mobile'"

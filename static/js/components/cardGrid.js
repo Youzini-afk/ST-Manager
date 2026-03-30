@@ -531,6 +531,9 @@ export default function cardGrid() {
                     store.globalTagsPool = data.global_tags || [];
                     store.sidebarTagsPool = data.sidebar_tags || [];
                     store.allTagsPool = data.sidebar_tags || []; // 默认显示 sidebar tags
+                    if (data.isolated_categories) {
+                        store.isolatedCategories = data.isolated_categories.paths || [];
+                    }
                     store.setTagTaxonomy(data.tag_taxonomy || null);
                     if (Array.isArray(data.global_tag_groups)) {
                         store.globalTagGroups = data.global_tag_groups;

@@ -74,23 +74,17 @@ export default function contextMenu() {
 
         // === 菜单动作 ===
 
-        // 切换目录排除状态
-        handleExclude() {
-            if (this.type === 'folder' && this.target !== '') {
-                const store = this.$store.global;
-                let list = [...store.viewState.excludedCategories];
+        handleToggleIsolation() {
+            if (this.type !== 'folder' || !this.target) return;
 
-                if (list.includes(this.target)) {
-                    // 取消排除
-                    list = list.filter(t => t !== this.target);
-                } else {
-                    // 添加排除
-                    list.push(this.target);
-                }
+            const isIsolated = (this.$store.global.isolatedCategories || []).includes(this.target);
+            const action = isIsolated
+                ? this.$store.global.removeIsolatedCategory(this.target)
+                : this.$store.global.addIsolatedCategory(this.target);
 
-                store.viewState.excludedCategories = list;
+            Promise.resolve(action).finally(() => {
                 this.visible = false;
-            }
+            });
         },
 
         // 运行自动化（桌面端）

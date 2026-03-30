@@ -27,13 +27,13 @@
         <div :class="isMobile ? 'py-1' : 'py-1'">
             <template x-if="type === 'folder'">
                 <div>
-                    <button x-show="target !== ''" @click="handleExclude()"
+                    <button x-show="target !== ''" @click="handleToggleIsolation()"
                         :class="isMobile ? 'w-full text-left px-4 py-3 text-base hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2' : 'w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors flex items-center gap-2'"
                         style="color: var(--text-main);">
                         <!-- 根据状态显示不同文字 -->
-                        <span x-text="$store.global.viewState.excludedCategories.includes(target) ? '⭕' : '🚫'"></span>
+                        <span x-text="($store.global.isolatedCategories || []).includes(target) ? '⭕' : '◐'"></span>
                         <span
-                            x-text="$store.global.viewState.excludedCategories.includes(target) ? '取消排除' : '排除此目录'"></span>
+                            x-text="($store.global.isolatedCategories || []).includes(target) ? '取消隔离分类' : '设为隔离分类'"></span>
                     </button>
                     <button x-show="target !== ''" @click="handleRename()"
                         :class="isMobile ? 'w-full text-left px-4 py-3 text-base hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2' : 'w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors flex items-center gap-2'"

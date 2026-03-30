@@ -55,6 +55,7 @@ export default function sidebar() {
         get sidebarTagsPool() { return this.$store.global.sidebarTagsPool; },
         get libraryTotal() { return this.$store.global.libraryTotal; },
         get tagSearchQuery() { return this.$store.global.tagSearchQuery; },
+        get isolatedCategories() { return this.$store.global.isolatedCategories || []; },
         set showTagFilterModal(val) { this.$store.global.showTagFilterModal = val; return true; },
 
         get wiFilterType() { return this.$store.global.wiFilterType; },
@@ -85,9 +86,23 @@ export default function sidebar() {
                 return {
                     ...folder,
                     visible: isVisible,
-                    expanded: !!this.expandedFolders[folder.path]
+                    expanded: !!this.expandedFolders[folder.path],
+                    isIsolated: this.isIsolatedFolder(folder.path),
+                    isInsideIsolatedBranch: this.isInsideIsolatedBranch(folder.path)
                 };
             });
+        },
+
+        isIsolatedFolder(path) {
+            const normalized = String(path || '').trim();
+            if (!normalized) return false;
+            return this.isolatedCategories.includes(normalized);
+        },
+
+        isInsideIsolatedBranch(path) {
+            const normalized = String(path || '').trim();
+            if (!normalized) return false;
+            return this.isolatedCategories.some(item => normalized === item || normalized.startsWith(item + '/'));
         },
 
         init() {

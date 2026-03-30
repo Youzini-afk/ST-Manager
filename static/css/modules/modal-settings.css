@@ -105,6 +105,45 @@ html.light-mode .settings-nav-item.active {
   font-size: 0.95rem;
 }
 
+.settings-isolated-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-isolated-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border-light);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--bg-sub), var(--accent-main) 4%);
+}
+
+.settings-isolated-path {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-main);
+  word-break: break-all;
+  font-size: 0.85rem;
+}
+
+.settings-isolated-remove {
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--accent-main), transparent 48%);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  color: color-mix(in srgb, var(--accent-main), var(--text-main) 10%);
+  background: color-mix(in srgb, var(--accent-main), transparent 90%);
+  transition: all 0.2s ease;
+}
+
+.settings-isolated-remove:hover {
+  background: color-mix(in srgb, var(--accent-main), transparent 82%);
+}
+
 .settings-desc {
   font-size: 0.75rem;
   color: var(--text-dim);
@@ -187,5 +226,13 @@ html.light-mode .settings-nav-item.active {
   .settings-nav-item.active {
     background-color: var(--accent-faint);
     border-color: var(--accent-main);
+  }
+  .settings-isolated-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .settings-isolated-remove {
+    min-height: 44px;
+    align-self: stretch;
   }
 }

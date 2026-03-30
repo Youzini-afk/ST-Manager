@@ -16,6 +16,11 @@ import {
     applyFont 
 } from './utils/dom.js';
 
+import {
+    getIsolatedCategories,
+    saveIsolatedCategories as saveIsolatedCategoriesRequest,
+} from './api/card.js';
+
 // 主题预设常量
 const THEME_PRESETS = {
     blue:   { main: '#2563eb', hover: '#1d4ed8', light: '#60a5fa', faint: 'rgba(37, 99, 235, 0.3)' },
@@ -115,6 +120,7 @@ export function initState() {
         sidebarTagGroups: [],
         globalTagGroups: [],
         tagTaxonomy: buildDefaultTagTaxonomy(),
+        isolatedCategories: [],
         categoryCounts: {},
         libraryTotal: 0,
         allFoldersList: [],
@@ -309,8 +315,11 @@ export function initState() {
 
         // 仅执行一次的启动逻辑 (加载设置)
         bootstrapOnce() {
-            getSettings()
-                .then(settings => {
+            return Promise.all([
+                getSettings(),
+                this.loadIsolatedCategories()
+            ])
+                .then(([settings]) => {
                     const localPerPage = localStorage.getItem('st_manager_per_page');
                     const localPerPageWi = localStorage.getItem('st_manager_per_page_wi');
                     
@@ -363,6 +372,68 @@ export function initState() {
                     // 即使失败也发出事件，让 UI 尝试加载默认数据
                     window.dispatchEvent(new CustomEvent('settings-loaded'));
                 });
+        },
+
+        loadIsolatedCategories() {
+            return getIsolatedCategories()
+                .then(res => {
+                    const paths = res?.isolated_categories?.paths;
+                    this.isolatedCategories = Array.isArray(paths) ? paths : [];
+                    return this.isolatedCategories;
+                })
+                .catch(err => {
+                    console.error('Load isolated categories failed', err);
+                    this.isolatedCategories = [];
+                    return this.isolatedCategories;
+                });
+        },
+
+        saveIsolatedCategories(paths) {
+            const previous = Array.isArray(this.isolatedCategories) ? [...this.isolatedCategories] : [];
+            const next = Array.isArray(paths) ? [...paths] : [];
+            this.isolatedCategories = next;
+
+            return saveIsolatedCategoriesRequest({ paths: next })
+                .then(res => {
+                    if (!res?.success) {
+                        this.isolatedCategories = previous;
+                        alert('保存隔离分类失败: ' + (res?.msg || 'unknown'));
+                        return res;
+                    }
+
+                    const canonicalPaths = res?.isolated_categories?.paths;
+                    this.isolatedCategories = Array.isArray(canonicalPaths) ? canonicalPaths : [];
+                    window.dispatchEvent(new CustomEvent('refresh-card-list'));
+                    return res;
+                })
+                .catch(err => {
+                    this.isolatedCategories = previous;
+                    alert('保存隔离分类失败: ' + err);
+                    throw err;
+                });
+        },
+
+        addIsolatedCategory(path) {
+            const value = String(path || '').trim();
+            if (!value) return Promise.resolve({ success: false, skipped: true });
+            const next = [...(this.isolatedCategories || []), value];
+            return this.saveIsolatedCategories(next).then(res => {
+                if (res?.success) {
+                    this.showToast(`已设为隔离分类：${value}`, 1800);
+                }
+                return res;
+            });
+        },
+
+        removeIsolatedCategory(path) {
+            const value = String(path || '').trim();
+            const next = (this.isolatedCategories || []).filter(item => item !== value);
+            return this.saveIsolatedCategories(next).then(res => {
+                if (res?.success) {
+                    this.showToast(`已取消隔离分类：${value}`, 1800);
+                }
+                return res;
+            });
         },
 
         // 加载本地存储的偏好 (UI 优先)

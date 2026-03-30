@@ -231,6 +231,23 @@
                             class="w-5 h-5 accent-[var(--accent-main)]">
                     </div>
 
+                    <div class="settings-group-title mt-8">隔离分类</div>
+                    <div class="settings-row">
+                        <div class="settings-desc">这些分类在其上级目录视图中不会显示，也不会被上级搜索命中；进入分类自身后可正常浏览和搜索。</div>
+                        <div class="settings-isolated-list mt-3" x-show="isolatedCategories.length > 0">
+                            <template x-for="path in isolatedCategories" :key="path">
+                                <div class="settings-isolated-item">
+                                    <span class="settings-isolated-path" x-text="path"></span>
+                                    <button type="button" class="settings-isolated-remove" @click="removeIsolatedCategory(path)">取消</button>
+                                </div>
+                            </template>
+                        </div>
+                        <div x-show="isolatedCategories.length === 0" class="settings-desc mt-3">当前没有隔离分类，可在左侧目录树右键或移动端三点菜单中快速添加。</div>
+                        <div class="mt-3" x-show="isolatedCategories.length > 0">
+                            <button type="button" class="btn-secondary px-3 py-2 text-sm" @click="clearIsolatedCategories()">清空隔离分类</button>
+                        </div>
+                    </div>
+
                     <!-- 个性化背景 -->
                     <div class="settings-group-title mt-8">个性化壁纸 (Wallpaper)</div>
                     <div class="settings-row">
