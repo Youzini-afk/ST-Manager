@@ -858,19 +858,64 @@ def test_chat_reader_css_mobile_hidden_header_releases_layout_space():
 
     assert '.chat-reader-header.is-mobile-hidden {' in mobile_block
     assert 'min-height: 0;' in mobile_block
+    assert 'max-height: 0;' in mobile_block
     assert 'padding-top: 0;' in mobile_block
     assert 'padding-bottom: 0;' in mobile_block
     assert 'border-bottom-width: 0;' in mobile_block
     assert 'margin-bottom: 0;' in mobile_block
 
 
+def test_chat_reader_css_mobile_header_defines_transition_for_smoother_hide_and_show():
+    chat_reader_css = read_project_file('static/css/modules/view-chats.css')
+    header_block = extract_exact_css_block(chat_reader_css, '.chat-reader-header')
+    mobile_block = extract_media_block(chat_reader_css, '@media (max-width: 899px)')
+
+    assert 'transition:' in header_block
+    assert 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)' in header_block
+    assert 'opacity 0.18s ease' in header_block
+    assert 'max-height 0.24s cubic-bezier(0.22, 1, 0.36, 1)' in header_block
+    assert 'padding 0.24s cubic-bezier(0.22, 1, 0.36, 1)' in header_block
+    assert 'border-color 0.18s ease' in header_block
+    assert 'will-change: transform, opacity, max-height;' in header_block
+    assert 'transform: translateY(calc(-100% - 0.35rem)) scaleY(0.98);' in mobile_block
+    assert 'transform-origin: top center;' in mobile_block
+
+
 def test_chat_grid_updates_layout_metrics_when_mobile_header_visibility_flips():
     chat_grid_source = read_project_file('static/js/components/chatGrid.js')
+    helper_block = extract_js_function_block(chat_grid_source, 'syncReaderMobileHeaderVisibility(container) {')
     scroll_block = extract_js_function_block(chat_grid_source, 'handleReaderScroll() {')
 
-    assert 'const previousHidden = this.readerMobileHeaderHidden;' in scroll_block
-    assert 'if (previousHidden !== this.readerMobileHeaderHidden) {' in scroll_block
-    assert 'this.updateReaderLayoutMetrics();' in scroll_block
+    assert 'const previousHidden = this.readerMobileHeaderHidden;' in helper_block
+    assert 'if (previousHidden !== this.readerMobileHeaderHidden) {' in helper_block
+    assert 'this.updateReaderLayoutMetrics();' in helper_block
+    assert 'this.syncReaderMobileHeaderVisibility(center);' in scroll_block
+
+
+def test_chat_grid_extracts_mobile_header_scroll_logic_for_scroll_and_page_modes():
+    chat_grid_source = read_project_file('static/js/components/chatGrid.js')
+    helper_block = extract_js_function_block(chat_grid_source, 'syncReaderMobileHeaderVisibility(container) {')
+    scroll_block = extract_js_function_block(chat_grid_source, 'handleReaderScroll() {')
+
+    assert 'const nextTop = Math.max(0, Number(container.scrollTop || 0));' in helper_block
+    assert 'const delta = nextTop - Number(this.readerLastScrollTop || 0);' in helper_block
+    assert 'if (nextTop <= 24 || delta < -14) {' in helper_block
+    assert '} else if (delta > 18 && nextTop > 72) {' in helper_block
+    assert 'this.readerLastScrollTop = nextTop;' in helper_block
+    assert 'this.syncReaderMobileHeaderVisibility(center);' in scroll_block
+    assert scroll_block.index('this.syncReaderMobileHeaderVisibility(center);') < scroll_block.index('if (this.isReaderPageMode) {')
+
+
+def test_chat_grid_scroll_reader_center_to_top_reveals_mobile_header_before_resetting_scroll():
+    chat_grid_source = read_project_file('static/js/components/chatGrid.js')
+    scroll_top_block = extract_js_function_block(chat_grid_source, "scrollReaderCenterToTop(behavior = 'auto') {")
+
+    assert 'const previousHidden = this.readerMobileHeaderHidden;' in scroll_top_block
+    assert 'this.readerMobileHeaderHidden = false;' in scroll_top_block
+    assert 'this.readerLastScrollTop = 0;' in scroll_top_block
+    assert 'if (previousHidden) {' in scroll_top_block
+    assert 'this.updateReaderLayoutMetrics();' in scroll_top_block
+    assert 'center.scrollTo({' in scroll_top_block
 
 
 def test_chat_reader_template_moves_save_button_into_local_notes_panels():

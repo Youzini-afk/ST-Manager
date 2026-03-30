@@ -3761,6 +3761,12 @@ export default function chatGrid() {
             if (!(center instanceof Element)) {
                 return;
             }
+            const previousHidden = this.readerMobileHeaderHidden;
+            this.readerMobileHeaderHidden = false;
+            this.readerLastScrollTop = 0;
+            if (previousHidden) {
+                this.updateReaderLayoutMetrics();
+            }
             center.scrollTo({
                 top: 0,
                 behavior,
@@ -5622,25 +5628,33 @@ export default function chatGrid() {
             }, READER_VIEWPORT_SYNC_IDLE_MS);
         },
 
-        handleReaderScroll() {
-            if (this.isReaderPageMode) {
+        syncReaderMobileHeaderVisibility(container) {
+            if (this.readerResponsiveMode !== 'mobile' || !(container instanceof Element) || this.readerMobilePanel) {
                 return;
             }
 
+            const previousHidden = this.readerMobileHeaderHidden;
+            const nextTop = Math.max(0, Number(container.scrollTop || 0));
+            const delta = nextTop - Number(this.readerLastScrollTop || 0);
+            if (nextTop <= 24 || delta < -14) {
+                this.readerMobileHeaderHidden = false;
+            } else if (delta > 18 && nextTop > 72) {
+                this.readerMobileHeaderHidden = true;
+            }
+            this.readerLastScrollTop = nextTop;
+            if (previousHidden !== this.readerMobileHeaderHidden) {
+                this.updateReaderLayoutMetrics();
+            }
+        },
+
+        handleReaderScroll() {
             const center = document.querySelector('.chat-reader-center');
-            if (this.readerResponsiveMode === 'mobile' && center && !this.readerMobilePanel) {
-                const previousHidden = this.readerMobileHeaderHidden;
-                const nextTop = Math.max(0, Number(center.scrollTop || 0));
-                const delta = nextTop - Number(this.readerLastScrollTop || 0);
-                if (nextTop <= 24 || delta < -14) {
-                    this.readerMobileHeaderHidden = false;
-                } else if (delta > 18 && nextTop > 72) {
-                    this.readerMobileHeaderHidden = true;
-                }
-                this.readerLastScrollTop = nextTop;
-                if (previousHidden !== this.readerMobileHeaderHidden) {
-                    this.updateReaderLayoutMetrics();
-                }
+            if (center) {
+                this.syncReaderMobileHeaderVisibility(center);
+            }
+
+            if (this.isReaderPageMode) {
+                return;
             }
 
             this.scheduleReaderViewportSync();
