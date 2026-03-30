@@ -43,14 +43,18 @@ class AutomationEngine:
                 if specific_target == 'wi_content':
                     return [str(e.get('content', '')) for e in entries if isinstance(e, dict)]
                 elif specific_target == 'wi_name':
-                    # comment 也就是备注/名称
-                    return [str(e.get('comment', '')) for e in entries if isinstance(e, dict)]
+                    # 兼容常见世界书标题字段：comment/title/name
+                    return [
+                        str(e.get('comment') or e.get('title') or e.get('name') or '')
+                        for e in entries
+                        if isinstance(e, dict)
+                    ]
                 else:
                     searchable = []
                     for e in entries:
                         if isinstance(e, dict):
                             searchable.append(str(e.get('content', '')))
-                            searchable.append(str(e.get('comment', '')))
+                            searchable.append(str(e.get('comment') or e.get('title') or e.get('name') or ''))
                     return searchable
             return []
 
@@ -178,19 +182,28 @@ class AutomationEngine:
                 targets = [str(target_value)]
 
             # 辅助函数：单次比较逻辑 (复用原有的比较核心)
-            def single_check(val, op, tgt, ignore_case):
+            def single_check(val, op, tgt, is_case_sensitive):
                 val_str = str(val)
                 tgt_str = str(tgt)
                 
-                if not ignore_case:
+                if not is_case_sensitive:
                     val_str = val_str.lower()
                     tgt_str = tgt_str.lower()
 
                 if op == OP_EQ:
                     # 如果是列表，EQ 意味着集合相等
                     if isinstance(val, list):
-                        target_list = [t.strip().lower() for t in tgt.split(',')] if ',' in tgt else [tgt_str]
-                        value_list = [str(v).lower() for v in val]
+                        if ',' in tgt:
+                            target_list = [t.strip() for t in tgt.split(',')]
+                        else:
+                            target_list = [str(tgt)]
+
+                        value_list = [str(v) for v in val]
+
+                        if not is_case_sensitive:
+                            target_list = [t.lower() for t in target_list]
+                            value_list = [v.lower() for v in value_list]
+
                         return sorted(value_list) == sorted(target_list)
                     return val_str == tgt_str
 
@@ -200,7 +213,7 @@ class AutomationEngine:
                 if op == OP_CONTAINS:
                     if isinstance(val, list):
                         # 列表包含：只要列表中有任意一项包含/等于目标
-                        if not ignore_case:
+                        if not is_case_sensitive:
                             return any(tgt_str in str(v).lower() for v in val)
                         return any(str(tgt) in str(v) for v in val)
                     else:
@@ -210,7 +223,7 @@ class AutomationEngine:
                 if op == OP_NOT_CONTAINS:
                     # CONTAINS 的反向
                     if isinstance(val, list):
-                        if not ignore_case:
+                        if not is_case_sensitive:
                             return not any(tgt_str in str(v).lower() for v in val)
                         return not any(str(tgt) in str(v) for v in val)
                     else:
@@ -229,7 +242,7 @@ class AutomationEngine:
             # 只要有一个目标匹配成功，则返回 True
             if operator in [OP_EQ, OP_CONTAINS]:
                 for tgt in targets:
-                    if single_check(value, operator, tgt, not case_sensitive):
+                    if single_check(value, operator, tgt, case_sensitive):
                         return True
                 return False
 
@@ -239,7 +252,7 @@ class AutomationEngine:
                 for tgt in targets:
                     # 注意：这里我们调用 single_check 并期望它返回 True (即符合 NEQ/NOT_CONTAINS)
                     # 如果有一个不符合（即实际上相等或包含了），则整体失败
-                    if not single_check(value, operator, tgt, not case_sensitive):
+                    if not single_check(value, operator, tgt, case_sensitive):
                         return False
                 return True
 

@@ -1,10 +1,11 @@
 import logging
 import os
-from core.config import load_config
+from core.config import CARDS_FOLDER, load_config
 from core.automation.manager import rule_manager
 from core.automation.engine import AutomationEngine
 from core.automation.executor import AutomationExecutor
 from core.automation.constants import (
+    FIELD_MAP,
     ACT_FETCH_FORUM_TAGS,
     ACT_MERGE_TAGS,
     ACT_SET_CHAR_NAME_FROM_FILENAME,
@@ -17,11 +18,105 @@ from core.context import ctx
 from core.data.ui_store import load_ui_data
 from core.services.card_service import resolve_ui_key
 from core.utils.tag_parser import split_action_tags
+from core.utils.image import extract_card_info
 
 logger = logging.getLogger(__name__)
 
 engine = AutomationEngine()
 executor = AutomationExecutor()
+
+
+DEEP_AUTOMATION_FIELDS = {
+    'character_book', 'extensions',
+    'wi_name', 'wi_content',
+    'regex_name', 'regex_content',
+    'st_script_name', 'st_script_content',
+    'description', 'first_mes', 'mes_example', 'alternate_greetings',
+    'personality', 'scenario', 'creator_notes',
+    'system_prompt', 'post_history_instructions',
+    'char_version'
+}
+
+FILE_STAT_FIELDS = {'file_size'}
+
+
+def _ruleset_uses_fields(ruleset, target_fields):
+    if not isinstance(ruleset, dict):
+        return False
+
+    for rule in ruleset.get('rules', []):
+        if not rule.get('enabled', True):
+            continue
+
+        groups = rule.get('groups', [])
+        if not groups and rule.get('conditions'):
+            groups = [{'conditions': rule.get('conditions', [])}]
+
+        for group in groups:
+            for cond in group.get('conditions', []):
+                field_key = cond.get('field', '')
+                mapped_key = FIELD_MAP.get(field_key, field_key)
+                if field_key in target_fields or mapped_key in target_fields:
+                    return True
+        
+    return False
+
+
+def _build_rule_context(card_id, card_obj, ruleset, ui_data=None, tags=None):
+    context_data = dict(card_obj or {})
+
+    if tags is not None:
+        context_data['tags'] = list(tags or [])
+
+    if ui_data is None:
+        ui_data = load_ui_data()
+
+    ui_key = resolve_ui_key(card_id)
+    ui_info = ui_data.get(ui_key, {})
+    context_data['ui_summary'] = ui_info.get('summary', '')
+    context_data['source_link'] = ui_info.get('link', '')
+
+    if _ruleset_uses_fields(ruleset, FILE_STAT_FIELDS) and 'file_size' not in context_data:
+        try:
+            card_path = os.path.join(CARDS_FOLDER, card_id.replace('/', os.sep))
+            context_data['file_size'] = os.path.getsize(card_path) if os.path.exists(card_path) else 0
+        except OSError:
+            context_data['file_size'] = 0
+
+    if not _ruleset_uses_fields(ruleset, DEEP_AUTOMATION_FIELDS):
+        return context_data, ui_data
+
+    try:
+        card_path = os.path.join(CARDS_FOLDER, card_id.replace('/', os.sep))
+        if not os.path.exists(card_path):
+            return context_data, ui_data
+
+        info = extract_card_info(card_path)
+        if not info:
+            return context_data, ui_data
+
+        data_block = info.get('data', info) if isinstance(info, dict) else {}
+        if not isinstance(data_block, dict):
+            return context_data, ui_data
+
+        fields_to_patch = [
+            'character_book', 'extensions',
+            'description', 'first_mes', 'mes_example',
+            'alternate_greetings', 'personality', 'scenario',
+            'creator_notes', 'system_prompt', 'post_history_instructions'
+        ]
+
+        for field in fields_to_patch:
+            if field not in context_data or not context_data[field]:
+                context_data[field] = data_block.get(field)
+
+        if 'char_version' not in context_data or not context_data['char_version']:
+            context_data['char_version'] = data_block.get('character_version', '')
+
+        return context_data, ui_data
+    except Exception as e:
+        logger.warning(f"Automation deep field load failed for {card_id}: {e}")
+        return context_data, ui_data
 
 
 def _build_runtime_from_active_ruleset():
@@ -81,16 +176,7 @@ def auto_run_tag_merge_on_tagging(card_id, tags, ui_data=None, runtime=None):
             logger.debug(f"Tag merge skipped, card not found in cache: {card_id}")
             return None
 
-        if ui_data is None:
-            ui_data = load_ui_data()
-
-        context_data = dict(card_obj)
-        context_data['tags'] = list(tags or [])
-
-        ui_key = resolve_ui_key(card_id)
-        ui_info = ui_data.get(ui_key, {})
-        context_data['ui_summary'] = ui_info.get('summary', '')
-        context_data['source_link'] = ui_info.get('link', '')
+        context_data, ui_data = _build_rule_context(card_id, card_obj, ruleset, ui_data=ui_data, tags=tags)
 
         plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
         merge_actions = [
@@ -154,11 +240,7 @@ def auto_run_rules_on_card(card_id):
             return None
             
         # 准备数据
-        ui_data = load_ui_data()
-        context_data = dict(card_obj)
-        ui_key = resolve_ui_key(card_id)
-        ui_info = ui_data.get(ui_key, {})
-        context_data['ui_summary'] = ui_info.get('summary', '')
+        context_data, ui_data = _build_rule_context(card_id, card_obj, ruleset)
         
         # 评估（自动执行时，无条件的规则也应执行）
         plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
@@ -239,11 +321,7 @@ def auto_run_forum_tags_on_link_update(card_id):
             return None
 
         # 准备数据
-        ui_data = load_ui_data()
-        context_data = dict(card_obj)
-        ui_key = resolve_ui_key(card_id)
-        ui_info = ui_data.get(ui_key, {})
-        context_data['ui_summary'] = ui_info.get('summary', '')
+        context_data, ui_data = _build_rule_context(card_id, card_obj, ruleset)
 
         # 评估（自动执行时，无条件的规则也应执行）
         plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
