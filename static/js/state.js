@@ -136,6 +136,10 @@ export function initState() {
         wiList: [], // 世界书列表数据
         wiSearchQuery: '', // 搜索关键词
         wiFilterType: 'all', // 筛选类型: 'all', 'global', 'resource', 'embedded'
+        wiFilterCategory: '',
+        wiAllFolders: [],
+        wiCategoryCounts: {},
+        wiFolderCapabilities: {},
         wiCurrentPage: 1,
         wiTotalItems: 0,
         wiTotalPages: 1,
@@ -153,6 +157,10 @@ export function initState() {
 
         // 预设筛选状态
         presetFilterType: 'all', // 'all', 'global', 'resource'
+        presetFilterCategory: '',
+        presetAllFolders: [],
+        presetCategoryCounts: {},
+        presetFolderCapabilities: {},
         presetSearch: '',
         extensionSearch: '',
 
@@ -714,6 +722,9 @@ export function initState() {
 
         // 显示 Toast 通知
         showToast(msg, duration = 3000) {
+            if (typeof duration === 'string') {
+                duration = 3000;
+            }
             this.toastMessage = msg;
             this.showToastState = true;
             if (this.toastTimer) clearTimeout(this.toastTimer);

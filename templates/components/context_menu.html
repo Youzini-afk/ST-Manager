@@ -27,7 +27,7 @@
         <div :class="isMobile ? 'py-1' : 'py-1'">
             <template x-if="type === 'folder'">
                 <div>
-                    <button x-show="target !== ''" @click="handleToggleIsolation()"
+                    <button x-show="targetMode === 'cards' && target !== ''" @click="handleToggleIsolation()"
                         :class="isMobile ? 'w-full text-left px-4 py-3 text-base hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2' : 'w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors flex items-center gap-2'"
                         style="color: var(--text-main);">
                         <!-- 根据状态显示不同文字 -->
@@ -35,24 +35,25 @@
                         <span
                             x-text="($store.global.isolatedCategories || []).includes(target) ? '取消隔离分类' : '设为隔离分类'"></span>
                     </button>
-                    <button x-show="target !== ''" @click="handleRename()"
+                    <button x-show="targetMode === 'cards' ? target !== '' : (target !== '' && targetFolderCapabilities.can_rename_physical_folder)" @click="handleRename()"
                         :class="isMobile ? 'w-full text-left px-4 py-3 text-base hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2' : 'w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors flex items-center gap-2'"
                         style="color: var(--text-main);"><span>✏️</span> 重命名</button>
                     <button @click="handleCreateSub()"
+                        x-show="targetMode === 'cards' || targetFolderCapabilities.can_create_child_folder"
                         :class="isMobile ? 'w-full text-left px-4 py-3 text-base hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2' : 'w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors flex items-center gap-2'"
                         style="color: var(--text-main);"><span>➕</span> 创建子分类</button>
                     <hr x-show="target !== ''"
                         :class="isMobile ? 'border-[var(--border-light)] my-1' : 'border-gray-700 my-1'">
-                    <button x-show="target !== ''" @click="handleBundle()"
+                    <button x-show="targetMode === 'cards' && target !== ''" @click="handleBundle()"
                         :class="isMobile ? 'w-full text-left px-4 py-3 text-base text-yellow-400 hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2' : 'w-full text-left px-4 py-2 text-sm text-yellow-400 hover:bg-gray-700 transition-colors flex items-center gap-2'"><span>📦</span>
                         切换"角色包"</button>
-                    <button x-show="target !== ''" @click="handleDelete()"
+                    <button x-show="targetMode === 'cards' ? target !== '' : (target !== '' && targetFolderCapabilities.can_delete_physical_folder)" @click="handleDelete()"
                         :class="isMobile ? 'w-full text-left px-4 py-3 text-base text-red-400 hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2' : 'w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 transition-colors flex items-center gap-2'"><span>🗑️</span>
                         删除分类</button>
                     <hr :class="isMobile ? 'border-[var(--border-light)] my-1' : 'border-gray-700 my-1'">
                     <!-- 运行自动化 -->
                     <!-- 桌面端：悬停显示子菜单 -->
-                    <div x-show="!isMobile" x-data="{ showSub: false }" class="relative"
+                    <div x-show="targetMode === 'cards' && !isMobile" x-data="{ showSub: false }" class="relative"
                         @mouseenter="showSub=true; $dispatch('load-rulesets-for-menu')" @mouseleave="showSub=false">
                         <button
                             class="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors flex items-center justify-between"
@@ -88,7 +89,7 @@
                     </div>
 
                     <!-- 移动端：直接打开执行规则弹窗 -->
-                    <button x-show="isMobile" @click="handleOpenExecuteRulesMobile()"
+                    <button x-show="targetMode === 'cards' && isMobile" @click="handleOpenExecuteRulesMobile()"
                         class="w-full text-left px-4 py-3 text-base hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-2"
                         style="color: var(--text-main);">
                         <span>🤖</span> 运行自动化
@@ -108,17 +109,16 @@
             <div style="color: var(--text-dim); font-size: 0.875rem; margin-bottom: 0.75rem;">
                 正在删除：<span class="font-mono" x-text="deleteFolderConfirm.path"></span>
                 <div style="margin-top: 0.25rem;">
-                    该文件夹包含 <span x-text="deleteFolderConfirm.cardCount"></span> 张卡片
+                    该文件夹包含 <span x-text="deleteFolderConfirm.cardCount"></span><span x-text="deleteFolderItemLabel"></span>
                     <span x-show="deleteFolderConfirm.hasSubfolders">并包含子文件夹</span>。
                 </div>
             </div>
 
             <div style="color: var(--text-dim); font-size: 0.875rem; margin-bottom: 1rem;">
-                未勾选：文件夹解散，内容将移动到上一级目录。<br />
-                已勾选：递归删除内容，并移动到回收站（可恢复；空目录将直接删除）。
+                <span x-text="deleteFolderModeSummary"></span>
             </div>
 
-            <label class="flex items-start gap-2 cursor-pointer select-none" style="margin-bottom: 1rem;">
+            <label x-show="supportsRecursiveFolderDelete" class="flex items-start gap-2 cursor-pointer select-none" style="margin-bottom: 1rem;">
                 <input type="checkbox" x-model="deleteFolderConfirm.deleteChildren" class="cursor-pointer mt-1">
                 <span style="color: var(--text-main); font-size: 0.875rem;">删除子文件/子文件夹（递归删除）</span>
             </label>

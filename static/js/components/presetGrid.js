@@ -4,6 +4,7 @@
  */
 export default function presetGrid() {
     return {
+        activeCategoryItemId: null,
         items: [],
         isLoading: false,
         dragOver: false,
@@ -19,6 +20,109 @@ export default function presetGrid() {
         showMobileSidebar: false,
 
         get filterType() { return this.$store.global.presetFilterType || 'all'; },
+        get filterCategory() { return this.$store.global.presetFilterCategory || ''; },
+
+        get presetUploadHintText() {
+            if (this.isGlobalCategoryContext()) {
+                return `将存入全局分类 ${this.filterCategory}`;
+            }
+            if (this.filterType !== 'all' && this.filterType !== 'global') {
+                return '当前不在全局分类上下文，上传到全局目录需要明确确认';
+            }
+            return '将存入全局预设目录';
+        },
+
+        isGlobalCategoryContext() {
+            if (!this.filterCategory) return false;
+            const capabilities = this.$store.global.presetFolderCapabilities || {};
+            const selected = capabilities[this.filterCategory] || {};
+            return (this.filterType === 'global' || this.filterType === 'all') && selected.has_physical_folder;
+        },
+
+        getMovablePresetCategories() {
+            const capabilities = this.$store.global.presetFolderCapabilities || {};
+            return (this.$store.global.presetAllFolders || []).filter(path => capabilities[path]?.has_physical_folder);
+        },
+
+        getPresetSourceBadge(item) {
+            const source_type = item?.source_type || item?.type;
+            if (source_type === 'global') return 'GLOBAL / 物理分类';
+            if (item?.category_mode === 'override') return 'RESOURCE / 已覆盖管理器分类';
+            return 'RESOURCE / 跟随角色卡';
+        },
+
+        getPresetOwnerName(item) {
+            return item?.owner_card_name || item?.source_folder || '';
+        },
+
+        getPresetOwnerId(item) {
+            return item?.owner_card_id || '';
+        },
+
+        locatePresetOwnerCard(item) {
+            const owner_card_id = this.getPresetOwnerId(item);
+            if (!owner_card_id) return;
+            window.dispatchEvent(new CustomEvent('jump-to-card-wi', { detail: owner_card_id }));
+            this.hidePresetCategoryActions();
+        },
+
+        showPresetCategoryActions(item, event) {
+            event.stopPropagation();
+            this.activeCategoryItemId = this.activeCategoryItemId === item.id ? null : item.id;
+        },
+
+        hidePresetCategoryActions() {
+            this.activeCategoryItemId = null;
+        },
+
+        async movePresetToCategory(item) {
+            const source_type = item?.source_type || item?.type;
+            const choices = ['根目录'].concat(this.getMovablePresetCategories());
+            const current = item?.display_category || '根目录';
+            const actionLabel = source_type === 'resource' ? '设置管理器分类' : '移动到分类';
+            const selected = prompt(`${actionLabel}（可选：${choices.join(', ')}）`, current);
+            if (selected === null) return;
+
+            const target_category = String(selected).trim() === '根目录' ? '' : String(selected).trim();
+            const resp = await fetch('/api/presets/category/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: item.id,
+                    source_type,
+                    file_path: item.path,
+                    target_category,
+                })
+            });
+            const res = await resp.json();
+            if (res?.success) {
+                this.$store.global.showToast(res.msg);
+                this.fetchItems();
+                this.hidePresetCategoryActions();
+                return;
+            }
+            alert(res?.msg || '移动失败');
+        },
+
+        async resetPresetCategory(item) {
+            const source_type = item?.source_type || item?.type;
+            const resp = await fetch('/api/presets/category/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_type,
+                    file_path: item.path,
+                })
+            });
+            const res = await resp.json();
+            if (res?.success) {
+                this.$store.global.showToast(res.msg);
+                this.fetchItems();
+                this.hidePresetCategoryActions();
+                return;
+            }
+            alert(res?.msg || '恢复失败');
+        },
 
         init() {
             // 监听模式切换
@@ -35,8 +139,20 @@ export default function presetGrid() {
                 }
             });
 
+            this.$watch('$store.global.presetFilterCategory', () => {
+                if (this.$store.global.currentMode === 'presets') {
+                    this.fetchItems();
+                }
+            });
+
             // 监听搜索关键词变化
             this.$watch('$store.global.presetSearch', () => {
+                if (this.$store.global.currentMode === 'presets') {
+                    this.fetchItems();
+                }
+            });
+
+            window.addEventListener('refresh-preset-list', () => {
                 if (this.$store.global.currentMode === 'presets') {
                     this.fetchItems();
                 }
@@ -60,18 +176,37 @@ export default function presetGrid() {
             const list = files || [];
             if (!list || list.length === 0) return;
 
-            const formData = new FormData();
-            for (let i = 0; i < list.length; i++) {
+            const buildFormData = (allowGlobalFallback = false) => {
+                const formData = new FormData();
+                for (let i = 0; i < list.length; i++) {
                 formData.append('files', list[i]);
-            }
+                }
+                formData.append('source_context', this.filterType);
+                formData.append('target_category', this.isGlobalCategoryContext() ? this.filterCategory : '');
+                if (allowGlobalFallback) {
+                    formData.append('allow_global_fallback', 'true');
+                }
+                return formData;
+            };
 
             this.isLoading = true;
             try {
                 const resp = await fetch('/api/presets/upload', {
                     method: 'POST',
-                    body: formData
+                    body: buildFormData()
                 });
-                const res = await resp.json();
+                let res = await resp.json();
+                if (res?.requires_global_fallback_confirmation) {
+                    if (!confirm('当前不在全局分类上下文。确认继续上传到全局根目录吗？')) {
+                        this.isLoading = false;
+                        return;
+                    }
+                    const retryResp = await fetch('/api/presets/upload', {
+                        method: 'POST',
+                        body: buildFormData(true)
+                    });
+                    res = await retryResp.json();
+                }
                 if (res.success) {
                     this.$store.global.showToast(res.msg);
                     this.fetchItems();
@@ -89,16 +224,23 @@ export default function presetGrid() {
             this.isLoading = true;
             const filterType = this.$store.global.presetFilterType || 'all';
             const search = this.$store.global.presetSearch || '';
+            const category = this.$store.global.presetFilterCategory || '';
 
             let url = `/api/presets/list?filter_type=${filterType}`;
             if (search) {
                 url += `&search=${encodeURIComponent(search)}`;
+            }
+            if (category) {
+                url += `&category=${encodeURIComponent(category)}`;
             }
 
             fetch(url)
                 .then(res => res.json())
                 .then(res => {
                     this.items = res.items || [];
+                    this.$store.global.presetAllFolders = res.all_folders || [];
+                    this.$store.global.presetCategoryCounts = res.category_counts || {};
+                    this.$store.global.presetFolderCapabilities = res.folder_capabilities || {};
                     this.isLoading = false;
                 })
                 .catch((err) => {
@@ -112,6 +254,22 @@ export default function presetGrid() {
             const files = e.dataTransfer.files;
             if (!files.length) return;
             this._uploadPresetsFiles(files);
+        },
+
+        getCategoryModeHint(item) {
+            if (item?.category_mode === 'override') return '已更新管理器分类，未移动实际文件';
+            if (item?.category_mode === 'inherited') return '跟随角色卡';
+            return '';
+        },
+
+        getPresetSourceHint(item) {
+            if ((item?.source_type || item?.type) === 'global') {
+                return 'GLOBAL / 物理分类';
+            }
+            if (item?.category_mode === 'override') {
+                return 'RESOURCE / 已覆盖管理器分类';
+            }
+            return 'RESOURCE / 跟随角色卡';
         },
 
         async openPreset(item) {

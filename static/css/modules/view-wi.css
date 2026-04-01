@@ -1293,8 +1293,12 @@ html.light-mode .wi-book-icon {
   min-height: 44px;
 }
 
+.wi-book-classification {
+  min-height: 42px;
+}
+
 .wi-book-meta {
-  margin-top: auto;
+  margin-top: 8px;
   padding-top: 10px;
   border-top: 1px solid var(--border-light);
   color: var(--text-dim);

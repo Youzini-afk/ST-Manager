@@ -87,6 +87,86 @@ export default function contextMenu() {
             });
         },
 
+        get targetMode() {
+            return this.targetFolder?.mode || this.$store.global.currentMode;
+        },
+
+        get targetFolderCapabilities() {
+            const path = this.target || '';
+            if (this.targetMode === 'worldinfo') {
+                return (this.$store.global.wiFolderCapabilities || {})[path] || {};
+            }
+            if (this.targetMode === 'presets') {
+                return (this.$store.global.presetFolderCapabilities || {})[path] || {};
+            }
+            return {};
+        },
+
+        get deleteFolderItemLabel() {
+            return (this.deleteFolderConfirm.mode === 'worldinfo' || this.deleteFolderConfirm.mode === 'presets')
+                ? '个项目'
+                : '张卡片';
+        },
+
+        get deleteFolderModeSummary() {
+            return (this.deleteFolderConfirm.mode === 'worldinfo' || this.deleteFolderConfirm.mode === 'presets')
+                ? '仅支持删除空目录；若目录内仍有项目或子目录，请先清空后再删除。'
+                : '未勾选：文件夹解散，内容将移动到上一级目录。已勾选：递归删除内容，并移动到回收站（可恢复；空目录将直接删除）。';
+        },
+
+        get supportsRecursiveFolderDelete() {
+            return !(this.deleteFolderConfirm.mode === 'worldinfo' || this.deleteFolderConfirm.mode === 'presets');
+        },
+
+        getDeleteFolderCount(path) {
+            const store = Alpine.store('global');
+            if (this.targetMode === 'worldinfo') {
+                return (store.wiCategoryCounts && store.wiCategoryCounts[path]) || 0;
+            }
+            if (this.targetMode === 'presets') {
+                return (store.presetCategoryCounts && store.presetCategoryCounts[path]) || 0;
+            }
+            return (store.categoryCounts && store.categoryCounts[path]) || 0;
+        },
+
+        hasDeleteFolderSubfolders(path) {
+            const store = Alpine.store('global');
+            let folders = [];
+            if (this.targetMode === 'worldinfo') {
+                folders = store.wiAllFolders || [];
+            } else if (this.targetMode === 'presets') {
+                folders = store.presetAllFolders || [];
+            } else {
+                folders = (store.allFoldersList || []).map(f => f.path);
+            }
+            return folders.some(folderPath => folderPath.startsWith(path + '/') && folderPath !== path);
+        },
+
+        handleFolderResponse(res) {
+            if (!res?.success) {
+                alert(res?.msg || '操作失败');
+                return;
+            }
+
+            if (this.targetMode === 'worldinfo') {
+                this.$store.global.wiAllFolders = res.all_folders || [];
+                this.$store.global.wiCategoryCounts = res.category_counts || {};
+                this.$store.global.wiFolderCapabilities = res.folder_capabilities || {};
+                window.dispatchEvent(new CustomEvent('refresh-wi-list', { detail: { resetPage: false } }));
+                return;
+            }
+
+            if (this.targetMode === 'presets') {
+                this.$store.global.presetAllFolders = res.all_folders || [];
+                this.$store.global.presetCategoryCounts = res.category_counts || {};
+                this.$store.global.presetFolderCapabilities = res.folder_capabilities || {};
+                window.dispatchEvent(new CustomEvent('refresh-preset-list'));
+                return;
+            }
+
+            window.dispatchEvent(new CustomEvent('refresh-folder-list'));
+        },
+
         // 运行自动化（桌面端）
         handleRunAuto(rulesetId) {
             if (this.target === null || this.target === undefined) return;
@@ -140,6 +220,10 @@ export default function contextMenu() {
         // 重命名
         handleRename() {
             if (this.type === 'folder' && this.target) {
+                if ((this.targetMode === 'worldinfo' || this.targetMode === 'presets') && !this.targetFolderCapabilities.can_rename_physical_folder) {
+                    this.visible = false;
+                    return;
+                }
                 const currentName = this.target.split('/').pop();
 
                 // 直接操作全局 Store
@@ -156,11 +240,16 @@ export default function contextMenu() {
         // 新建子文件夹
         handleCreateSub() {
             if (this.type === 'folder') {
+                if ((this.targetMode === 'worldinfo' || this.targetMode === 'presets') && !this.targetFolderCapabilities.can_create_child_folder) {
+                    this.visible = false;
+                    return;
+                }
                 // 直接操作全局 Store
                 this.$store.global.folderModals.createSub = {
                     visible: true,
                     parentPath: this.target,
-                    name: ''
+                    name: '',
+                    mode: this.targetMode,
                 };
 
                 this.visible = false;
@@ -170,17 +259,19 @@ export default function contextMenu() {
         // 删除
         handleDelete() {
             if (this.type === 'folder') {
+                if ((this.targetMode === 'worldinfo' || this.targetMode === 'presets') && !this.targetFolderCapabilities.can_delete_physical_folder) {
+                    this.visible = false;
+                    return;
+                }
                 const store = Alpine.store('global');
                 const path = this.target;
 
                 // 1. 获取卡片计数 (防止 undefined 默认为 0)
-                const cardCount = (store.categoryCounts && store.categoryCounts[path]) || 0;
+                const cardCount = this.getDeleteFolderCount(path);
 
                 // 2. 检查是否有子文件夹
                 // 遍历 allFoldersList，看是否有路径以 "path/" 开头的
-                const hasSubfolders = store.allFoldersList.some(f =>
-                    f.path.startsWith(path + '/') && f.path !== path
-                );
+                const hasSubfolders = this.hasDeleteFolderSubfolders(path);
 
                 // 3. 判断是否需要确认
                 // 如果既有卡片又有子文件夹，或者其中之一存在，则需要确认 (因为涉及移动文件)
@@ -191,7 +282,8 @@ export default function contextMenu() {
                     path: path,
                     cardCount: cardCount,
                     hasSubfolders: hasSubfolders,
-                    deleteChildren: false
+                    deleteChildren: false,
+                    mode: this.targetMode,
                 };
             }
         },
@@ -203,13 +295,28 @@ export default function contextMenu() {
 
         confirmDeleteFolder() {
             const path = this.deleteFolderConfirm.path;
-            const deleteChildren = !!this.deleteFolderConfirm.deleteChildren;
+            const deleteChildren = this.supportsRecursiveFolderDelete && !!this.deleteFolderConfirm.deleteChildren;
 
             // 关闭弹窗
             this.deleteFolderConfirm.visible = false;
             this.visible = false;
 
             // 执行删除
+            if (this.deleteFolderConfirm.mode === 'worldinfo' || this.deleteFolderConfirm.mode === 'presets') {
+                const endpoint = this.deleteFolderConfirm.mode === 'worldinfo'
+                    ? '/api/world_info/folders/delete'
+                    : '/api/presets/folders/delete';
+                fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: path })
+                })
+                    .then(res => res.json())
+                    .then(res => this.handleFolderResponse(res))
+                    .catch(err => alert(err));
+                return;
+            }
+
             deleteFolder({ folder_path: path, delete_children: deleteChildren }).then(res => {
                 if (res.success) {
                     // 刷新文件夹树和卡片列表

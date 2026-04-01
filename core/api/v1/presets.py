@@ -5,13 +5,276 @@ core/api/v1/presets.py
 import os
 import json
 import logging
+import shutil
+import time
 from flask import Blueprint, request, jsonify
 from core.config import BASE_DIR, load_config
+from core.context import ctx
+from core.data.ui_store import (
+    get_resource_item_categories,
+    load_ui_data,
+    save_ui_data,
+    set_resource_item_categories,
+)
 from core.utils.filesystem import sanitize_filename
 from core.utils.regex import extract_regex_from_preset_data
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('presets', __name__)
+
+
+def _normalize_category_path(value) -> str:
+    if value is None:
+        return ''
+    path = str(value).replace('\\', '/').strip().strip('/')
+    if not path:
+        return ''
+    parts = [part.strip() for part in path.split('/') if part.strip()]
+    return '/'.join(parts)
+
+
+def _get_parent_category(rel_path: str) -> str:
+    rel_norm = str(rel_path or '').replace('\\', '/').strip('/')
+    if not rel_norm or '/' not in rel_norm:
+        return ''
+    return _normalize_category_path(rel_norm.rsplit('/', 1)[0])
+
+
+def _normalize_resource_item_key(path: str) -> str:
+    if not path:
+        return ''
+    try:
+        return os.path.normcase(os.path.normpath(str(path))).replace('\\', '/')
+    except Exception:
+        return ''
+
+
+def _iter_category_ancestors(category: str):
+    current = _normalize_category_path(category)
+    while current:
+        yield current
+        if '/' not in current:
+            break
+        current = current.rsplit('/', 1)[0]
+
+
+def _build_folder_metadata(items):
+    all_folders = set()
+    category_counts = {}
+    folder_capabilities = {}
+
+    def _ensure_capability(path):
+        if path not in folder_capabilities:
+            folder_capabilities[path] = {
+                'has_physical_folder': False,
+                'has_virtual_items': False,
+                'can_create_child_folder': False,
+                'can_rename_physical_folder': False,
+                'can_delete_physical_folder': False,
+            }
+        return folder_capabilities[path]
+
+    for item in items:
+        display_category = _normalize_category_path(item.get('display_category'))
+        if display_category:
+            for path in _iter_category_ancestors(display_category):
+                all_folders.add(path)
+                category_counts[path] = category_counts.get(path, 0) + 1
+                if item.get('type') != 'global':
+                    _ensure_capability(path)['has_virtual_items'] = True
+
+        physical_category = _normalize_category_path(item.get('physical_category'))
+        if physical_category:
+            for path in _iter_category_ancestors(physical_category):
+                all_folders.add(path)
+                caps = _ensure_capability(path)
+                caps['has_physical_folder'] = True
+                caps['can_create_child_folder'] = True
+                caps['can_rename_physical_folder'] = True
+
+    return {
+        'all_folders': sorted(all_folders),
+        'category_counts': category_counts,
+        'folder_capabilities': folder_capabilities,
+    }
+
+
+def _add_physical_folder_nodes(folder_meta: dict, base_dir: str):
+    if not isinstance(folder_meta, dict) or not base_dir or not os.path.exists(base_dir):
+        return folder_meta
+
+    all_folders = set(folder_meta.get('all_folders') or [])
+    folder_capabilities = dict(folder_meta.get('folder_capabilities') or {})
+
+    def _ensure_capability(path):
+        if path not in folder_capabilities:
+            folder_capabilities[path] = {
+                'has_physical_folder': False,
+                'has_virtual_items': False,
+                'can_create_child_folder': False,
+                'can_rename_physical_folder': False,
+                'can_delete_physical_folder': False,
+            }
+        return folder_capabilities[path]
+
+    for root, dirs, files in os.walk(base_dir):
+        rel_root = os.path.relpath(root, base_dir).replace('\\', '/')
+        current_category = '' if rel_root == '.' else _normalize_category_path(rel_root)
+        if not current_category:
+            continue
+
+        for path in _iter_category_ancestors(current_category):
+            all_folders.add(path)
+            caps = _ensure_capability(path)
+            caps['has_physical_folder'] = True
+            caps['can_create_child_folder'] = True
+            caps['can_rename_physical_folder'] = True
+
+        current_caps = _ensure_capability(current_category)
+        current_caps['can_delete_physical_folder'] = not bool(dirs or files)
+
+    folder_meta['all_folders'] = sorted(all_folders)
+    folder_meta['folder_capabilities'] = folder_capabilities
+    return folder_meta
+
+
+def _is_in_category_subtree(display_category: str, selected_category: str) -> bool:
+    display = _normalize_category_path(display_category)
+    selected = _normalize_category_path(selected_category)
+    if not selected:
+        return True
+    return display == selected or display.startswith(selected + '/')
+
+
+def _safe_join_category_path(base_dir: str, category: str, leaf_name: str = '') -> str:
+    base_abs = os.path.abspath(base_dir)
+    rel_path = _normalize_category_path(category)
+    parts = [part for part in rel_path.split('/') if part] if rel_path else []
+    if leaf_name:
+        parts.append(str(leaf_name).strip())
+
+    candidate = os.path.abspath(os.path.join(base_abs, *parts)) if parts else base_abs
+    try:
+        if os.path.commonpath([candidate, base_abs]) != base_abs:
+            return ''
+    except Exception:
+        return ''
+    return candidate
+
+
+def _save_resource_category_override(file_path: str, category: str) -> bool:
+    ui_data = load_ui_data()
+    payload = get_resource_item_categories(ui_data)
+    mode_items = dict(payload.get('presets') or {})
+    path_key = _normalize_resource_item_key(file_path)
+    normalized_category = _normalize_category_path(category)
+
+    if normalized_category:
+        mode_items[path_key] = {
+            'category': normalized_category,
+            'updated_at': int(time.time()),
+        }
+    else:
+        mode_items.pop(path_key, None)
+
+    next_payload = {
+        'worldinfo': dict(payload.get('worldinfo') or {}),
+        'presets': mode_items,
+    }
+    set_resource_item_categories(ui_data, next_payload)
+    return save_ui_data(ui_data)
+
+
+def _is_resource_preset_path(file_path: str) -> bool:
+    if not file_path or not os.path.exists(file_path):
+        return False
+
+    cfg = load_config()
+    raw_resources = cfg.get('resources_dir', 'data/assets/card_assets')
+    resources_root = raw_resources if os.path.isabs(raw_resources) else os.path.join(BASE_DIR, raw_resources)
+    if not _safe_join(resources_root, os.path.relpath(file_path, resources_root).replace('\\', '/')):
+        return False
+
+    if not os.path.commonpath([os.path.abspath(file_path), os.path.abspath(resources_root)]) == os.path.abspath(resources_root):
+        return False
+
+    rel_path = os.path.relpath(file_path, resources_root).replace('\\', '/')
+    return '/presets/' in f'/{rel_path}/'
+
+
+def _build_global_folder_metadata(base_dir: str):
+    items = []
+    if os.path.exists(base_dir):
+        for root, _dirs, files in os.walk(base_dir):
+            for name in files:
+                if not name.lower().endswith('.json'):
+                    continue
+                full_path = os.path.join(root, name)
+                rel_path = os.path.relpath(full_path, base_dir).replace('\\', '/')
+                physical_category = _get_parent_category(rel_path)
+                items.append({'type': 'global', 'display_category': physical_category, 'physical_category': physical_category})
+    return _add_physical_folder_nodes(_build_folder_metadata(items), base_dir)
+
+
+def _get_cards_by_resource_folder():
+    mapping = {}
+    try:
+        ui_data = load_ui_data()
+        cache = getattr(ctx, 'cache', None)
+        cards = list(getattr(cache, 'cards', []) or [])
+        initialized = bool(getattr(cache, 'initialized', False))
+        if cache is not None and not initialized and hasattr(cache, 'reload_from_db'):
+            cache.reload_from_db()
+            cards = list(getattr(cache, 'cards', []) or [])
+
+        for card in cards:
+            card_id = str(card.get('id') or '')
+            if not card_id:
+                continue
+            ui_info = ui_data.get(card_id, {}) or {}
+            res_folder = ui_info.get('resource_folder') or card.get('resource_folder')
+            if not res_folder:
+                continue
+            mapping[str(res_folder)] = card
+    except Exception:
+        return {}
+    return mapping
+
+
+def _resolve_preset_file_path(preset_id, presets_root):
+    if not preset_id:
+        return '', None, None
+
+    if preset_id.startswith('resource::'):
+        parts = preset_id.split('::', 2)
+        if len(parts) != 3:
+            return '', None, None
+
+        _, folder, name = parts
+        cfg = load_config()
+        res_root = os.path.join(BASE_DIR, cfg.get('resources_dir', 'data/assets/card_assets'))
+        folder_abs = _safe_join(res_root, folder)
+        if not folder_abs:
+            return '', None, None
+        presets_base = os.path.join(folder_abs, 'presets')
+        return _safe_join(presets_base, f'{name}.json'), 'resource', folder
+
+    if preset_id.startswith('global::'):
+        rel_path = preset_id.split('::', 1)[1]
+        return _safe_join(presets_root, rel_path), 'global', None
+
+    return _safe_join(presets_root, f'{preset_id}.json'), 'global', None
+
+
+def _build_canonical_preset_id(file_path, preset_type, source_folder, presets_root):
+    if not file_path:
+        return ''
+
+    if preset_type == 'resource' and source_folder:
+        return f"resource::{source_folder}::{os.path.splitext(os.path.basename(file_path))[0]}"
+
+    rel_path = os.path.relpath(file_path, presets_root).replace('\\', '/')
+    return f'global::{rel_path}'
 
 def _safe_join(base_dir: str, rel_path: str) -> str:
     """在 base_dir 下安全拼接相对路径，返回绝对路径；不安全则返回空字符串"""
@@ -244,34 +507,48 @@ def list_presets():
     try:
         search = request.args.get('search', '').lower().strip()
         filter_type = request.args.get('filter_type', 'all')
-        
+        selected_category = _normalize_category_path(request.args.get('category', ''))
+
+        source_items = []
         items = []
         presets_root = _get_presets_path()
-        
+        ui_data = load_ui_data()
+        resource_item_categories = get_resource_item_categories(ui_data).get('presets', {})
+        cards_by_resource_folder = _get_cards_by_resource_folder()
+
         # 1. 扫描全局目录
         if filter_type in ['all', 'global']:
             if os.path.exists(presets_root):
-                for f in os.listdir(presets_root):
-                    if not f.lower().endswith('.json'):
-                        continue
-                    
-                    full_path = os.path.join(presets_root, f)
-                    if not os.path.isfile(full_path):
-                        continue
-                    
-                    parsed = _parse_preset_file(full_path, f)
-                    if parsed:
+                for root, _dirs, files in os.walk(presets_root):
+                    for f in files:
+                        if not f.lower().endswith('.json'):
+                            continue
+
+                        full_path = os.path.join(root, f)
+                        if not os.path.isfile(full_path):
+                            continue
+
+                        parsed = _parse_preset_file(full_path, f)
+                        if not parsed:
+                            continue
+
+                        rel_path = os.path.relpath(full_path, presets_root).replace('\\', '/')
+                        physical_category = _get_parent_category(rel_path)
                         item = parsed['summary']
+                        item['id'] = f'global::{rel_path}'
                         item['type'] = 'global'
+                        item['source_type'] = 'global'
                         item['source_folder'] = None
                         item['path'] = os.path.relpath(full_path, BASE_DIR)
-                        
-                        # 搜索过滤
-                        if search:
-                            if search not in item['name'].lower() and search not in item['description'].lower():
-                                continue
-                        
-                        items.append(item)
+                        item['display_category'] = physical_category
+                        item['physical_category'] = physical_category
+                        item['category_mode'] = 'physical'
+                        item['category_override'] = ''
+                        item['owner_card_id'] = ''
+                        item['owner_card_name'] = ''
+                        item['owner_card_category'] = ''
+
+                        source_items.append(item)
         
         # 2. 扫描资源目录
         if filter_type in ['all', 'resource']:
@@ -303,26 +580,46 @@ def list_presets():
                                 item = parsed['summary']
                                 item['id'] = f"resource::{folder}::{parsed['summary']['id']}"
                                 item['type'] = 'resource'
+                                item['source_type'] = 'resource'
                                 item['source_folder'] = folder
                                 item['path'] = os.path.relpath(full_path, BASE_DIR)
-                                
-                                # 搜索过滤
-                                if search:
-                                    if search not in item['name'].lower() and search not in item['description'].lower():
-                                        continue
-                                
-                                items.append(item)
+                                path_key = _normalize_resource_item_key(full_path)
+                                override_info = resource_item_categories.get(path_key) or {}
+                                override_category = _normalize_category_path(override_info.get('category'))
+                                owner_card = cards_by_resource_folder.get(folder) or {}
+                                owner_category = _normalize_category_path(owner_card.get('category', ''))
+                                item['display_category'] = override_category or owner_category
+                                item['physical_category'] = ''
+                                item['category_mode'] = 'override' if override_category else 'inherited'
+                                item['category_override'] = override_category
+                                item['owner_card_id'] = owner_card.get('id', '')
+                                item['owner_card_name'] = owner_card.get('char_name', '')
+                                item['owner_card_category'] = owner_category
+
+                                source_items.append(item)
                                 
                 except Exception as e:
                     logger.error(f"Error scanning resource presets: {e}")
         
+        folder_meta = _add_physical_folder_nodes(_build_folder_metadata(source_items), presets_root)
+
+        for item in source_items:
+            if selected_category and not _is_in_category_subtree(item.get('display_category', ''), selected_category):
+                continue
+            if search and search not in item.get('name', '').lower() and search not in item.get('description', '').lower():
+                continue
+            items.append(item)
+
         # 按修改时间倒序
         items.sort(key=lambda x: x.get('mtime', 0), reverse=True)
-        
+
         return jsonify({
             "success": True,
             "items": items,
-            "count": len(items)
+            "count": len(items),
+            "all_folders": folder_meta['all_folders'],
+            "category_counts": folder_meta['category_counts'],
+            "folder_capabilities": folder_meta['folder_capabilities'],
         })
         
     except Exception as e:
@@ -340,28 +637,8 @@ def get_preset_detail(preset_id):
     """
     try:
         presets_root = _get_presets_path()
-        
-        # 解析 ID
-        if preset_id.startswith('resource::'):
-            parts = preset_id.split('::', 2)
-            if len(parts) != 3:
-                return jsonify({"success": False, "msg": "Invalid preset ID format"}), 400
-            
-            _, folder, name = parts
-            cfg = load_config()
-            res_root = os.path.join(BASE_DIR, cfg.get('resources_dir', 'data/assets/card_assets'))
-            folder_abs = _safe_join(res_root, folder)
-            if not folder_abs:
-                return jsonify({"success": False, "msg": "Invalid preset ID"}), 400
-            presets_base = os.path.join(folder_abs, 'presets')
-            file_path = _safe_join(presets_base, f"{name}.json")
-            preset_type = 'resource'
-            source_folder = folder
-        else:
-            file_path = _safe_join(presets_root, f"{preset_id}.json")
-            preset_type = 'global'
-            source_folder = None
-        
+        file_path, preset_type, source_folder = _resolve_preset_file_path(preset_id, presets_root)
+
         if not file_path:
             return jsonify({"success": False, "msg": "Invalid preset ID"}), 400
         
@@ -373,6 +650,7 @@ def get_preset_detail(preset_id):
             return jsonify({"success": False, "msg": "Failed to parse preset"}), 500
         
         details = parsed['details']
+        details['id'] = _build_canonical_preset_id(file_path, preset_type, source_folder, presets_root)
         details['type'] = preset_type
         details['source_folder'] = source_folder
         
@@ -395,8 +673,24 @@ def upload_preset():
         files = request.files.getlist('files')
         if not files:
             return jsonify({"success": False, "msg": "未接收到文件"})
+
+        source_context = str(request.form.get('source_context') or '').strip().lower()
+        target_category = _normalize_category_path(request.form.get('target_category'))
+        allow_global_fallback = str(request.form.get('allow_global_fallback') or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+        if source_context and source_context != 'global' and not target_category and not allow_global_fallback:
+            return jsonify({
+                "success": False,
+                "msg": "当前不在全局分类上下文，上传到全局目录需要明确确认。",
+                "requires_global_fallback_confirmation": True,
+                "fallback_target": "global_root",
+            })
         
         presets_root = _get_presets_path()
+        target_dir = _safe_join_category_path(presets_root, target_category)
+        if not target_dir:
+            return jsonify({"success": False, "msg": "目标分类不合法"})
+        os.makedirs(target_dir, exist_ok=True)
         success_count = 0
         failed_list = []
         
@@ -434,13 +728,13 @@ def upload_preset():
                 
                 # 保存文件
                 safe_name = sanitize_filename(file.filename)
-                save_path = os.path.join(presets_root, safe_name)
+                save_path = os.path.join(target_dir, safe_name)
                 
                 # 防重名
                 name_part, ext = os.path.splitext(safe_name)
                 counter = 1
                 while os.path.exists(save_path):
-                    save_path = os.path.join(presets_root, f"{name_part}_{counter}{ext}")
+                    save_path = os.path.join(target_dir, f"{name_part}_{counter}{ext}")
                     counter += 1
                 
                 file.save(save_path)
@@ -463,6 +757,122 @@ def upload_preset():
         return jsonify({"success": False, "msg": str(e)}), 500
 
 
+@bp.route('/api/presets/category/move', methods=['POST'])
+def move_preset_category():
+    try:
+        data = request.get_json(silent=True) or {}
+        preset_id = data.get('id')
+        source_type = str(data.get('source_type') or '').strip()
+        target_category = _normalize_category_path(data.get('target_category'))
+        if str(data.get('mode') or '').strip() == 'resource_only' and source_type != 'resource':
+            return jsonify({"success": False, "msg": "该操作仅支持资源预设"})
+        presets_root = _get_presets_path()
+
+        if source_type == 'resource':
+            file_path = str(data.get('file_path') or '').strip()
+            if not _is_resource_preset_path(file_path):
+                return jsonify({"success": False, "msg": "预设文件不存在"})
+            if not _save_resource_category_override(file_path, target_category):
+                return jsonify({"success": False, "msg": "保存分类覆盖失败"})
+            return jsonify({"success": True, "msg": "已更新管理器分类，未移动实际文件"})
+
+        file_path, _preset_type, _source_folder = _resolve_preset_file_path(preset_id, presets_root)
+        if not file_path or not os.path.exists(file_path):
+            return jsonify({"success": False, "msg": "预设文件不存在"})
+
+        target_dir = _safe_join_category_path(presets_root, target_category)
+        if not target_dir:
+            return jsonify({"success": False, "msg": "目标分类不合法"})
+        os.makedirs(target_dir, exist_ok=True)
+        target_path = os.path.join(target_dir, os.path.basename(file_path))
+        if os.path.normcase(os.path.normpath(target_path)) != os.path.normcase(os.path.normpath(file_path)):
+            if os.path.exists(target_path):
+                return jsonify({"success": False, "msg": "目标位置已存在同名文件"})
+            shutil.move(file_path, target_path)
+        return jsonify({"success": True, "msg": "预设已移动", "path": target_path})
+    except Exception as e:
+        logger.error(f"Error moving preset category: {e}")
+        return jsonify({"success": False, "msg": str(e)}), 500
+
+
+@bp.route('/api/presets/category/reset', methods=['POST'])
+def reset_preset_category():
+    try:
+        data = request.get_json(silent=True) or {}
+        source_type = str(data.get('source_type') or '').strip()
+        if source_type != 'resource':
+            return jsonify({"success": False, "msg": "该操作仅支持资源预设"})
+        file_path = str(data.get('file_path') or '').strip()
+        if not _is_resource_preset_path(file_path):
+            return jsonify({"success": False, "msg": "预设文件不存在"})
+        if not _save_resource_category_override(file_path, ''):
+            return jsonify({"success": False, "msg": "保存分类覆盖失败"})
+        return jsonify({"success": True, "msg": "已恢复跟随角色卡分类"})
+    except Exception as e:
+        logger.error(f"Error resetting preset category: {e}")
+        return jsonify({"success": False, "msg": str(e)}), 500
+
+
+@bp.route('/api/presets/folders/create', methods=['POST'])
+def create_preset_folder():
+    try:
+        data = request.get_json(silent=True) or {}
+        presets_root = _get_presets_path()
+        parent_category = _normalize_category_path(data.get('parent_category'))
+        folder_name = _normalize_category_path(data.get('name'))
+        if not folder_name or '/' in folder_name:
+            return jsonify({"success": False, "msg": "目录名称不合法"})
+        target_dir = _safe_join_category_path(presets_root, parent_category, folder_name)
+        if not target_dir:
+            return jsonify({"success": False, "msg": "目标分类不合法"})
+        os.makedirs(target_dir, exist_ok=True)
+        folder_meta = _build_global_folder_metadata(presets_root)
+        return jsonify({"success": True, "msg": "目录已创建", **folder_meta})
+    except Exception as e:
+        logger.error(f"Error creating preset folder: {e}")
+        return jsonify({"success": False, "msg": str(e)}), 500
+
+
+@bp.route('/api/presets/folders/rename', methods=['POST'])
+def rename_preset_folder():
+    try:
+        data = request.get_json(silent=True) or {}
+        presets_root = _get_presets_path()
+        category = _normalize_category_path(data.get('category'))
+        new_name = _normalize_category_path(data.get('new_name'))
+        if not category or not new_name or '/' in new_name:
+            return jsonify({"success": False, "msg": "目录名称不合法"})
+        source_dir = _safe_join_category_path(presets_root, category)
+        target_dir = _safe_join_category_path(presets_root, _get_parent_category(category), new_name)
+        if not source_dir or not os.path.isdir(source_dir):
+            return jsonify({"success": False, "msg": "目录不存在"})
+        os.rename(source_dir, target_dir)
+        folder_meta = _build_global_folder_metadata(presets_root)
+        return jsonify({"success": True, "msg": "目录已重命名", **folder_meta})
+    except Exception as e:
+        logger.error(f"Error renaming preset folder: {e}")
+        return jsonify({"success": False, "msg": str(e)}), 500
+
+
+@bp.route('/api/presets/folders/delete', methods=['POST'])
+def delete_preset_folder():
+    try:
+        data = request.get_json(silent=True) or {}
+        presets_root = _get_presets_path()
+        category = _normalize_category_path(data.get('category'))
+        target_dir = _safe_join_category_path(presets_root, category)
+        if not target_dir or not os.path.isdir(target_dir):
+            return jsonify({"success": False, "msg": "目录不存在"})
+        if os.listdir(target_dir):
+            return jsonify({"success": False, "msg": "只能删除空目录"})
+        os.rmdir(target_dir)
+        folder_meta = _build_global_folder_metadata(presets_root)
+        return jsonify({"success": True, "msg": "目录已删除", **folder_meta})
+    except Exception as e:
+        logger.error(f"Error deleting preset folder: {e}")
+        return jsonify({"success": False, "msg": str(e)}), 500
+
+
 @bp.route('/api/presets/delete', methods=['POST'])
 def delete_preset():
     """
@@ -476,24 +886,8 @@ def delete_preset():
             return jsonify({"success": False, "msg": "缺少预设ID"})
         
         presets_root = _get_presets_path()
-        
-        # 解析 ID
-        if preset_id.startswith('resource::'):
-            parts = preset_id.split('::', 2)
-            if len(parts) != 3:
-                return jsonify({"success": False, "msg": "Invalid preset ID format"}), 400
-            
-            _, folder, name = parts
-            cfg = load_config()
-            res_root = os.path.join(BASE_DIR, cfg.get('resources_dir', 'data/assets/card_assets'))
-            folder_abs = _safe_join(res_root, folder)
-            if not folder_abs:
-                return jsonify({"success": False, "msg": "Invalid preset ID"}), 400
-            presets_base = os.path.join(folder_abs, 'presets')
-            file_path = _safe_join(presets_base, f"{name}.json")
-        else:
-            file_path = _safe_join(presets_root, f"{preset_id}.json")
-        
+        file_path, _preset_type, _source_folder = _resolve_preset_file_path(preset_id, presets_root)
+
         if not file_path:
             return jsonify({"success": False, "msg": "Invalid preset ID"}), 400
         
@@ -516,31 +910,25 @@ def save_preset():
     """
     try:
         data = request.json
+        if not isinstance(data, dict):
+            return jsonify({"success": False, "msg": "缺少必要参数"})
+
         preset_id = data.get('id')
         content = data.get('content')
         
-        if not preset_id or not content:
+        if preset_id is None or content is None:
             return jsonify({"success": False, "msg": "缺少必要参数"})
+
+        content_to_write = content
+        if isinstance(content, str):
+            try:
+                content_to_write = json.loads(content)
+            except json.JSONDecodeError:
+                return jsonify({"success": False, "msg": "JSON格式无效"}), 400
         
         presets_root = _get_presets_path()
-        
-        # 解析 ID 获取文件路径
-        if preset_id.startswith('resource::'):
-            parts = preset_id.split('::', 2)
-            if len(parts) != 3:
-                return jsonify({"success": False, "msg": "Invalid preset ID format"}), 400
-            
-            _, folder, name = parts
-            cfg = load_config()
-            res_root = os.path.join(BASE_DIR, cfg.get('resources_dir', 'data/assets/card_assets'))
-            folder_abs = _safe_join(res_root, folder)
-            if not folder_abs:
-                return jsonify({"success": False, "msg": "Invalid preset ID"}), 400
-            presets_base = os.path.join(folder_abs, 'presets')
-            file_path = _safe_join(presets_base, f"{name}.json")
-        else:
-            file_path = _safe_join(presets_root, f"{preset_id}.json")
-        
+        file_path, _preset_type, _source_folder = _resolve_preset_file_path(preset_id, presets_root)
+
         if not file_path:
             return jsonify({"success": False, "msg": "Invalid preset ID"}), 400
         
@@ -549,10 +937,7 @@ def save_preset():
         
         # 写入文件
         with open(file_path, 'w', encoding='utf-8') as f:
-            if isinstance(content, str):
-                f.write(content)
-            else:
-                json.dump(content, f, ensure_ascii=False, indent=2)
+            json.dump(content_to_write, f, ensure_ascii=False, indent=2)
         
         return jsonify({"success": True, "msg": "预设已保存"})
         
@@ -575,24 +960,8 @@ def save_preset_extensions():
             return jsonify({"success": False, "msg": "缺少必要参数"})
         
         presets_root = _get_presets_path()
-        
-        # 解析 ID 获取文件路径
-        if preset_id.startswith('resource::'):
-            parts = preset_id.split('::', 2)
-            if len(parts) != 3:
-                return jsonify({"success": False, "msg": "Invalid preset ID format"}), 400
-            
-            _, folder, name = parts
-            cfg = load_config()
-            res_root = os.path.join(BASE_DIR, cfg.get('resources_dir', 'data/assets/card_assets'))
-            folder_abs = _safe_join(res_root, folder)
-            if not folder_abs:
-                return jsonify({"success": False, "msg": "Invalid preset ID"}), 400
-            presets_base = os.path.join(folder_abs, 'presets')
-            file_path = _safe_join(presets_base, f"{name}.json")
-        else:
-            file_path = _safe_join(presets_root, f"{preset_id}.json")
-        
+        file_path, _preset_type, _source_folder = _resolve_preset_file_path(preset_id, presets_root)
+
         if not file_path:
             return jsonify({"success": False, "msg": "Invalid preset ID"}), 400
         

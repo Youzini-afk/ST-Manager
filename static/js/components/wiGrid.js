@@ -7,6 +7,8 @@ import { listWorldInfo, uploadWorldInfo, createWorldInfo } from '../api/wi.js';
 
 export default function wiGrid() {
     return {
+        activeCategoryItemId: null,
+
         // === Store 代理 ===
         get wiList() { return this.$store.global.wiList; },
         set wiList(val) { this.$store.global.wiList = val; },
@@ -20,9 +22,153 @@ export default function wiGrid() {
         set wiSearchQuery(val) { this.$store.global.wiSearchQuery = val; },
         get wiFilterType() { return this.$store.global.wiFilterType; },
         set wiFilterType(val) { this.$store.global.wiFilterType = val; },
+        get wiFilterCategory() { return this.$store.global.wiFilterCategory || ''; },
+
+        get wiUploadHintText() {
+            if (this.isGlobalCategoryContext()) {
+                return `将添加到全局分类 ${this.wiFilterCategory}`;
+            }
+            if (this.wiFilterType !== 'all' && this.wiFilterType !== 'global') {
+                return '当前不在全局分类上下文，上传到全局目录需要明确确认';
+            }
+            return '将添加到全局目录 (Global)';
+        },
+
+        isGlobalCategoryContext() {
+            if (!this.wiFilterCategory) return false;
+            const capabilities = this.$store.global.wiFolderCapabilities || {};
+            const selected = capabilities[this.wiFilterCategory] || {};
+            return (this.wiFilterType === 'global' || this.wiFilterType === 'all') && selected.has_physical_folder;
+        },
 
         // 拖拽状态
         dragOverWi: false,
+
+        buildWorldInfoUploadFormData(files, { allowGlobalFallback = false } = {}) {
+            const formData = new FormData();
+            let hasJson = false;
+
+            for (let i = 0; i < files.length; i++) {
+                if (files[i].name.toLowerCase().endsWith('.json')) {
+                    formData.append('files', files[i]);
+                    hasJson = true;
+                }
+            }
+
+            if (!hasJson) {
+                return null;
+            }
+
+            const source_context = this.wiFilterType;
+            const target_category = this.isGlobalCategoryContext() ? this.wiFilterCategory : '';
+            formData.append('source_context', source_context);
+            formData.append('target_category', target_category);
+            if (allowGlobalFallback) {
+                formData.append('allow_global_fallback', 'true');
+            }
+            return formData;
+        },
+
+        getCategoryModeHint(item) {
+            if ((item?.source_type || item?.type) === 'embedded') return '内嵌世界书跟随角色卡分类';
+            if (item?.category_mode === 'override') return '已更新管理器分类，未移动实际文件';
+            if (item?.category_mode === 'inherited') return '跟随角色卡';
+            return '';
+        },
+
+        getEmbeddedMoveRejectedMessage() {
+            return '请移动所属角色卡来调整内嵌世界书分类';
+        },
+
+        getWorldInfoSourceBadge(item) {
+            const source_type = item?.source_type || item?.type;
+            if (source_type === 'global') return 'GLOBAL';
+            if (source_type === 'resource') return 'RESOURCE';
+            return 'EMBEDDED';
+        },
+
+        getWorldInfoOwnerName(item) {
+            return item?.owner_card_name || item?.card_name || '';
+        },
+
+        getWorldInfoOwnerId(item) {
+            return item?.owner_card_id || item?.card_id || '';
+        },
+
+        locateWorldInfoOwnerCard(item) {
+            const owner_card_id = this.getWorldInfoOwnerId(item);
+            if (!owner_card_id) return;
+            this.jumpToCardFromWi(owner_card_id);
+            this.hideWorldInfoCategoryActions();
+        },
+
+        getMovableWorldInfoCategories() {
+            const capabilities = this.$store.global.wiFolderCapabilities || {};
+            return (this.$store.global.wiAllFolders || []).filter(path => capabilities[path]?.has_physical_folder);
+        },
+
+        showWorldInfoCategoryActions(item, event) {
+            event.stopPropagation();
+            this.activeCategoryItemId = this.activeCategoryItemId === item.id ? null : item.id;
+        },
+
+        hideWorldInfoCategoryActions() {
+            this.activeCategoryItemId = null;
+        },
+
+        async moveWorldInfoToCategory(item) {
+            const source_type = item?.source_type || item?.type;
+            if (source_type === 'embedded') {
+                alert(this.getEmbeddedMoveRejectedMessage());
+                this.hideWorldInfoCategoryActions();
+                return;
+            }
+
+            const choices = ['根目录'].concat(this.getMovableWorldInfoCategories());
+            const current = item?.display_category || '根目录';
+            const actionLabel = source_type === 'resource' ? '设置管理器分类' : '移动到分类';
+            const selected = prompt(`${actionLabel}（可选：${choices.join(', ')}）`, current);
+            if (selected === null) return;
+
+            const target_category = String(selected).trim() === '根目录' ? '' : String(selected).trim();
+            const resp = await fetch('/api/world_info/category/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_type,
+                    file_path: item.path,
+                    target_category,
+                })
+            });
+            const res = await resp.json();
+            if (res?.success) {
+                this.$store.global.showToast(res.msg);
+                this.fetchWorldInfoList();
+                this.hideWorldInfoCategoryActions();
+                return;
+            }
+            alert(res?.msg || '移动失败');
+        },
+
+        async resetWorldInfoCategory(item) {
+            const source_type = item?.source_type || item?.type;
+            const resp = await fetch('/api/world_info/category/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_type,
+                    file_path: item.path,
+                })
+            });
+            const res = await resp.json();
+            if (res?.success) {
+                this.$store.global.showToast(res.msg);
+                this.fetchWorldInfoList();
+                this.hideWorldInfoCategoryActions();
+                return;
+            }
+            alert(res?.msg || '恢复失败');
+        },
 
         init() {
             // === 监听 Store 变化自动刷新 ===
@@ -32,6 +178,11 @@ export default function wiGrid() {
             });
 
             this.$watch('$store.global.wiFilterType', () => {
+                this.wiCurrentPage = 1;
+                this.fetchWorldInfoList();
+            });
+
+            this.$watch('$store.global.wiFilterCategory', () => {
                 this.wiCurrentPage = 1;
                 this.fetchWorldInfoList();
             });
@@ -72,6 +223,7 @@ export default function wiGrid() {
             const params = {
                 search: this.wiSearchQuery,
                 type: this.wiFilterType,
+                category: this.wiFilterCategory,
                 page: this.wiCurrentPage,
                 page_size: pageSize
             };
@@ -82,6 +234,9 @@ export default function wiGrid() {
                     if (res.success) {
                         // 更新 Store 中的列表
                         this.wiList = res.items;
+                        this.$store.global.wiAllFolders = res.all_folders || [];
+                        this.$store.global.wiCategoryCounts = res.category_counts || {};
+                        this.$store.global.wiFolderCapabilities = res.folder_capabilities || {};
 
                         this.wiTotalItems = res.total || 0;
                         this.wiTotalPages = Math.ceil(this.wiTotalItems / pageSize) || 1;
@@ -125,7 +280,8 @@ export default function wiGrid() {
 
             this.$store.global.isLoading = true;
             try {
-                const res = await createWorldInfo({ name: finalName });
+                const target_category = this.isGlobalCategoryContext() ? this.wiFilterCategory : '';
+                const res = await createWorldInfo({ name: finalName, target_category });
                 this.$store.global.isLoading = false;
                 if (!res || !res.success) {
                     alert(`创建失败: ${(res && res.msg) ? res.msg : '未知错误'}`);
@@ -174,17 +330,9 @@ export default function wiGrid() {
         _uploadWorldInfoInternal(files) {
             if (!files || files.length === 0) return;
 
-            const formData = new FormData();
-            let hasJson = false;
+            const formData = this.buildWorldInfoUploadFormData(files);
 
-            for (let i = 0; i < files.length; i++) {
-                if (files[i].name.toLowerCase().endsWith('.json')) {
-                    formData.append('files', files[i]);
-                    hasJson = true;
-                }
-            }
-
-            if (!hasJson) {
+            if (!formData) {
                 alert("请选择 .json 格式的世界书文件");
                 return;
             }
@@ -192,9 +340,20 @@ export default function wiGrid() {
             this.$store.global.isLoading = true;
             uploadWorldInfo(formData)
                 .then(res => {
+                    if (res?.requires_global_fallback_confirmation) {
+                        if (confirm('当前不在全局分类上下文。确认继续上传到全局根目录吗？')) {
+                            const fallbackFormData = this.buildWorldInfoUploadFormData(files, { allowGlobalFallback: true });
+                            return uploadWorldInfo(fallbackFormData);
+                        }
+                        return res;
+                    }
+                    return res;
+                })
+                .then(res => {
                     this.$store.global.isLoading = false;
+                    if (!res) return;
                     if (res.success) {
-                        alert(res.msg);
+                        this.$store.global.showToast(res.msg);
                         // 如果当前不在 global 视图，提示切换
                         const currentType = this.$store.global.wiFilterType;
                         if (currentType !== 'all' && currentType !== 'global') {

@@ -10,7 +10,7 @@
         <div x-show="dragOverWi" x-transition.opacity class="drag-over-main-overlay">
             <div class="text-6xl mb-4">🌎</div>
             <div class="text-2xl font-bold text-white tracking-wider">松开鼠标上传世界书</div>
-            <div class="text-gray-300 mt-2 text-sm">将添加到全局目录 (Global)</div>
+            <div class="text-gray-300 mt-2 text-sm" x-text="wiUploadHintText"></div>
         </div>
 
         <div x-show="isLoading" style="text-align: center; padding: 5rem; color: var(--accent-light);">
@@ -22,12 +22,12 @@
             <template x-for="item in wiList" :key="item.id">
                 <div @click="openWiDetail(item)"
                     class="wi-grid-card group relative border rounded-xl p-3 cursor-pointer transition-all duration-200 flex flex-col"
-                    :class="$store.global.deviceType === 'mobile' ? '' : 'h-44'"
+                    :class="$store.global.deviceType === 'mobile' ? '' : 'h-52'"
                     style="background: var(--bg-panel); border-color: var(--border-main);">
 
                     <!-- 来源标记：固定左上 -->
-                    <div class="wi-badge" :class="item.type"
-                        x-text="item.type === 'global' ? 'GLOBAL' : (item.type === 'resource' ? 'RESOURCE' : 'EMBEDDED')">
+                    <div class="wi-badge" :class="item.source_type || item.type"
+                        x-text="getWorldInfoSourceBadge(item)">
                     </div>
 
                     <!-- FILE 徽标：固定右上（去掉 inline style） -->
@@ -39,6 +39,24 @@
                         title="打开全屏编辑器">
                         ✏️
                     </button>
+
+                    <button x-show="(item.source_type || item.type) !== 'embedded'" @click.stop="showWorldInfoCategoryActions(item, $event)"
+                        class="absolute bottom-2 right-2 px-2 py-1 text-[10px] rounded bg-[var(--bg-sub)] text-[var(--text-dim)] hover:text-[var(--text-main)] z-20"
+                        title="分类操作">
+                        移动到分类
+                    </button>
+
+                    <div x-show="activeCategoryItemId === item.id" @click.outside="hideWorldInfoCategoryActions()"
+                        class="absolute right-2 bottom-10 z-30 w-44 rounded-lg border border-[var(--border-light)] bg-[var(--bg-panel)] shadow-xl p-2 space-y-1">
+                        <button @click.stop="moveWorldInfoToCategory(item)"
+                            class="w-full text-left px-2 py-1 text-xs rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)]">
+                            <span x-text="(item.source_type || item.type) === 'resource' ? '设置管理器分类' : '移动到分类'"></span>
+                        </button>
+                        <button x-show="(item.source_type || item.type) === 'resource'" @click.stop="resetWorldInfoCategory(item)"
+                            class="w-full text-left px-2 py-1 text-xs rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)]">
+                            恢复跟随角色卡
+                        </button>
+                    </div>
 
                     <!-- 封面区 -->
                     <div x-show="$store.global.deviceType !== 'mobile'" class="wi-book-cover mt-6">
@@ -52,21 +70,40 @@
                             style="color: var(--text-main);" x-text="item.name"></h3>
                     </div>
 
+                    <div class="wi-book-classification mt-2 space-y-1 text-xs text-[var(--text-dim)]">
+                        <div class="truncate" :title="item.display_category || '根目录'">
+                            <span>分类：</span>
+                            <span x-text="item.display_category || '根目录'"></span>
+                        </div>
+                        <div x-show="item.category_mode === 'inherited' && (item.source_type || item.type) === 'resource'" class="text-green-400">
+                            跟随角色卡
+                        </div>
+                        <div x-show="item.category_mode === 'override'" class="text-amber-400">
+                            已覆盖管理器分类
+                        </div>
+                        <div x-show="(item.source_type || item.type) === 'embedded'" class="text-purple-300">
+                            内嵌世界书跟随角色卡分类
+                        </div>
+                    </div>
+
                     <!-- 信息条 -->
                     <div class="wi-book-meta">
-                        <div class="flex items-center gap-1 max-w-[70%] min-w-0">
-                            <template x-if="item.card_name">
+                        <div class="flex items-center gap-1 min-w-0 flex-1">
+                            <template x-if="getWorldInfoOwnerName(item)">
                                 <div class="flex items-center gap-1 truncate" title="关联角色">
                                     <span>🔗</span>
                                     <span class="truncate hover:text-[var(--text-main)] hover:underline"
-                                        @click.stop="jumpToCardFromWi(item.card_id)" x-text="item.card_name"></span>
+                                        @click.stop="jumpToCardFromWi(getWorldInfoOwnerId(item))" x-text="getWorldInfoOwnerName(item)"></span>
                                 </div>
                             </template>
-                            <template x-if="!item.card_name">
+                            <template x-if="!getWorldInfoOwnerName(item)">
                                 <span class="opacity-60 truncate">Global Lorebook</span>
                             </template>
                         </div>
-                        <div class="font-mono opacity-70" x-text="new Date(item.mtime * 1000).toLocaleDateString()">
+                        <div x-show="(item.source_type || item.type) === 'embedded'" class="text-purple-300 truncate" title="如需调整分类，请移动所属角色卡">
+                            如需调整分类，请移动所属角色卡
+                        </div>
+                        <div class="font-mono opacity-70 whitespace-nowrap" x-text="new Date(item.mtime * 1000).toLocaleDateString()">
                         </div>
                     </div>
                 </div>

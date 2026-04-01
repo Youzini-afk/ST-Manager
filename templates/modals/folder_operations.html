@@ -7,7 +7,7 @@
             <div style="display: flex; flex-direction: column; gap: 1rem;">
                 <select x-model="newFolderParent" class="form-input">
                     <option value="">根目录</option>
-                    <template x-for="folder in allFoldersList" :key="folder.path">
+                    <template x-for="folder in creatableFolderSelectList" :key="folder.path">
                         <option :value="folder.path" x-text="folder.path"></option>
                     </template>
                 </select>

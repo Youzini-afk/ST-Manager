@@ -13,7 +13,13 @@ from flask import Blueprint, request, jsonify, send_file
 from core.config import BASE_DIR, load_config, DEFAULT_DB_PATH, CARDS_FOLDER, TRASH_FOLDER 
 from core.context import ctx
 from core.data.db_session import get_db
-from core.data.ui_store import load_ui_data, UI_DATA_FILE
+from core.data.ui_store import (
+    load_ui_data,
+    save_ui_data,
+    UI_DATA_FILE,
+    get_resource_item_categories,
+    set_resource_item_categories,
+)
 from core.services.cache_service import invalidate_wi_list_cache
 from core.services.wi_entry_history_service import (
     ensure_entry_uids,
@@ -155,6 +161,394 @@ def _compute_wi_signature(raw):
     except Exception:
         return None
 
+
+def _normalize_category_path(value) -> str:
+    if value is None:
+        return ''
+    path = str(value).replace('\\', '/').strip().strip('/')
+    if not path:
+        return ''
+    parts = [part.strip() for part in path.split('/') if part.strip()]
+    return '/'.join(parts)
+
+
+def _get_parent_category(rel_path: str) -> str:
+    rel_norm = str(rel_path or '').replace('\\', '/').strip('/')
+    if not rel_norm:
+        return ''
+    if '/' not in rel_norm:
+        return ''
+    return _normalize_category_path(rel_norm.rsplit('/', 1)[0])
+
+
+def _normalize_resource_item_key(path: str) -> str:
+    if not path:
+        return ''
+    try:
+        return os.path.normcase(os.path.normpath(str(path))).replace('\\', '/')
+    except Exception:
+        return ''
+
+
+def _iter_category_ancestors(category: str):
+    current = _normalize_category_path(category)
+    while current:
+        yield current
+        if '/' not in current:
+            break
+        current = current.rsplit('/', 1)[0]
+
+
+def _build_folder_metadata(items):
+    all_folders = set()
+    category_counts = {}
+    folder_capabilities = {}
+
+    def _ensure_capability(path):
+        if path not in folder_capabilities:
+            folder_capabilities[path] = {
+                'has_physical_folder': False,
+                'has_virtual_items': False,
+                'can_create_child_folder': False,
+                'can_rename_physical_folder': False,
+                'can_delete_physical_folder': False,
+            }
+        return folder_capabilities[path]
+
+    for item in items:
+        display_category = _normalize_category_path(item.get('display_category'))
+        if display_category:
+            for path in _iter_category_ancestors(display_category):
+                all_folders.add(path)
+                category_counts[path] = category_counts.get(path, 0) + 1
+
+                if item.get('type') != 'global':
+                    _ensure_capability(path)['has_virtual_items'] = True
+
+        physical_category = _normalize_category_path(item.get('physical_category'))
+        if physical_category:
+            for path in _iter_category_ancestors(physical_category):
+                all_folders.add(path)
+                caps = _ensure_capability(path)
+                caps['has_physical_folder'] = True
+                caps['can_create_child_folder'] = True
+                caps['can_rename_physical_folder'] = True
+
+    return {
+        'all_folders': sorted(all_folders),
+        'category_counts': category_counts,
+        'folder_capabilities': folder_capabilities,
+    }
+
+
+def _add_physical_folder_nodes(folder_meta: dict, base_dir: str):
+    if not isinstance(folder_meta, dict) or not base_dir or not os.path.exists(base_dir):
+        return folder_meta
+
+    all_folders = set(folder_meta.get('all_folders') or [])
+    folder_capabilities = dict(folder_meta.get('folder_capabilities') or {})
+
+    def _ensure_capability(path):
+        if path not in folder_capabilities:
+            folder_capabilities[path] = {
+                'has_physical_folder': False,
+                'has_virtual_items': False,
+                'can_create_child_folder': False,
+                'can_rename_physical_folder': False,
+                'can_delete_physical_folder': False,
+            }
+        return folder_capabilities[path]
+
+    for root, dirs, files in os.walk(base_dir):
+        rel_root = os.path.relpath(root, base_dir).replace('\\', '/')
+        current_category = '' if rel_root == '.' else _normalize_category_path(rel_root)
+        if not current_category:
+            continue
+
+        for path in _iter_category_ancestors(current_category):
+            all_folders.add(path)
+            caps = _ensure_capability(path)
+            caps['has_physical_folder'] = True
+            caps['can_create_child_folder'] = True
+            caps['can_rename_physical_folder'] = True
+
+        current_caps = _ensure_capability(current_category)
+        current_caps['can_delete_physical_folder'] = not bool(dirs or files)
+
+    folder_meta['all_folders'] = sorted(all_folders)
+    folder_meta['folder_capabilities'] = folder_capabilities
+    return folder_meta
+
+
+def _is_in_category_subtree(display_category: str, selected_category: str) -> bool:
+    display = _normalize_category_path(display_category)
+    selected = _normalize_category_path(selected_category)
+    if not selected:
+        return True
+    return display == selected or display.startswith(selected + '/')
+
+
+def _safe_join_category_path(base_dir: str, category: str, leaf_name: str = '') -> str:
+    base_abs = os.path.abspath(base_dir)
+    rel_path = _normalize_category_path(category)
+    parts = [part for part in rel_path.split('/') if part] if rel_path else []
+    if leaf_name:
+        parts.append(str(leaf_name).strip())
+
+    candidate = os.path.abspath(os.path.join(base_abs, *parts)) if parts else base_abs
+    try:
+        if os.path.commonpath([candidate, base_abs]) != base_abs:
+            return ''
+    except Exception:
+        return ''
+    return candidate
+
+
+def _save_resource_category_override(mode: str, file_path: str, category: str) -> bool:
+    ui_data = load_ui_data()
+    payload = get_resource_item_categories(ui_data)
+    mode_items = dict(payload.get(mode) or {})
+    path_key = _normalize_resource_item_key(file_path)
+    normalized_category = _normalize_category_path(category)
+
+    if normalized_category:
+        mode_items[path_key] = {
+            'category': normalized_category,
+            'updated_at': int(time.time()),
+        }
+    else:
+        mode_items.pop(path_key, None)
+
+    next_payload = {
+        'worldinfo': dict(payload.get('worldinfo') or {}),
+        'presets': dict(payload.get('presets') or {}),
+    }
+    next_payload[mode] = mode_items
+    set_resource_item_categories(ui_data, next_payload)
+    return save_ui_data(ui_data)
+
+
+def _is_resource_worldinfo_path(file_path: str, cfg: dict) -> bool:
+    if not file_path or not _is_valid_wi_file(file_path, cfg):
+        return False
+    resources_dir = _resolve_resources_dir(cfg)
+    if not _is_under_base(file_path, resources_dir):
+        return False
+    rel_path = os.path.relpath(file_path, resources_dir).replace('\\', '/')
+    return '/lorebooks/' in f'/{rel_path}/'
+
+
+def _move_global_worldinfo_file(file_path: str, target_category: str, cfg: dict) -> str:
+    global_dir = _resolve_wi_dir(cfg)
+    if not _is_under_base(file_path, global_dir):
+        raise ValueError('非法路径')
+
+    filename = os.path.basename(file_path)
+    target_dir = _safe_join_category_path(global_dir, target_category)
+    if not target_dir:
+        raise ValueError('目标分类不合法')
+
+    os.makedirs(target_dir, exist_ok=True)
+    target_path = os.path.join(target_dir, filename)
+    if os.path.normcase(os.path.normpath(target_path)) == os.path.normcase(os.path.normpath(file_path)):
+        return file_path
+
+    if os.path.exists(target_path):
+        raise ValueError('目标位置已存在同名文件')
+
+    shutil.move(file_path, target_path)
+    return target_path
+
+
+def _folder_response(base_dir: str, success_msg: str):
+    items = []
+    for root, _dirs, files in os.walk(base_dir):
+        for name in files:
+            if not name.lower().endswith('.json'):
+                continue
+            full_path = os.path.join(root, name)
+            rel_path = os.path.relpath(full_path, base_dir).replace('\\', '/')
+            physical_category = _get_parent_category(rel_path)
+            items.append({'type': 'global', 'display_category': physical_category, 'physical_category': physical_category})
+    folder_meta = _add_physical_folder_nodes(_build_folder_metadata(items), base_dir)
+    return jsonify({
+        'success': True,
+        'msg': success_msg,
+        'all_folders': folder_meta['all_folders'],
+        'category_counts': folder_meta['category_counts'],
+        'folder_capabilities': folder_meta['folder_capabilities'],
+    })
+
+
+def _build_card_category_sig(cards) -> tuple:
+    pairs = []
+    for card in cards or []:
+        card_id = str((card or {}).get('id') or '')
+        category = _normalize_category_path((card or {}).get('category', ''))
+        pairs.append((card_id, category))
+    pairs.sort()
+    return tuple(pairs)
+
+
+def _build_dir_tree_sig(base_dir: str) -> tuple:
+    if not base_dir:
+        return ()
+    try:
+        norm_base = os.path.normpath(base_dir)
+        if not os.path.exists(norm_base):
+            return ()
+
+        entries = []
+        for root, dirs, files in os.walk(norm_base):
+            rel_root = os.path.relpath(root, norm_base).replace('\\', '/')
+            if rel_root == '.':
+                rel_root = ''
+
+            try:
+                dir_names = sorted(dirs)
+            except Exception:
+                dir_names = []
+            entries.append(('dir', rel_root, tuple(dir_names), _safe_mtime(root)))
+
+            for name in sorted(files):
+                full_path = os.path.join(root, name)
+                rel_path = os.path.relpath(full_path, norm_base).replace('\\', '/')
+                entries.append(('file', rel_path, _safe_mtime(full_path)))
+
+        return tuple(entries)
+    except Exception:
+        return ()
+
+
+def _select_preferred_resource_target(existing: dict, candidate: dict) -> dict:
+    if not existing:
+        return candidate
+    existing_card = existing.get('card') or {}
+    candidate_card = candidate.get('card') or {}
+    existing_key = (
+        str(existing_card.get('id') or ''),
+        str(existing_card.get('char_name') or ''),
+    )
+    candidate_key = (
+        str(candidate_card.get('id') or ''),
+        str(candidate_card.get('char_name') or ''),
+    )
+    return candidate if candidate_key < existing_key else existing
+
+
+def _apply_world_info_preview(data, cfg: dict, preview_limit=None, force_full: bool = False) -> dict:
+    truncated = False
+    truncated_content = False
+    total_entries = 0
+    applied_limit = 0
+    applied_content_limit = 0
+
+    def _count_entries(raw):
+        if isinstance(raw, list):
+            return len(raw)
+        if isinstance(raw, dict):
+            entries = raw.get('entries')
+            if isinstance(entries, list):
+                return len(entries)
+            if isinstance(entries, dict):
+                return len(entries.keys())
+        return 0
+
+    def _slice_entries(raw, limit):
+        if isinstance(raw, list):
+            return raw[:limit]
+        if isinstance(raw, dict):
+            entries = raw.get('entries')
+            if isinstance(entries, list):
+                new_data = dict(raw)
+                new_data['entries'] = entries[:limit]
+                return new_data
+            if isinstance(entries, dict):
+                keys = list(entries.keys())
+                try:
+                    keys.sort(key=lambda k: int(k))
+                except Exception:
+                    keys.sort()
+                trimmed = {k: entries[k] for k in keys[:limit]}
+                new_data = dict(raw)
+                new_data['entries'] = trimmed
+                return new_data
+        return raw
+
+    try:
+        limit_val = int(preview_limit) if preview_limit is not None else 0
+    except Exception:
+        limit_val = 0
+
+    default_limit = cfg.get('wi_preview_limit', 300)
+    default_content_limit = cfg.get('wi_preview_entry_max_chars', 2000)
+
+    if not force_full:
+        if limit_val <= 0:
+            try:
+                limit_val = int(default_limit) if default_limit is not None else 0
+            except Exception:
+                limit_val = 0
+
+        content_limit = 0
+        try:
+            content_limit = int(default_content_limit) if default_content_limit is not None else 0
+        except Exception:
+            content_limit = 0
+
+        if limit_val > 0:
+            total_entries = _count_entries(data)
+            if total_entries > limit_val:
+                data = _slice_entries(data, limit_val)
+                truncated = True
+                applied_limit = limit_val
+
+        if content_limit > 0:
+            applied_content_limit = content_limit
+
+            def _truncate_entry(entry):
+                nonlocal truncated_content
+                if not isinstance(entry, dict):
+                    return entry
+                new_entry = dict(entry)
+                content = new_entry.get('content')
+                if isinstance(content, str) and len(content) > content_limit:
+                    new_entry['content'] = content[:content_limit] + ' ...'
+                    truncated_content = True
+                comment = new_entry.get('comment')
+                if isinstance(comment, str) and len(comment) > content_limit:
+                    new_entry['comment'] = comment[:content_limit] + ' ...'
+                    truncated_content = True
+                return new_entry
+
+            if isinstance(data, list):
+                data = [_truncate_entry(e) for e in data]
+            elif isinstance(data, dict):
+                entries = data.get('entries')
+                if isinstance(entries, list):
+                    data = dict(data)
+                    data['entries'] = [_truncate_entry(e) for e in entries]
+                elif isinstance(entries, dict):
+                    data = dict(data)
+                    new_entries = {}
+                    for k, v in entries.items():
+                        new_entries[k] = _truncate_entry(v)
+                    data['entries'] = new_entries
+
+    resp = {"success": True, "data": data}
+    if truncated:
+        resp.update({
+            "truncated": True,
+            "total_entries": total_entries,
+            "preview_limit": applied_limit
+        })
+    if truncated_content:
+        resp.update({
+            "truncated_content": True,
+            "preview_entry_max_chars": applied_content_limit
+        })
+    return resp
+
 # === 工具函数 ===
 from core.utils.image import extract_card_info # 用于 export logic
 
@@ -166,6 +560,7 @@ bp = Blueprint('wi', __name__)
 def api_list_world_infos():
     try:
         search = request.args.get('search', '').lower().strip()
+        category = _normalize_category_path(request.args.get('category', ''))
         wi_type = request.args.get('type', 'all') # all, global, resource, embedded
 
         # 新增分页参数
@@ -183,33 +578,37 @@ def api_list_world_infos():
             try: os.makedirs(current_wi_folder, exist_ok=True)
             except: pass
 
-        # ===== [CACHE] key = type + search（未分页 items）=====
-        cache_key = f"{wi_type}||{search}"
+        # ===== [CACHE] key = type + category + search（未分页 items）=====
+        cache_key = f"{wi_type}||{category}||{search}"
 
         cfg = load_config()
         default_res_dir = _resolve_resources_dir(cfg)
         db_path = DEFAULT_DB_PATH
         cards_dir_sig = _safe_mtime(str(CARDS_FOLDER))
 
-        global_dir_sig   = _safe_mtime(current_wi_folder)
-        resource_dir_sig = _safe_mtime(default_res_dir)
+        global_dir_sig   = _build_dir_tree_sig(current_wi_folder)
+        resource_dir_sig = _build_dir_tree_sig(default_res_dir)
         ui_data_sig      = _safe_mtime(UI_DATA_FILE)
         db_sig           = _safe_mtime(db_path)
 
-        if wi_type == 'global':
-            sig = ('global', global_dir_sig, db_sig, cards_dir_sig)
-        elif wi_type == 'resource':
-            sig = ('resource', resource_dir_sig, ui_data_sig)
-        elif wi_type == 'embedded':
-            sig = ('embedded', db_sig, cards_dir_sig)
-        else:  # all
-            sig = ('all', global_dir_sig, resource_dir_sig, ui_data_sig, db_sig, cards_dir_sig)
-
         cached_items = None
+        with ctx.wi_list_cache_lock:
+            card_category_sig = _build_card_category_sig(getattr(ctx.cache, 'cards', []))
+
+        if wi_type == 'global':
+            sig = ('global', global_dir_sig, db_sig, cards_dir_sig, card_category_sig)
+        elif wi_type == 'resource':
+            sig = ('resource', resource_dir_sig, ui_data_sig, card_category_sig)
+        elif wi_type == 'embedded':
+            sig = ('embedded', db_sig, cards_dir_sig, card_category_sig)
+        else:  # all
+            sig = ('all', global_dir_sig, resource_dir_sig, ui_data_sig, db_sig, cards_dir_sig, card_category_sig)
+
         with ctx.wi_list_cache_lock:
             cached = ctx.wi_list_cache.get(cache_key)
             if cached and cached.get("sig") == sig:
                 items = cached.get("items") or []
+                folder_meta = cached.get('folder_meta') or _build_folder_metadata(items)
                 # === 命中缓存直接分页返回，不再往下扫描 ===
                 total_count = len(items)
                 start = (page - 1) * page_size
@@ -219,13 +618,19 @@ def api_list_world_infos():
                     "items": items[start:end],
                     "total": total_count,
                     "page": page,
-                    "page_size": page_size
+                    "page_size": page_size,
+                    "all_folders": folder_meta['all_folders'],
+                    "category_counts": folder_meta['category_counts'],
+                    "folder_capabilities": folder_meta['folder_capabilities'],
                 })
 
         # 原扫描
         items = []
         embedded_name_set = set()
         embedded_sig_set = set()
+        card_map = {}
+        if getattr(ctx.cache, 'initialized', False):
+            card_map = {str(card.get('id') or ''): card for card in ctx.cache.cards}
 
         # 预先读取内嵌世界书名称与内容签名，用于全局列表去重
         if wi_type in ['all', 'global']:
@@ -271,10 +676,12 @@ def api_list_world_infos():
 
         # 预先收集资源世界书目录，用于去重/排除
         resource_targets = []
+        resource_target_map = {}
         resource_lore_dirs = set()
         res_root_dir = None
+        ui_data = load_ui_data()
+        resource_item_categories = get_resource_item_categories(ui_data).get('worldinfo', {})
         if wi_type in ['all', 'resource', 'global']:
-            ui_data = load_ui_data()
             cfg = load_config()
             default_res_dir = os.path.join(BASE_DIR, cfg.get('resources_dir', 'resources'))
             res_root_dir = os.path.normpath(default_res_dir)
@@ -296,11 +703,14 @@ def api_list_world_infos():
                 lore_dir = os.path.join(target_dir, 'lorebooks')
                 lore_dir = os.path.normpath(lore_dir)
                 resource_lore_dirs.add(lore_dir)
-                resource_targets.append({
+                target_info = {
                     "key": key,
                     "card": card,
                     "lore_dir": lore_dir
-                })
+                }
+                resource_target_map[lore_dir] = _select_preferred_resource_target(resource_target_map.get(lore_dir), target_info)
+
+            resource_targets = [resource_target_map[path] for path in sorted(resource_target_map.keys())]
 
             # 扫描 resources 根目录下的 lorebooks（防止 UI 数据缺失导致遗漏）
             if res_root_dir and os.path.exists(res_root_dir):
@@ -360,14 +770,24 @@ def api_list_world_infos():
                                     if sig and sig in embedded_sig_set:
                                         continue
                                     
+                                rel_path = os.path.relpath(full_path, current_wi_folder).replace('\\', '/')
+                                physical_category = _get_parent_category(rel_path)
                                 items.append({
-                                    "id": f"global::{os.path.relpath(full_path, current_wi_folder)}",
+                                    "id": f"global::{rel_path}",
                                     "type": "global",
+                                    "source_type": "global",
                                     "name": name,
                                     "name_source": name_source,
                                     "file_name": file_name,
                                     "path": full_path,
-                                    "mtime": os.path.getmtime(full_path)
+                                    "mtime": os.path.getmtime(full_path),
+                                    "display_category": physical_category,
+                                    "physical_category": physical_category,
+                                    "category_mode": "physical",
+                                    "category_override": "",
+                                    "owner_card_id": "",
+                                    "owner_card_name": "",
+                                    "owner_card_category": "",
                                 })
                         except Exception as e: 
                             print(f"Error reading WI {f}: {e}")
@@ -408,16 +828,29 @@ def api_list_world_infos():
                                             name = file_name
                                     else:
                                         name = file_name
+                                    path_key = _normalize_resource_item_key(full_path)
+                                    override_info = resource_item_categories.get(path_key) or {}
+                                    override_category = _normalize_category_path(override_info.get('category'))
+                                    owner_category = _normalize_category_path(card.get('category', ''))
+                                    display_category = override_category or owner_category
                                     items.append({
                                         "id": f"resource::{key}::{f}",
                                         "type": "resource",
+                                        "source_type": "resource",
                                         "name": name,
                                         "name_source": name_source,
                                         "file_name": file_name,
                                         "path": full_path,
                                         "card_name": card.get('char_name', ''), # 关联的角色名
                                         "card_id": card.get('id', ''), # 用于跳转
-                                        "mtime": os.path.getmtime(full_path)
+                                        "mtime": os.path.getmtime(full_path),
+                                        "display_category": display_category,
+                                        "physical_category": _get_parent_category(os.path.relpath(full_path, lore_dir).replace('\\', '/')),
+                                        "category_mode": "override" if override_category else "inherited",
+                                        "category_override": override_category,
+                                        "owner_card_id": card.get('id', ''),
+                                        "owner_card_name": card.get('char_name', ''),
+                                        "owner_card_category": owner_category,
                                     })
                             except: continue
         # 3. 角色卡内嵌 (Embedded) - 查询数据库
@@ -426,20 +859,34 @@ def api_list_world_infos():
             cursor = conn.execute("SELECT id, char_name, character_book_name, last_modified FROM card_metadata WHERE has_character_book = 1")
             rows = cursor.fetchall()
             for row in rows:
+                card = card_map.get(str(row['id']) or '') or {}
+                owner_category = _normalize_category_path(card.get('category', ''))
                 items.append({
                     "id": f"embedded::{row['id']}",
                     "type": "embedded",
+                    "source_type": "embedded",
                     "name": row['character_book_name'] or f"{row['char_name']}'s WI",
                     "card_name": row['char_name'],
                     "card_id": row['id'],
-                    "mtime": row['last_modified']
+                    "mtime": row['last_modified'],
+                    "display_category": owner_category,
+                    "physical_category": '',
+                    "category_mode": 'inherited',
+                    "category_override": '',
+                    "owner_card_id": row['id'],
+                    "owner_card_name": row['char_name'],
+                    "owner_card_category": owner_category,
                 })
 
         # 过滤与排序
+        if category:
+            items = [i for i in items if _is_in_category_subtree(i.get('display_category', ''), category)]
+
         if search:
             items = [i for i in items if search in i['name'].lower() or (i.get('card_name') and search in i['card_name'].lower())]
             
         items.sort(key=lambda x: x.get('mtime', 0), reverse=True)
+        folder_meta = _add_physical_folder_nodes(_build_folder_metadata(items), current_wi_folder)
 
         # ===== [CACHE WRITE] 只在未命中缓存时写入 =====
         if cached_items is None:
@@ -447,7 +894,12 @@ def api_list_world_infos():
                 # 简单上限，避免 key 太多（比如用户疯狂换 search）
                 if len(ctx.wi_list_cache) > 200:
                     ctx.wi_list_cache.clear()
-                ctx.wi_list_cache[cache_key] = {"sig": sig, "items": items, "ts": time.time()}
+                ctx.wi_list_cache[cache_key] = {
+                    "sig": sig,
+                    "items": items,
+                    "folder_meta": folder_meta,
+                    "ts": time.time(),
+                }
 
         # 分页切片
         total_count = len(items)
@@ -460,7 +912,10 @@ def api_list_world_infos():
             "items": paginated_items, 
             "total": total_count,
             "page": page,
-            "page_size": page_size
+            "page_size": page_size,
+            "all_folders": folder_meta['all_folders'],
+            "category_counts": folder_meta['category_counts'],
+            "folder_capabilities": folder_meta['folder_capabilities'],
         })
     except Exception as e:
         logger.error(f"List WI error: {e}")
@@ -484,7 +939,10 @@ def api_create_world_info():
             return jsonify({"success": False, "msg": "世界书名称不合法"})
 
         cfg = load_config()
-        target_dir = _resolve_wi_dir(cfg)
+        target_category = _normalize_category_path(req.get('target_category'))
+        target_dir = _safe_join_category_path(_resolve_wi_dir(cfg), target_category)
+        if not target_dir:
+            return jsonify({"success": False, "msg": "目标分类不合法"})
         os.makedirs(target_dir, exist_ok=True)
 
         final_path = os.path.join(target_dir, f"{safe_name}.json")
@@ -500,7 +958,7 @@ def api_create_world_info():
 
         invalidate_wi_list_cache()
 
-        rel = os.path.relpath(final_path, target_dir).replace('\\', '/')
+        rel = os.path.relpath(final_path, _resolve_wi_dir(cfg)).replace('\\', '/')
         file_name = os.path.basename(final_path)
         item = {
             "id": f"global::{rel}",
@@ -508,18 +966,137 @@ def api_create_world_info():
             "name": payload.get('name') or os.path.splitext(file_name)[0],
             "name_source": "meta",
             "file_name": file_name,
-            "path": final_path,
+            "path": final_path.replace('\\', '/'),
             "mtime": os.path.getmtime(final_path)
         }
         return jsonify({
             "success": True,
             "msg": "世界书已创建",
-            "path": final_path,
+            "path": final_path.replace('\\', '/'),
             "item": item
         })
     except Exception as e:
         logger.error(f"Create WI error: {e}")
         return jsonify({"success": False, "msg": str(e)})
+
+
+@bp.route('/api/world_info/category/move', methods=['POST'])
+def api_move_world_info_category():
+    try:
+        req = request.get_json(silent=True) or {}
+        source_type = str(req.get('source_type') or '').strip()
+        file_path = str(req.get('file_path') or '').strip()
+        target_category = _normalize_category_path(req.get('target_category'))
+        if str(req.get('mode') or '').strip() == 'resource_only' and source_type != 'resource':
+            return jsonify({'success': False, 'msg': '该操作仅支持资源世界书'})
+        cfg = load_config()
+
+        if source_type == 'embedded':
+            return jsonify({'success': False, 'msg': '内嵌世界书跟随角色卡分类，如需调整请移动所属角色卡'})
+
+        if source_type == 'resource':
+            if not _is_resource_worldinfo_path(file_path, cfg):
+                return jsonify({'success': False, 'msg': '非法路径'})
+            if not _save_resource_category_override('worldinfo', file_path, target_category):
+                return jsonify({'success': False, 'msg': '保存分类覆盖失败'})
+            invalidate_wi_list_cache()
+            return jsonify({'success': True, 'msg': '已更新管理器分类，未移动实际文件'})
+
+        if source_type != 'global' or not file_path:
+            return jsonify({'success': False, 'msg': '缺少必要参数'})
+
+        new_path = _move_global_worldinfo_file(file_path, target_category, cfg)
+        invalidate_wi_list_cache()
+        return jsonify({'success': True, 'msg': '世界书已移动', 'path': new_path})
+    except ValueError as e:
+        return jsonify({'success': False, 'msg': str(e)})
+    except Exception as e:
+        logger.error(f'Move WI category error: {e}')
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/world_info/category/reset', methods=['POST'])
+def api_reset_world_info_category():
+    try:
+        req = request.get_json(silent=True) or {}
+        source_type = str(req.get('source_type') or '').strip()
+        if source_type != 'resource':
+            return jsonify({'success': False, 'msg': '该操作仅支持资源世界书'})
+        file_path = str(req.get('file_path') or '').strip()
+        cfg = load_config()
+        if not _is_resource_worldinfo_path(file_path, cfg):
+            return jsonify({'success': False, 'msg': '非法路径'})
+        if not _save_resource_category_override('worldinfo', file_path, ''):
+            return jsonify({'success': False, 'msg': '保存分类覆盖失败'})
+        invalidate_wi_list_cache()
+        return jsonify({'success': True, 'msg': '已恢复跟随角色卡分类'})
+    except Exception as e:
+        logger.error(f'Reset WI category error: {e}')
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/world_info/folders/create', methods=['POST'])
+def api_create_world_info_folder():
+    try:
+        req = request.get_json(silent=True) or {}
+        cfg = load_config()
+        global_dir = _resolve_wi_dir(cfg)
+        parent_category = _normalize_category_path(req.get('parent_category'))
+        folder_name = _normalize_category_path(req.get('name'))
+        if not folder_name or '/' in folder_name:
+            return jsonify({'success': False, 'msg': '目录名称不合法'})
+        target_dir = _safe_join_category_path(global_dir, parent_category, folder_name)
+        if not target_dir:
+            return jsonify({'success': False, 'msg': '目标分类不合法'})
+        os.makedirs(target_dir, exist_ok=True)
+        invalidate_wi_list_cache()
+        return _folder_response(global_dir, '目录已创建')
+    except Exception as e:
+        logger.error(f'Create WI folder error: {e}')
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/world_info/folders/rename', methods=['POST'])
+def api_rename_world_info_folder():
+    try:
+        req = request.get_json(silent=True) or {}
+        cfg = load_config()
+        global_dir = _resolve_wi_dir(cfg)
+        category = _normalize_category_path(req.get('category'))
+        new_name = _normalize_category_path(req.get('new_name'))
+        if not category or not new_name or '/' in new_name:
+            return jsonify({'success': False, 'msg': '目录名称不合法'})
+        source_dir = _safe_join_category_path(global_dir, category)
+        parent_category = _get_parent_category(category)
+        target_dir = _safe_join_category_path(global_dir, parent_category, new_name)
+        if not source_dir or not target_dir or not os.path.isdir(source_dir):
+            return jsonify({'success': False, 'msg': '目录不存在'})
+        os.rename(source_dir, target_dir)
+        invalidate_wi_list_cache()
+        return _folder_response(global_dir, '目录已重命名')
+    except Exception as e:
+        logger.error(f'Rename WI folder error: {e}')
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/world_info/folders/delete', methods=['POST'])
+def api_delete_world_info_folder():
+    try:
+        req = request.get_json(silent=True) or {}
+        cfg = load_config()
+        global_dir = _resolve_wi_dir(cfg)
+        category = _normalize_category_path(req.get('category'))
+        target_dir = _safe_join_category_path(global_dir, category)
+        if not target_dir or not os.path.isdir(target_dir):
+            return jsonify({'success': False, 'msg': '目录不存在'})
+        if os.listdir(target_dir):
+            return jsonify({'success': False, 'msg': '只能删除空目录'})
+        os.rmdir(target_dir)
+        invalidate_wi_list_cache()
+        return _folder_response(global_dir, '目录已删除')
+    except Exception as e:
+        logger.error(f'Delete WI folder error: {e}')
+        return jsonify({'success': False, 'msg': str(e)})
 
 # 上传世界书
 @bp.route('/api/upload_world_info', methods=['POST'])
@@ -529,10 +1106,25 @@ def api_upload_world_info():
         if not files:
             return jsonify({"success": False, "msg": "未接收到文件"})
 
+        source_context = str(request.form.get('source_context') or '').strip().lower()
+        target_category = _normalize_category_path(request.form.get('target_category'))
+        allow_global_fallback = str(request.form.get('allow_global_fallback') or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+        if source_context and source_context != 'global' and not target_category and not allow_global_fallback:
+            return jsonify({
+                "success": False,
+                "msg": "当前不在全局分类上下文，上传到全局目录需要明确确认。",
+                "requires_global_fallback_confirmation": True,
+                "fallback_target": "global_root",
+            })
+
         # 获取全局世界书目录
         cfg = load_config()
         raw_wi_dir = cfg.get('world_info_dir', 'lorebooks')
-        target_dir = raw_wi_dir if os.path.isabs(raw_wi_dir) else os.path.join(BASE_DIR, raw_wi_dir)
+        global_dir = raw_wi_dir if os.path.isabs(raw_wi_dir) else os.path.join(BASE_DIR, raw_wi_dir)
+        target_dir = _safe_join_category_path(global_dir, target_category)
+        if not target_dir:
+            return jsonify({"success": False, "msg": "目标分类不合法"})
         
         os.makedirs(target_dir, exist_ok=True)
 
@@ -580,11 +1172,37 @@ def api_upload_world_info():
 def api_get_world_info_detail():
     try:
         # id 格式: "type::path"
-        wi_id = request.json.get('id')
-        source_type = request.json.get('source_type')
-        file_path = request.json.get('file_path')
+        req = request.json or {}
+        wi_id = req.get('id')
+        source_type = req.get('source_type')
+        file_path = req.get('file_path')
         preview_limit = request.json.get('preview_limit')
         force_full = bool(request.json.get('force_full', False))
+
+        if source_type == 'embedded' and wi_id and not file_path:
+            try:
+                _prefix, card_id = str(wi_id).split('::', 1)
+            except ValueError:
+                card_id = ''
+
+            if not card_id:
+                return jsonify({"success": False, "msg": "文件路径为空"})
+
+            file_path = os.path.join(str(CARDS_FOLDER), card_id.replace('/', os.sep))
+            if not os.path.exists(file_path):
+                return jsonify({"success": False, "msg": "文件不存在"})
+
+            info = extract_card_info(file_path)
+            if not info:
+                return jsonify({"success": False, "msg": "文件不存在"})
+
+            data_block = info.get('data', {}) if isinstance(info, dict) and 'data' in info else info
+            book = data_block.get('character_book') if isinstance(data_block, dict) else None
+            if book is None:
+                return jsonify({"success": False, "msg": "未找到内嵌世界书"})
+
+            cfg = load_config()
+            return jsonify(_apply_world_info_preview(book, cfg, preview_limit=preview_limit, force_full=force_full))
 
         if not file_path:
              return jsonify({"success": False, "msg": "文件路径为空"})
@@ -621,129 +1239,21 @@ def api_get_world_info_detail():
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        # 预览模式：条目过多时只返回前 N 条，避免前端卡死
-        truncated = False
-        truncated_content = False
-        total_entries = 0
-        applied_limit = 0
-        applied_content_limit = 0
-
-        def _count_entries(raw):
-            if isinstance(raw, list):
-                return len(raw)
-            if isinstance(raw, dict):
-                entries = raw.get('entries')
-                if isinstance(entries, list):
-                    return len(entries)
-                if isinstance(entries, dict):
-                    return len(entries.keys())
-            return 0
-
-        def _slice_entries(raw, limit):
-            if isinstance(raw, list):
-                return raw[:limit]
-            if isinstance(raw, dict):
-                entries = raw.get('entries')
-                if isinstance(entries, list):
-                    new_data = dict(raw)
-                    new_data['entries'] = entries[:limit]
-                    return new_data
-                if isinstance(entries, dict):
-                    keys = list(entries.keys())
-                    try:
-                        keys.sort(key=lambda k: int(k))
-                    except Exception:
-                        keys.sort()
-                    trimmed = {k: entries[k] for k in keys[:limit]}
-                    new_data = dict(raw)
-                    new_data['entries'] = trimmed
-                    return new_data
-            return raw
-
-        try:
-            limit_val = int(preview_limit) if preview_limit is not None else 0
-        except Exception:
-            limit_val = 0
-
-        default_limit = cfg.get('wi_preview_limit', 300)
-        default_content_limit = cfg.get('wi_preview_entry_max_chars', 2000)
-
-        if not force_full:
-            if limit_val <= 0:
-                try:
-                    limit_val = int(default_limit) if default_limit is not None else 0
-                except Exception:
-                    limit_val = 0
-
-            content_limit = 0
-            try:
-                content_limit = int(default_content_limit) if default_content_limit is not None else 0
-            except Exception:
-                content_limit = 0
-
-            if limit_val > 0:
-                total_entries = _count_entries(data)
-                if total_entries > limit_val:
-                    data = _slice_entries(data, limit_val)
-                    truncated = True
-                    applied_limit = limit_val
-
-            # 内容长度截断（避免超长文本渲染卡死）
-            if content_limit > 0:
-                applied_content_limit = content_limit
-
-                def _truncate_entry(entry):
-                    nonlocal truncated_content
-                    if not isinstance(entry, dict):
-                        return entry
-                    new_entry = dict(entry)
-                    content = new_entry.get('content')
-                    if isinstance(content, str) and len(content) > content_limit:
-                        new_entry['content'] = content[:content_limit] + ' ...'
-                        truncated_content = True
-                    comment = new_entry.get('comment')
-                    if isinstance(comment, str) and len(comment) > content_limit:
-                        new_entry['comment'] = comment[:content_limit] + ' ...'
-                        truncated_content = True
-                    return new_entry
-
-                if isinstance(data, list):
-                    data = [_truncate_entry(e) for e in data]
-                elif isinstance(data, dict):
-                    entries = data.get('entries')
-                    if isinstance(entries, list):
-                        data = dict(data)
-                        data['entries'] = [_truncate_entry(e) for e in entries]
-                    elif isinstance(entries, dict):
-                        data = dict(data)
-                        new_entries = {}
-                        for k, v in entries.items():
-                            new_entries[k] = _truncate_entry(v)
-                        data['entries'] = new_entries
-            
-        resp = {"success": True, "data": data}
-        if truncated:
-            resp.update({
-                "truncated": True,
-                "total_entries": total_entries,
-                "preview_limit": applied_limit
-            })
-        if truncated_content:
-            resp.update({
-                "truncated_content": True,
-                "preview_entry_max_chars": applied_content_limit
-            })
-        return jsonify(resp)
+        return jsonify(_apply_world_info_preview(data, cfg, preview_limit=preview_limit, force_full=force_full))
     except Exception as e:
         return jsonify({"success": False, "msg": str(e)})
 
 @bp.route('/api/world_info/save', methods=['POST'])
 def api_save_world_info():
     try:
-        save_mode = request.json.get('save_mode') # 'overwrite', 'new_global', 'new_resource'
-        target_path = request.json.get('file_path') # 如果是 overwrite
-        name = request.json.get('name')
-        content = request.json.get('content') # JSON 对象
+        req = request.get_json(silent=True)
+        if not isinstance(req, dict):
+            return jsonify({"success": False, "msg": "请求必须为 JSON 对象"})
+
+        save_mode = req.get('save_mode') # 'overwrite', 'new_global', 'new_resource'
+        target_path = req.get('file_path') # 如果是 overwrite
+        name = req.get('name')
+        content = req.get('content') # JSON 对象
         old_content = None
         history_records = []
         
@@ -782,20 +1292,14 @@ def api_save_world_info():
                 counter += 1
         
         elif save_mode == 'new_resource':
-            # 保存到指定角色的资源目录
-            card_id = request.json.get('card_id')
-            # 获取资源目录
-            ui_data = load_ui_data()
-            # ... (获取资源路径逻辑) ...
-            # 略，需要复用 get_resource_folder 逻辑
-            pass 
+            return jsonify({"success": False, "msg": "当前阶段暂不支持直接创建 resource 世界书"})
 
         if isinstance(content, (dict, list)):
             ensure_entry_uids(content)
             history_records = collect_previous_versions(old_content, content)
 
         # 写入
-        compact = bool(request.json.get('compact', False))
+        compact = bool(req.get('compact', False))
         with open(final_path, 'w', encoding='utf-8') as f:
             if compact:
                 json.dump(content, f, ensure_ascii=False, separators=(',', ':'))

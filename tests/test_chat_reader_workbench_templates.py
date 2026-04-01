@@ -1894,6 +1894,156 @@ def test_card_sidebar_template_hides_complete_library_action_until_mobile_tags_p
     assert 'x-show="$store.global.deviceType !== \'mobile\' || tagsSectionExpanded"' in sidebar_template
 
 
+def test_worldinfo_sidebar_template_includes_category_tree_section():
+    sidebar_template = read_project_file('templates/components/sidebar.html')
+
+    assert "currentMode === 'worldinfo'" in sidebar_template
+    assert '世界书分类' in sidebar_template
+    assert 'wiFolderTree' in sidebar_template
+    assert 'setWiCategory' in sidebar_template
+    assert 'getWiCategoryCount' in sidebar_template
+    assert 'getFolderCapabilities' in sidebar_template
+    assert 'can_create_child_folder' in sidebar_template
+
+
+def test_preset_sidebar_template_includes_category_tree_section():
+    sidebar_template = read_project_file('templates/components/sidebar.html')
+
+    assert "currentMode === 'presets'" in sidebar_template
+    assert '预设分类' in sidebar_template
+    assert 'presetFolderTree' in sidebar_template
+    assert 'setPresetCategory' in sidebar_template
+    assert 'getPresetCategoryCount' in sidebar_template
+    assert 'folder_capabilities' in sidebar_template or 'getFolderCapabilities' in sidebar_template
+
+
+def test_worldinfo_grid_template_exposes_category_metadata_and_mode_hints():
+    wi_grid_template = read_project_file('templates/components/grid_wi.html')
+
+    assert 'display_category' in wi_grid_template
+    assert 'category_mode' in wi_grid_template
+    assert 'showWorldInfoCategoryActions(item, $event)' in wi_grid_template
+    assert '移动到分类' in wi_grid_template
+    assert '设置管理器分类' in wi_grid_template
+    assert '恢复跟随角色卡' in wi_grid_template
+    assert '(item.source_type || item.type) !== \'embedded\'' in wi_grid_template
+    assert 'jumpToCardFromWi(getWorldInfoOwnerId(item))' in wi_grid_template
+    assert '如需调整分类，请移动所属角色卡' in wi_grid_template
+    assert '分类：' in wi_grid_template
+    assert '跟随角色卡' in wi_grid_template
+    assert '已覆盖管理器分类' in wi_grid_template
+    assert '内嵌世界书跟随角色卡分类' in wi_grid_template
+    assert 'locateWorldInfoOwnerCard(item)' not in wi_grid_template
+    assert 'wi-book-classification' in wi_grid_template
+
+
+def test_preset_grid_template_exposes_category_metadata_and_mode_hints():
+    preset_grid_template = read_project_file('templates/components/grid_presets.html')
+
+    assert 'display_category' in preset_grid_template
+    assert 'category_mode' in preset_grid_template
+    assert 'showPresetCategoryActions(item, $event)' in preset_grid_template
+    assert '移动到分类' in preset_grid_template
+    assert '设置管理器分类' in preset_grid_template
+    assert '恢复跟随角色卡' in preset_grid_template
+    assert '分类：' in preset_grid_template
+    assert '跟随角色卡' in preset_grid_template
+    assert '已覆盖管理器分类' in preset_grid_template
+    assert 'GLOBAL / 物理分类' in preset_grid_template or 'RESOURCE / 跟随角色卡' in preset_grid_template
+    assert '定位所属角色卡' in preset_grid_template
+
+
+def test_state_js_tracks_mode_specific_category_state_for_worldinfo_and_presets():
+    state_source = read_project_file('static/js/state.js')
+
+    assert 'wiFilterCategory' in state_source
+    assert 'wiAllFolders' in state_source
+    assert 'wiCategoryCounts' in state_source
+    assert 'wiFolderCapabilities' in state_source
+    assert 'presetFilterCategory' in state_source
+    assert 'presetAllFolders' in state_source
+    assert 'presetCategoryCounts' in state_source
+    assert 'presetFolderCapabilities' in state_source
+
+
+def test_sidebar_js_handles_mode_specific_category_trees_and_capability_gating():
+    sidebar_source = read_project_file('static/js/components/sidebar.js')
+
+    assert 'wiFolderTree' in sidebar_source
+    assert 'presetFolderTree' in sidebar_source
+    assert 'setWiCategory' in sidebar_source
+    assert 'setPresetCategory' in sidebar_source
+    assert 'getFolderCapabilities(path, mode = this.currentMode)' in sidebar_source
+    assert 'reset invalid category selection to root' not in sidebar_source
+    assert 'this.$watch(\'$store.global.wiAllFolders\'' in sidebar_source
+    assert 'this.$watch(\'$store.global.presetAllFolders\'' in sidebar_source
+
+
+def test_worldinfo_grid_js_uses_category_metadata_and_explicit_upload_fallback_contract():
+    wi_grid_source = read_project_file('static/js/components/wiGrid.js')
+
+    assert 'category: this.wiFilterCategory' in wi_grid_source
+    assert 'all_folders' in wi_grid_source
+    assert 'category_counts' in wi_grid_source
+    assert 'folder_capabilities' in wi_grid_source
+    assert 'target_category' in wi_grid_source
+    assert 'requires_global_fallback_confirmation' in wi_grid_source
+    assert 'allow_global_fallback' in wi_grid_source
+    assert '已更新管理器分类，未移动实际文件' in wi_grid_source
+    assert '请移动所属角色卡来调整内嵌世界书分类' in wi_grid_source
+    assert 'showWorldInfoCategoryActions(item, event)' in wi_grid_source
+    assert 'moveWorldInfoToCategory(item)' in wi_grid_source
+    assert 'resetWorldInfoCategory(item)' in wi_grid_source
+    assert 'locateWorldInfoOwnerCard(item)' in wi_grid_source
+    assert '设置管理器分类' in wi_grid_source
+    assert 'if (source_type === \'embedded\')' in wi_grid_source
+    assert "this.wiFilterType === 'global' || this.wiFilterType === 'all'" in wi_grid_source
+    assert 'owner_card_id' in wi_grid_source
+    assert 'owner_card_name' in wi_grid_source
+    assert 'source_type' in wi_grid_source
+
+
+def test_preset_grid_js_uses_category_metadata_and_explicit_upload_fallback_contract():
+    preset_grid_source = read_project_file('static/js/components/presetGrid.js')
+
+    assert 'category=' in preset_grid_source
+    assert 'all_folders' in preset_grid_source
+    assert 'category_counts' in preset_grid_source
+    assert 'folder_capabilities' in preset_grid_source
+    assert 'target_category' in preset_grid_source
+    assert 'requires_global_fallback_confirmation' in preset_grid_source
+    assert 'allow_global_fallback' in preset_grid_source
+    assert '已更新管理器分类，未移动实际文件' in preset_grid_source
+    assert 'showPresetCategoryActions(item, event)' in preset_grid_source
+    assert 'movePresetToCategory(item)' in preset_grid_source
+    assert 'resetPresetCategory(item)' in preset_grid_source
+    assert 'locatePresetOwnerCard(item)' in preset_grid_source
+    assert '设置管理器分类' in preset_grid_source
+    assert "this.filterType === 'global' || this.filterType === 'all'" in preset_grid_source
+    assert 'owner_card_id' in preset_grid_source
+    assert 'owner_card_name' in preset_grid_source
+    assert 'source_type' in preset_grid_source
+
+
+def test_worldinfo_preset_context_menu_delete_copy_is_not_card_specific():
+    context_menu_template = read_project_file('templates/components/context_menu.html')
+    context_menu_source = read_project_file('static/js/components/contextMenu.js')
+
+    assert 'deleteFolderConfirm.mode' in context_menu_template or 'deleteFolderConfirm.mode' in context_menu_source
+    assert 'deleteFolderItemLabel' in context_menu_template
+    assert "? '个项目'" in context_menu_source
+    assert ": '张卡片'" in context_menu_source
+
+
+def test_folder_operations_filters_parent_choices_to_capability_allowed_targets():
+    folder_operations_source = read_project_file('static/js/components/folderOperations.js')
+    folder_modal_template = read_project_file('templates/modals/folder_operations.html')
+
+    assert 'creatableFolderSelectList' in folder_operations_source
+    assert 'can_create_child_folder' in folder_operations_source
+    assert 'x-for="folder in creatableFolderSelectList"' in folder_modal_template
+
+
 def test_card_sidebar_mobile_css_pins_collapsed_tag_strip_to_sidebar_bottom():
     layout_css = read_project_file('static/css/modules/layout.css')
     mobile_layout_css = extract_media_block(layout_css, '@media (max-width: 768px)')

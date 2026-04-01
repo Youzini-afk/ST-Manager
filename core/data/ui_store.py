@@ -15,6 +15,7 @@ IMPORT_TIME_KEY = 'import_time'
 LAST_SENT_TO_ST_KEY = 'last_sent_to_st'
 TAG_TAXONOMY_KEY = '_tag_taxonomy_v1'
 ISOLATED_CATEGORIES_KEY = '_isolated_categories_v1'
+RESOURCE_ITEM_CATEGORIES_KEY = '_resource_item_categories_v1'
 
 DEFAULT_TAG_CATEGORY = '未分类'
 DEFAULT_TAG_CATEGORY_COLOR = '#64748b'
@@ -140,6 +141,70 @@ def _normalize_isolated_categories(raw):
     }
 
 
+def _normalize_resource_item_category_path(value):
+    if value is None:
+        return ''
+
+    path = os.path.normcase(os.path.normpath(str(value).strip()))
+    if not path or path == '.':
+        return ''
+    return path.replace('\\', '/')
+
+
+def _normalize_resource_item_categories(raw):
+    source = raw if isinstance(raw, dict) else {}
+    result = {
+        'worldinfo': {},
+        'presets': {},
+        'updated_at': 0,
+    }
+
+    for mode in ('worldinfo', 'presets'):
+        raw_items = source.get(mode)
+        if not isinstance(raw_items, dict):
+            continue
+
+        normalized_items = {}
+        for raw_path, raw_cfg in raw_items.items():
+            path_key = _normalize_resource_item_category_path(raw_path)
+            if not path_key:
+                continue
+
+            cfg = raw_cfg if isinstance(raw_cfg, dict) else {}
+            category = _normalize_isolated_category_path(cfg.get('category'))
+            if not category:
+                continue
+
+            updated_at = 0
+            try:
+                updated_at = int(cfg.get('updated_at') or 0)
+            except (TypeError, ValueError):
+                updated_at = 0
+
+            normalized_items[path_key] = {
+                'category': category,
+                'updated_at': max(0, updated_at),
+            }
+
+        result[mode] = dict(sorted(normalized_items.items(), key=lambda item: item[0]))
+
+    try:
+        result['updated_at'] = max(0, int(source.get('updated_at') or 0))
+    except (TypeError, ValueError):
+        result['updated_at'] = 0
+
+    return result
+
+
+def _is_resource_item_categories_equal(left, right):
+    left_norm = _normalize_resource_item_categories(left)
+    right_norm = _normalize_resource_item_categories(right)
+    return (
+        left_norm.get('worldinfo') == right_norm.get('worldinfo')
+        and left_norm.get('presets') == right_norm.get('presets')
+    )
+
+
 def _is_isolated_categories_equal(left, right):
     left_norm = _normalize_isolated_categories(left)
     right_norm = _normalize_isolated_categories(right)
@@ -250,6 +315,28 @@ def get_isolated_categories(ui_data):
     if not isinstance(ui_data, dict):
         return _normalize_isolated_categories({})
     return _normalize_isolated_categories(ui_data.get(ISOLATED_CATEGORIES_KEY))
+
+
+def get_resource_item_categories(ui_data):
+    if not isinstance(ui_data, dict):
+        return _normalize_resource_item_categories({})
+    return _normalize_resource_item_categories(ui_data.get(RESOURCE_ITEM_CATEGORIES_KEY))
+
+
+def set_resource_item_categories(ui_data, payload):
+    if not isinstance(ui_data, dict):
+        return False
+
+    previous_raw = ui_data.get(RESOURCE_ITEM_CATEGORIES_KEY)
+    previous_norm = _normalize_resource_item_categories(previous_raw)
+    next_norm = _normalize_resource_item_categories(payload)
+
+    if _is_resource_item_categories_equal(previous_norm, next_norm) and isinstance(previous_raw, dict):
+        return False
+
+    next_norm['updated_at'] = int(time.time())
+    ui_data[RESOURCE_ITEM_CATEGORIES_KEY] = next_norm
+    return True
 
 
 def set_isolated_categories(ui_data, payload):

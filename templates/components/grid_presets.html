@@ -34,7 +34,7 @@
             class="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center border-4 border-dashed border-[var(--accent-main)] m-4 rounded-xl">
             <div class="text-6xl mb-4">📥</div>
             <div class="text-2xl font-bold text-white">松开上传预设</div>
-            <div class="text-gray-300 mt-2">将存入全局预设目录</div>
+            <div class="text-gray-300 mt-2" x-text="presetUploadHintText"></div>
         </div>
 
         <!-- 列表内容区 -->
@@ -51,8 +51,36 @@
 
                         <!-- 来源角标 -->
                         <div class="absolute top-0 right-0 px-2 py-1 text-[10px] font-bold text-white rounded-bl-lg shadow-sm"
-                            :class="item.type === 'global' ? 'bg-blue-600' : 'bg-green-600'">
-                            <span x-text="item.type === 'global' ? 'GLOBAL' : 'RES'"></span>
+                            :class="(item.source_type || item.type) === 'global' ? 'bg-blue-600' : 'bg-green-600'">
+                            <span x-text="getPresetSourceHint(item)"></span>
+                        </div>
+
+                        <button @click.stop="showPresetCategoryActions(item, $event)"
+                            class="absolute bottom-2 right-2 px-2 py-1 text-[10px] rounded bg-[var(--bg-sub)] text-[var(--text-dim)] hover:text-[var(--text-main)] z-20"
+                            title="分类操作">
+                            移动到分类
+                        </button>
+
+                        <button x-show="getPresetOwnerId(item)" @click.stop="locatePresetOwnerCard(item)"
+                            class="absolute bottom-2 left-8 px-2 py-1 text-[10px] rounded bg-[var(--bg-sub)] text-[var(--text-dim)] hover:text-[var(--text-main)] z-20"
+                            title="定位所属角色卡">
+                            定位所属角色卡
+                        </button>
+
+                        <div x-show="activeCategoryItemId === item.id" @click.outside="hidePresetCategoryActions()"
+                            class="absolute right-2 bottom-10 z-30 w-44 rounded-lg border border-[var(--border-light)] bg-[var(--bg-panel)] shadow-xl p-2 space-y-1">
+                            <button @click.stop="movePresetToCategory(item)"
+                                class="w-full text-left px-2 py-1 text-xs rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)]">
+                                <span x-text="(item.source_type || item.type) === 'resource' ? '设置管理器分类' : '移动到分类'"></span>
+                            </button>
+                            <button x-show="(item.source_type || item.type) === 'resource'" @click.stop="resetPresetCategory(item)"
+                                class="w-full text-left px-2 py-1 text-xs rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)]">
+                                恢复跟随角色卡
+                            </button>
+                            <button x-show="getPresetOwnerId(item)" @click.stop="locatePresetOwnerCard(item)"
+                                class="w-full text-left px-2 py-1 text-xs rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)]">
+                                定位所属角色卡
+                            </button>
                         </div>
 
                         <!-- 删除按钮 -->
@@ -101,16 +129,27 @@
                             class="text-xs text-[var(--text-dim)] line-clamp-2 mb-3"
                             x-text="item.description"></div>
 
+                        <div class="text-[10px] text-[var(--text-dim)] space-y-1 mb-3">
+                            <!-- 来源提示合同: GLOBAL / 物理分类, RESOURCE / 跟随角色卡, RESOURCE / 已覆盖管理器分类 -->
+                            <div class="truncate opacity-80" :title="getPresetSourceHint(item)" x-text="getPresetSourceHint(item)"></div>
+                            <div class="truncate" :title="item.display_category || '根目录'">
+                                <span>分类：</span>
+                                <span x-text="item.display_category || '根目录'"></span>
+                            </div>
+                            <div x-show="item.category_mode === 'inherited'" class="text-green-400">跟随角色卡</div>
+                            <div x-show="item.category_mode === 'override'" class="text-amber-400">已覆盖管理器分类</div>
+                        </div>
+
                         <div
                             class="mt-auto pt-2 border-t border-[var(--border-light)] flex justify-between items-center">
                             <!-- 资源归属提示 -->
                             <div class="min-w-0 flex-1 mr-2">
-                                <div x-show="item.source_folder"
+                                <div x-show="getPresetOwnerName(item)"
                                     class="text-[10px] text-green-400 flex items-center gap-1 truncate"
-                                    :title="item.source_folder">
-                                    <span>👤</span> <span x-text="item.source_folder"></span>
+                                    :title="getPresetOwnerName(item)">
+                                    <span>👤</span> <span x-text="getPresetOwnerName(item)"></span>
                                 </div>
-                                <div x-show="!item.source_folder" class="text-[10px] text-blue-400 opacity-60">Global
+                                <div x-show="!getPresetOwnerName(item)" class="text-[10px] text-blue-400 opacity-60">Global
                                     Library</div>
                             </div>
 

@@ -186,6 +186,34 @@
                 <span>🎴 角色内嵌</span>
                 <span class="text-xs opacity-60">Embedded</span>
             </button>
+
+            <div class="pt-3 mt-3 border-t border-[var(--border-main)]">
+                <div class="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-2">世界书分类</div>
+                <div @click="setWiCategory('')"
+                    @contextmenu.prevent="getFolderCapabilities('', 'worldinfo').can_create_child_folder ? showFolderContextMenu($event, { path: '', name: '根目录', mode: 'worldinfo' }) : null"
+                    :class="wiFilterCategory === '' ? 'bg-[var(--accent-main)] text-white' : 'hover:bg-[var(--bg-hover)] text-[var(--text-main)]'"
+                    class="w-full text-left px-3 py-2 rounded text-sm flex justify-between items-center transition-colors cursor-pointer mb-1">
+                    <span>📂 全部分类</span>
+                    <span class="text-xs opacity-70" x-text="getWiCategoryCount('')"></span>
+                </div>
+                <template x-for="folder in wiFolderTree" :key="`wi-${folder.path}`">
+                    <div x-show="folder.visible">
+                        <div @click="setWiCategory(folder.path)"
+                            @contextmenu.prevent="showFolderContextMenu($event, { ...folder, mode: 'worldinfo' })"
+                            :class="['pl-level-' + Math.min(folder.level, 3), wiFilterCategory === folder.path ? 'active bg-[var(--accent-main)] text-white' : 'hover:bg-[var(--bg-hover)] text-[var(--text-main)]']"
+                            class="folder-item flex items-center py-1.5 pr-2 rounded-lg cursor-pointer text-sm mb-0.5 group">
+                            <button @click.stop="toggleFolder(folder.path)"
+                                class="w-6 h-6 flex items-center justify-center opacity-70 hover:opacity-100"
+                                style="background:none; border:none; color:inherit; cursor:pointer;">
+                                <span x-text="folder.expanded ? '▼' : '▶'" style="font-size: 10px;"></span>
+                            </button>
+                            <span class="mr-2 opacity-80 group-hover:opacity-100">📁</span>
+                            <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap" x-text="folder.name"></span>
+                            <span class="text-xs opacity-60 ml-2" x-text="getWiCategoryCount(folder.path)"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
         </div>
 
         <div class="mt-auto p-4 border-t border-[var(--border-main)] space-y-2">
@@ -260,6 +288,34 @@
                 <span>📁 资源绑定</span>
                 <span class="text-xs opacity-60">res/.../presets</span>
             </button>
+
+            <div class="pt-3 mt-3 border-t border-[var(--border-main)]">
+                <div class="text-xs font-bold text-[var(--text-dim)] uppercase tracking-wider mb-2">预设分类</div>
+                <div @click="setPresetCategory('')"
+                    @contextmenu.prevent="getFolderCapabilities('', 'presets').can_create_child_folder ? showFolderContextMenu($event, { path: '', name: '根目录', mode: 'presets' }) : null"
+                    :class="presetFilterCategory === '' ? 'bg-[var(--accent-main)] text-white' : 'hover:bg-[var(--bg-hover)] text-[var(--text-main)]'"
+                    class="w-full text-left px-3 py-2 rounded text-sm flex justify-between items-center transition-colors cursor-pointer mb-1">
+                    <span>📂 全部分类</span>
+                    <span class="text-xs opacity-70" x-text="getPresetCategoryCount('')"></span>
+                </div>
+                <template x-for="folder in presetFolderTree" :key="`preset-${folder.path}`">
+                    <div x-show="folder.visible">
+                        <div @click="setPresetCategory(folder.path)"
+                            @contextmenu.prevent="showFolderContextMenu($event, { ...folder, mode: 'presets' })"
+                            :class="['pl-level-' + Math.min(folder.level, 3), presetFilterCategory === folder.path ? 'active bg-[var(--accent-main)] text-white' : 'hover:bg-[var(--bg-hover)] text-[var(--text-main)]']"
+                            class="folder-item flex items-center py-1.5 pr-2 rounded-lg cursor-pointer text-sm mb-0.5 group">
+                            <button @click.stop="toggleFolder(folder.path)"
+                                class="w-6 h-6 flex items-center justify-center opacity-70 hover:opacity-100"
+                                style="background:none; border:none; color:inherit; cursor:pointer;">
+                                <span x-text="folder.expanded ? '▼' : '▶'" style="font-size: 10px;"></span>
+                            </button>
+                            <span class="mr-2 opacity-80 group-hover:opacity-100">📁</span>
+                            <span class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap" x-text="folder.name"></span>
+                            <span class="text-xs opacity-60 ml-2" x-text="getPresetCategoryCount(folder.path)"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
         </div>
 
         <div class="mt-auto p-4 border-t border-[var(--border-main)] text-xs text-[var(--text-dim)]">
