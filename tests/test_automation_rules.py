@@ -1655,3 +1655,104 @@ def test_manual_execute_runs_template_rename_through_executor_plan(monkeypatch):
         'set_filename_from_wi_name': False,
         'rename_file_by_template': '{{char_name}}',
     }
+
+
+def test_executor_apply_plan_passes_structured_template_rename_config_to_sync_helper(monkeypatch):
+    from core.automation.executor import AutomationExecutor
+    from core.automation import executor as automation_executor
+
+    captured = {}
+
+    monkeypatch.setattr(automation_executor, 'modify_card_attributes_internal', lambda *args, **kwargs: True)
+
+    def _fake_sync_card_names_internal(card_id_arg, **kwargs):
+        captured['rename_kwargs'] = dict(kwargs)
+        return True, 'folder/renamed.json', 'Success', {
+            'filename_updated': True,
+            'new_filename': 'renamed.json',
+        }
+
+    monkeypatch.setattr(automation_executor, 'sync_card_names_internal', _fake_sync_card_names_internal)
+    monkeypatch.setattr(automation_executor, 'move_card_internal', lambda *args, **kwargs: (True, 'folder/renamed.json', 'Success'))
+
+    AutomationExecutor().apply_plan(
+        'folder/original.json',
+        {
+            'move': None,
+            'add_tags': set(),
+            'remove_tags': set(),
+            'favorite': None,
+            'fetch_forum_tags': None,
+            'set_char_name_from_filename': False,
+            'set_wi_name_from_filename': False,
+            'set_filename_from_char_name': False,
+            'set_filename_from_wi_name': False,
+            'rename_file_by_template': {
+                'template': '{{char_name}} - {{import_date|date:%Y-%m-%d}}',
+                'fallback_template': '{{char_name}}',
+                'max_length': 120,
+            },
+        },
+        ui_data={'folder/original.json': {'import_time': 1704153600}},
+    )
+
+    assert captured['rename_kwargs']['desired_filename_template'] == {
+        'template': '{{char_name}} - {{import_date|date:%Y-%m-%d}}',
+        'fallback_template': '{{char_name}}',
+        'max_length': 120,
+    }
+
+
+def test_sync_card_names_internal_accepts_structured_template_rename_config(monkeypatch, tmp_path):
+    from core.services import card_service
+
+    cards_root = tmp_path / 'cards'
+    card_dir = cards_root / 'folder'
+    card_dir.mkdir(parents=True, exist_ok=True)
+    source_path = card_dir / 'demo.json'
+    source_path.write_text('{"spec":"chara_card_v2"}', encoding='utf-8')
+
+    monkeypatch.setattr(card_service, 'CARDS_FOLDER', str(cards_root), raising=False)
+    monkeypatch.setattr(card_service, 'extract_card_info', lambda path: {'name': 'Hero Card', 'data': {'name': 'Hero Card'}})
+    monkeypatch.setattr(card_service, 'write_card_metadata', lambda path, info: True)
+    monkeypatch.setattr(card_service, 'update_card_cache', lambda *args, **kwargs: None)
+    monkeypatch.setattr(card_service, 'get_db', lambda: type('Conn', (), {'execute': lambda self, *a, **k: self, 'commit': lambda self: None})())
+    monkeypatch.setattr(card_service, 'load_ui_data', lambda: {'folder/demo.json': {'import_time': 1704153600}})
+    monkeypatch.setattr(card_service, 'save_ui_data', lambda payload: None)
+    monkeypatch.setattr(
+        card_service.ctx,
+        'cache',
+        SimpleNamespace(
+            id_map={
+                'folder/demo.json': {
+                    'id': 'folder/demo.json',
+                    'filename': 'demo.json',
+                    'category': 'folder',
+                    'char_name': 'Hero Card',
+                    'last_modified': 1704153600,
+                }
+            },
+            bundle_map={},
+            move_card_update=lambda *args, **kwargs: None,
+            update_card_data=lambda *args, **kwargs: None,
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(card_service, 'suppress_fs_events', lambda *args, **kwargs: None)
+
+    ok, final_id, msg, details = card_service.sync_card_names_internal(
+        'folder/demo.json',
+        desired_filename_template={
+            'template': '{{char_name}} - {{import_date|date:%Y-%m-%d}}',
+            'fallback_template': '{{char_name}}',
+            'max_length': 120,
+        },
+    )
+
+    assert ok is True
+    assert msg == 'Success'
+    assert final_id == 'folder/Hero Card - 2024-01-02.json'
+    assert details['filename_updated'] is True
+    assert details['new_filename'] == 'Hero Card - 2024-01-02.json'
+    assert source_path.exists() is False
+    assert (card_dir / 'Hero Card - 2024-01-02.json').exists() is True

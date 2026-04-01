@@ -765,7 +765,19 @@ def sync_card_names_internal(
         if isinstance(desired_filename_base, str) and desired_filename_base.strip():
             desired_filename_source = desired_filename_base.strip()
 
-        if not desired_filename_source and isinstance(desired_filename_template, str) and desired_filename_template.strip():
+        template_config = desired_filename_template if isinstance(desired_filename_template, Mapping) else None
+        template_text = ''
+        fallback_template_text = ''
+        template_max_length = None
+
+        if isinstance(desired_filename_template, str) and desired_filename_template.strip():
+            template_text = desired_filename_template.strip()
+        elif template_config:
+            template_text = str(template_config.get('template') or '').strip()
+            fallback_template_text = str(template_config.get('fallback_template') or '').strip()
+            template_max_length = template_config.get('max_length')
+
+        if not desired_filename_source and template_text:
             from core.automation.template_runtime import build_safe_filename_result, build_snapshot_template_fields
 
             resolved_ui_data = ui_data if isinstance(ui_data, Mapping) else load_ui_data()
@@ -793,8 +805,10 @@ def sync_card_names_internal(
 
             rename_result = build_safe_filename_result(
                 current_filename=old_filename,
-                template=desired_filename_template,
+                template=template_text,
                 fields=fields,
+                fallback_template=fallback_template_text,
+                max_length=template_max_length,
             )
             details['observability'] = rename_result.get('observability', {})
             if rename_result.get('suppressed'):
