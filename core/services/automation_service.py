@@ -1,6 +1,13 @@
 import logging
 import os
+from core.automation.normalizer import (
+    TRIGGER_CONTEXT_AUTO_IMPORT,
+    TRIGGER_CONTEXT_LINK_UPDATE,
+    TRIGGER_CONTEXT_TAG_EDIT,
+    normalize_actions_for_context,
+)
 from core.config import CARDS_FOLDER, load_config
+from core.automation.template_runtime import build_snapshot_template_fields
 from core.automation.manager import rule_manager
 from core.automation.engine import AutomationEngine
 from core.automation.executor import AutomationExecutor
@@ -8,6 +15,7 @@ from core.automation.constants import (
     FIELD_MAP,
     ACT_FETCH_FORUM_TAGS,
     ACT_MERGE_TAGS,
+    ACT_RENAME_FILE_BY_TEMPLATE,
     ACT_SET_CHAR_NAME_FROM_FILENAME,
     ACT_SET_WI_NAME_FROM_FILENAME,
     ACT_SET_FILENAME_FROM_CHAR_NAME,
@@ -16,7 +24,7 @@ from core.automation.constants import (
 from core.automation.tag_merge import apply_merge_actions_to_tags
 from core.context import ctx
 from core.data.ui_store import load_ui_data
-from core.services.card_service import resolve_ui_key
+from core.services.card_service import modify_card_attributes_internal, resolve_ui_key
 from core.utils.tag_parser import split_action_tags
 from core.utils.image import extract_card_info
 
@@ -65,11 +73,13 @@ def _ruleset_uses_fields(ruleset, target_fields):
 def _build_rule_context(card_id, card_obj, ruleset, ui_data=None, tags=None):
     context_data = dict(card_obj or {})
 
-    if tags is not None:
-        context_data['tags'] = list(tags or [])
-
     if ui_data is None:
         ui_data = load_ui_data()
+
+    context_data.update(build_snapshot_template_fields(card_id, card_obj, ui_data=ui_data))
+
+    if tags is not None:
+        context_data['tags'] = list(tags or [])
 
     ui_key = resolve_ui_key(card_id)
     ui_info = ui_data.get(ui_key, {})
@@ -137,6 +147,59 @@ def _build_runtime_from_active_ruleset():
     }
 
 
+def _empty_exec_plan():
+    return {
+        'move': None,
+        'add_tags': set(),
+        'remove_tags': set(),
+        'favorite': None,
+        'fetch_forum_tags': None,
+        'rename_file_by_template': None,
+        'set_char_name_from_filename': False,
+        'set_wi_name_from_filename': False,
+        'set_filename_from_char_name': False,
+        'set_filename_from_wi_name': False,
+    }
+
+
+def _build_exec_plan_from_actions(actions, slash_as_separator=False):
+    exec_plan = _empty_exec_plan()
+
+    for act in actions or []:
+        if not isinstance(act, dict):
+            continue
+
+        action_type = act.get('type')
+        action_value = act.get('value')
+
+        if action_type == 'move_folder':
+            exec_plan['move'] = action_value
+        elif action_type == 'add_tag':
+            exec_plan['add_tags'].update(
+                split_action_tags(action_value, slash_as_separator=slash_as_separator)
+            )
+        elif action_type == 'remove_tag':
+            exec_plan['remove_tags'].update(
+                split_action_tags(action_value, slash_as_separator=slash_as_separator)
+            )
+        elif action_type == 'set_favorite':
+            exec_plan['favorite'] = (str(action_value).lower() == 'true')
+        elif action_type == ACT_SET_CHAR_NAME_FROM_FILENAME:
+            exec_plan['set_char_name_from_filename'] = True
+        elif action_type == ACT_SET_WI_NAME_FROM_FILENAME:
+            exec_plan['set_wi_name_from_filename'] = True
+        elif action_type == ACT_SET_FILENAME_FROM_CHAR_NAME:
+            exec_plan['set_filename_from_char_name'] = True
+        elif action_type == ACT_SET_FILENAME_FROM_WI_NAME:
+            exec_plan['set_filename_from_wi_name'] = True
+        elif action_type == ACT_RENAME_FILE_BY_TEMPLATE:
+            exec_plan['rename_file_by_template'] = action_value
+        elif action_type == ACT_FETCH_FORUM_TAGS:
+            exec_plan['fetch_forum_tags'] = action_value if isinstance(action_value, dict) else {}
+
+    return exec_plan
+
+
 def get_global_tag_merge_runtime():
     """
     获取全局规则集中的标签合并运行时上下文。
@@ -179,10 +242,12 @@ def auto_run_tag_merge_on_tagging(card_id, tags, ui_data=None, runtime=None):
         context_data, ui_data = _build_rule_context(card_id, card_obj, ruleset, ui_data=ui_data, tags=tags)
 
         plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
-        merge_actions = [
-            act for act in plan_raw.get('actions', [])
-            if isinstance(act, dict) and act.get('type') == ACT_MERGE_TAGS
-        ]
+        normalized_plan = normalize_actions_for_context(
+            plan_raw.get('actions', []),
+            TRIGGER_CONTEXT_TAG_EDIT,
+            card_snapshot=context_data,
+        )
+        merge_actions = normalized_plan.get('actions', [])
 
         if not merge_actions:
             return {
@@ -244,48 +309,19 @@ def auto_run_rules_on_card(card_id):
         
         # 评估（自动执行时，无条件的规则也应执行）
         plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
+        normalized_plan = normalize_actions_for_context(
+            plan_raw.get('actions', []),
+            TRIGGER_CONTEXT_AUTO_IMPORT,
+            card_snapshot=context_data,
+        )
         
-        if not plan_raw['actions']:
+        if not normalized_plan['actions']:
             return {"run": True, "actions": 0}
-            
-        # 转换 Plan
-        exec_plan = {
-            'move': None,
-            'add_tags': set(),
-            'remove_tags': set(),
-            'favorite': None,
-            'fetch_forum_tags': None,
-            'set_char_name_from_filename': False,
-            'set_wi_name_from_filename': False,
-            'set_filename_from_char_name': False,
-            'set_filename_from_wi_name': False,
-        }
-        for act in plan_raw['actions']:
-            t = act['type']
-            v = act.get('value')
-            if t == 'move_folder':
-                exec_plan['move'] = v
-            elif t == 'add_tag':
-                exec_plan['add_tags'].update(split_action_tags(v, slash_as_separator=slash_as_separator))
-            elif t == 'remove_tag':
-                exec_plan['remove_tags'].update(split_action_tags(v, slash_as_separator=slash_as_separator))
-            elif t == 'set_favorite':
-                exec_plan['favorite'] = (str(v).lower() == 'true')
-            elif t == ACT_SET_CHAR_NAME_FROM_FILENAME:
-                exec_plan['set_char_name_from_filename'] = True
-            elif t == ACT_SET_WI_NAME_FROM_FILENAME:
-                exec_plan['set_wi_name_from_filename'] = True
-            elif t == ACT_SET_FILENAME_FROM_CHAR_NAME:
-                exec_plan['set_filename_from_char_name'] = True
-            elif t == ACT_SET_FILENAME_FROM_WI_NAME:
-                exec_plan['set_filename_from_wi_name'] = True
-            elif t == ACT_FETCH_FORUM_TAGS:
-                # 导入时跳过论坛标签抓取，因为此时 URL 为空
-                # 此动作仅在用户更新来源链接时触发
-                continue
-            elif t == ACT_MERGE_TAGS:
-                # 标签合并仅在手动打标场景触发，导入时跳过
-                continue
+        
+        exec_plan = _build_exec_plan_from_actions(
+            normalized_plan.get('actions', []),
+            slash_as_separator=slash_as_separator,
+        )
             
         # 执行
         res = executor.apply_plan(card_id, exec_plan, ui_data)
@@ -325,36 +361,19 @@ def auto_run_forum_tags_on_link_update(card_id):
 
         # 评估（自动执行时，无条件的规则也应执行）
         plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
+        normalized_plan = normalize_actions_for_context(
+            plan_raw.get('actions', []),
+            TRIGGER_CONTEXT_LINK_UPDATE,
+            card_snapshot=context_data,
+        )
 
-        if not plan_raw['actions']:
+        if not normalized_plan['actions']:
             return {"run": True, "actions": 0}
 
-        # 只提取 fetch_forum_tags 动作
-        fetch_forum_tags_config = None
-        for act in plan_raw['actions']:
-            if act['type'] == ACT_FETCH_FORUM_TAGS:
-                v = act.get('value')
-                if isinstance(v, dict):
-                    fetch_forum_tags_config = v
-                else:
-                    fetch_forum_tags_config = {}
-                break  # 只执行第一个抓取论坛标签动作
+        exec_plan = _build_exec_plan_from_actions(normalized_plan.get('actions', []))
 
-        if not fetch_forum_tags_config:
+        if exec_plan.get('fetch_forum_tags') is None:
             return {"run": True, "actions": 0, "reason": "no_fetch_forum_tags_action"}
-
-        # 构建只包含 fetch_forum_tags 的执行计划
-        exec_plan = {
-            'move': None,
-            'add_tags': set(),
-            'remove_tags': set(),
-            'favorite': None,
-            'fetch_forum_tags': fetch_forum_tags_config,
-            'set_char_name_from_filename': False,
-            'set_wi_name_from_filename': False,
-            'set_filename_from_char_name': False,
-            'set_filename_from_wi_name': False,
-        }
 
         # 执行
         res = executor.apply_plan(card_id, exec_plan, ui_data)
@@ -375,8 +394,6 @@ def auto_run_forum_tags_on_link_update(card_id):
             if merge_payload.get('changed'):
                 merged_tags = merge_payload.get('tags') or final_tags
                 if merged_tags != final_tags:
-                    from core.services.card_service import modify_card_attributes_internal
-
                     remove_tags = [t for t in final_tags if t not in merged_tags]
                     add_tags = [t for t in merged_tags if t not in final_tags]
                     if add_tags or remove_tags:

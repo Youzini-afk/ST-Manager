@@ -73,8 +73,17 @@ class AutomationExecutor:
             'set_wi_name_from_filename': bool(plan.get('set_wi_name_from_filename')),
             'set_filename_from_char_name': bool(plan.get('set_filename_from_char_name')),
             'set_filename_from_wi_name': bool(plan.get('set_filename_from_wi_name')),
+            'desired_filename_base': None,
+            'desired_filename_template': plan.get('rename_file_by_template'),
+            'ui_data': ui_data,
         }
-        if any(sync_flags.values()):
+        if any([
+            sync_flags['set_char_name_from_filename'],
+            sync_flags['set_wi_name_from_filename'],
+            sync_flags['set_filename_from_char_name'],
+            sync_flags['set_filename_from_wi_name'],
+            bool(sync_flags['desired_filename_template']),
+        ]):
             ok, new_id, msg, sync_details = sync_card_names_internal(current_id, **sync_flags)
             sync_result = dict(sync_details or {})
             sync_result['success'] = bool(ok)
@@ -86,6 +95,8 @@ class AutomationExecutor:
                 current_id = new_id
             else:
                 logger.warning(f"Automation name sync failed for {card_id}: {msg}")
+                result["final_id"] = current_id
+                return result
 
         # 2. 执行移动 (最后执行，因为会改变 ID)
         target_folder = plan.get('move')

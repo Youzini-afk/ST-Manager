@@ -63,6 +63,52 @@ ACT_FETCH_FORUM_TAGS = "fetch_forum_tags"
 # 标签合并动作
 ACT_MERGE_TAGS = "merge_tags"
 
+# 新增动作
+ACT_RENAME_FILE_BY_TEMPLATE = "rename_file_by_template"
+ACT_SPLIT_CATEGORY_TO_TAGS = "split_category_to_tags"
+
+# 触发上下文
+TRIGGER_CONTEXT_MANUAL_RUN = "manual_run"
+TRIGGER_CONTEXT_AUTO_IMPORT = "auto_import"
+TRIGGER_CONTEXT_LINK_UPDATE = "link_update"
+TRIGGER_CONTEXT_TAG_EDIT = "tag_edit"
+
+# 触发上下文允许的动作类型
+TRIGGER_CONTEXT_ALLOWED_ACTIONS = {
+    TRIGGER_CONTEXT_MANUAL_RUN: {
+        ACT_MOVE,
+        ACT_ADD_TAG,
+        ACT_REMOVE_TAG,
+        ACT_SET_FAV,
+        ACT_SET_CHAR_NAME_FROM_FILENAME,
+        ACT_SET_WI_NAME_FROM_FILENAME,
+        ACT_SET_FILENAME_FROM_CHAR_NAME,
+        ACT_SET_FILENAME_FROM_WI_NAME,
+        ACT_FETCH_FORUM_TAGS,
+        ACT_MERGE_TAGS,
+        ACT_RENAME_FILE_BY_TEMPLATE,
+        ACT_SPLIT_CATEGORY_TO_TAGS,
+    },
+    TRIGGER_CONTEXT_AUTO_IMPORT: {
+        ACT_MOVE,
+        ACT_ADD_TAG,
+        ACT_REMOVE_TAG,
+        ACT_SET_FAV,
+        ACT_SET_CHAR_NAME_FROM_FILENAME,
+        ACT_SET_WI_NAME_FROM_FILENAME,
+        ACT_SET_FILENAME_FROM_CHAR_NAME,
+        ACT_SET_FILENAME_FROM_WI_NAME,
+        ACT_RENAME_FILE_BY_TEMPLATE,
+        ACT_SPLIT_CATEGORY_TO_TAGS,
+    },
+    TRIGGER_CONTEXT_LINK_UPDATE: {
+        ACT_FETCH_FORUM_TAGS,
+    },
+    TRIGGER_CONTEXT_TAG_EDIT: {
+        ACT_MERGE_TAGS,
+    },
+}
+
 # URL字段映射
 URL_FIELD_MAP = {
     "source_url": "extensions.source_url",  # 来源URL字段

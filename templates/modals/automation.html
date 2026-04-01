@@ -134,7 +134,7 @@
                                             x-text="(activeRuleSet?.id && globalRulesetId === activeRuleSet?.id) ? '已激活' : '设为全局'"></span>
                                     </button>
                                     <!-- 语法帮助按钮 -->
-                                    <button @click="showHelpModal = true"
+                                    <button @click="openHelpTab('conditions')"
                                         class="w-6 h-6 flex items-center justify-center rounded-full border border-gray-500 text-gray-500 hover:border-blue-400 hover:text-blue-400 hover:bg-blue-400/10 transition-colors ml-2"
                                         title="查看规则语法帮助">
                                         <span class="text-xs font-bold">?</span>
@@ -339,6 +339,7 @@
                                         <template x-for="(action, aIdx) in rule.actions" :key="aIdx">
                                             <div class="logic-row" style="border-color: rgba(16, 185, 129, 0.3);">
                                                 <select x-model="action.type"
+                                                    @change="initActionConfig(action)"
                                                     class="auto-select w-32 font-bold text-green-600">
                                                     <option value="move_folder">📂 移动到...</option>
                                                     <option value="add_tag">🏷️ 添加标签</option>
@@ -346,6 +347,8 @@
                                                     <option value="set_favorite">★ 设为收藏</option>
                                                     <option value="merge_tags">🔀 标签合并</option>
                                                     <option value="fetch_forum_tags">🌐 抓取论坛标签</option>
+                                                    <option value="rename_file_by_template">🧩 模板重命名文件</option>
+                                                    <option value="split_category_to_tags">📝 分类拆分为标签</option>
                                                     <option value="set_char_name_from_filename">📝 文件名→角色名</option>
                                                     <option value="set_wi_name_from_filename">📚 文件名→世界书名</option>
                                                     <option value="set_filename_from_char_name">📄 角色名→文件名</option>
@@ -375,8 +378,7 @@
 
                                                      <!-- 抓取论坛标签配置 -->
                                                      <template x-if="action.type === 'fetch_forum_tags'">
-                                                         <div x-data="{ cfg: null }"
-                                                              x-init="cfg = action.config || (action.config = { exclude_tags: '', replace_rules_text: '', merge_mode: 'merge' }); $watch('action.type', value => { if (value === 'fetch_forum_tags' && !action.config) { action.config = { exclude_tags: '', replace_rules_text: '', merge_mode: 'merge' }; } })"
+                                                         <div x-data="{ cfg: initActionConfig(action) }"
                                                                class="space-y-2 p-2 bg-[var(--bg-sub)] rounded border border-[var(--border-light)]">
                                                               <!-- 排除标签 -->
                                                                <div class="flex items-center gap-2">
@@ -408,12 +410,73 @@
                                                          </div>
                                                      </template>
 
-                                                    <!-- 其他动作类型的值输入 -->
-                                                    <template x-if="action.type !== 'set_favorite' && action.type !== 'fetch_forum_tags' && action.type !== 'merge_tags' && action.type !== 'set_char_name_from_filename' && action.type !== 'set_wi_name_from_filename' && action.type !== 'set_filename_from_char_name' && action.type !== 'set_filename_from_wi_name'">
-                                                        <input type="text" x-model="action.value"
-                                                            class="auto-input w-full"
-                                                            :placeholder="action.type==='move_folder' ? '文件夹路径 (e.g. Race/Elf)' : ((action.type==='add_tag' || action.type==='remove_tag') ? ($store.global.settingsForm.automation_slash_is_tag_separator ? '标签名称，多个可用 | 或 / 分隔' : '标签名称，多个可用 | 分隔') : '标签名称')"
-                                                            :title="(action.type==='add_tag' || action.type==='remove_tag') ? ($store.global.settingsForm.automation_slash_is_tag_separator ? '可批量输入：使用 | 或 / 分隔多个标签' : '可批量输入：使用 | 分隔多个标签') : ''">
+                                                     <template x-if="action.type === 'rename_file_by_template'">
+                                                          <div x-data="{ cfg: initActionConfig(action) }"
+                                                               class="space-y-2 p-2 bg-[var(--bg-sub)] rounded border border-[var(--border-light)]">
+                                                              <div>
+                                                                  <div class="text-xs text-[var(--text-dim)] mb-1">套用示例</div>
+                                                                  <div class="flex flex-wrap gap-2">
+                                                                      <button type="button" class="automation-preset-chip"
+                                                                          @click="cfg = applyRenameTemplatePreset(action, 'name_version')">
+                                                                          角色名 + 版本
+                                                                      </button>
+                                                                      <button type="button" class="automation-preset-chip"
+                                                                          @click="cfg = applyRenameTemplatePreset(action, 'name_import_date')">
+                                                                          角色名 + 导入日期
+                                                                      </button>
+                                                                      <button type="button" class="automation-preset-chip"
+                                                                          @click="cfg = applyRenameTemplatePreset(action, 'name_version_modified_date')">
+                                                                          角色名 + 版本 + 修改日期
+                                                                      </button>
+                                                                  </div>
+                                                              </div>
+                                                              <div class="flex items-center gap-2">
+                                                                  <span class="text-xs text-[var(--text-dim)] w-20">模板:</span>
+                                                                  <input type="text"
+                                                                      x-model="cfg.template"
+                                                                     class="auto-input flex-1 text-xs"
+                                                                     placeholder="例如：{{char_name}} - {{creator}}">
+                                                             </div>
+                                                             <div class="flex items-center gap-2">
+                                                                 <span class="text-xs text-[var(--text-dim)] w-20">回退模板:</span>
+                                                                 <input type="text"
+                                                                     x-model="cfg.fallback_template"
+                                                                     class="auto-input flex-1 text-xs"
+                                                                     placeholder="当主模板为空时使用，可留空">
+                                                             </div>
+                                                              <div class="flex items-center gap-2">
+                                                                  <span class="text-xs text-[var(--text-dim)] w-20">最大长度:</span>
+                                                                  <input type="number"
+                                                                      x-model.number="cfg.max_length"
+                                                                      min="1"
+                                                                      class="auto-input flex-1 text-xs"
+                                                                      placeholder="120">
+                                                              </div>
+                                                          </div>
+                                                      </template>
+
+                                                     <template x-if="action.type === 'split_category_to_tags'">
+                                                          <div x-data="{ cfg: initActionConfig(action) }"
+                                                               class="space-y-2 p-2 bg-[var(--bg-sub)] rounded border border-[var(--border-light)]">
+                                                              <div class="flex items-center gap-2">
+                                                                  <span class="text-xs text-[var(--text-dim)] w-20">排除分类标签:</span>
+                                                                  <input type="text"
+                                                                      x-model="cfg.exclude_category_tags"
+                                                                      class="auto-input flex-1 text-xs"
+                                                                      :placeholder="$store.global.settingsForm.automation_slash_is_tag_separator ? '多个标签用|或/分隔，如：角色|题材/状态' : '多个标签用|分隔，如：角色|题材'">
+                                                              </div>
+                                                              <div class="text-[10px] text-[var(--text-dim)] mt-1">
+                                                                  💡 当前分类路径会自动按 / 拆分，例如 <code class="font-mono">a/b/c</code> 会追加 <code class="font-mono">a</code>、<code class="font-mono">b</code>、<code class="font-mono">c</code>
+                                                              </div>
+                                                          </div>
+                                                      </template>
+
+                                                     <!-- 其他动作类型的值输入 -->
+                                                     <template x-if="action.type !== 'set_favorite' && action.type !== 'fetch_forum_tags' && action.type !== 'merge_tags' && action.type !== 'rename_file_by_template' && action.type !== 'split_category_to_tags' && action.type !== 'set_char_name_from_filename' && action.type !== 'set_wi_name_from_filename' && action.type !== 'set_filename_from_char_name' && action.type !== 'set_filename_from_wi_name'">
+                                                         <input type="text" x-model="action.value"
+                                                             class="auto-input w-full"
+                                                             :placeholder="action.type==='move_folder' ? '文件夹路径 (e.g. Race/Elf)' : ((action.type==='add_tag' || action.type==='remove_tag') ? ($store.global.settingsForm.automation_slash_is_tag_separator ? '标签名称，多个可用 | 或 / 分隔' : '标签名称，多个可用 | 分隔') : '标签名称')"
+                                                             :title="(action.type==='add_tag' || action.type==='remove_tag') ? ($store.global.settingsForm.automation_slash_is_tag_separator ? '可批量输入：使用 | 或 / 分隔多个标签' : '可批量输入：使用 | 分隔多个标签') : ''">
                                                     </template>
 
                                                     <template x-if="action.type === 'set_char_name_from_filename' || action.type === 'set_wi_name_from_filename' || action.type === 'set_filename_from_char_name' || action.type === 'set_filename_from_wi_name'">
@@ -469,51 +532,99 @@
                         </div>
 
                         <!-- 弹窗内容 -->
-                        <div class="p-6 overflow-y-auto custom-scrollbar text-sm text-[var(--text-main)] space-y-6">
+                        <div class="automation-help-body p-6 overflow-y-auto custom-scrollbar text-sm text-[var(--text-main)]">
+                            <div class="automation-help-tabs" role="tablist" aria-label="规则帮助分类">
+                                <button type="button" class="automation-help-tab"
+                                    id="automation-help-tab-conditions"
+                                    role="tab"
+                                    :class="{ 'is-active': helpActiveTab === 'conditions' }"
+                                    :aria-selected="helpActiveTab === 'conditions'"
+                                    aria-controls="automation-help-panel-conditions"
+                                    @click="openHelpTab('conditions')">条件</button>
+                                <button type="button" class="automation-help-tab"
+                                    id="automation-help-tab-actions"
+                                    role="tab"
+                                    :class="{ 'is-active': helpActiveTab === 'actions' }"
+                                    :aria-selected="helpActiveTab === 'actions'"
+                                    aria-controls="automation-help-panel-actions"
+                                    @click="openHelpTab('actions')">动作</button>
+                                <button type="button" class="automation-help-tab"
+                                    id="automation-help-tab-triggers"
+                                    role="tab"
+                                    :class="{ 'is-active': helpActiveTab === 'triggers' }"
+                                    :aria-selected="helpActiveTab === 'triggers'"
+                                    aria-controls="automation-help-panel-triggers"
+                                    @click="openHelpTab('triggers')">触发时机</button>
+                                <button type="button" class="automation-help-tab"
+                                    id="automation-help-tab-templates"
+                                    role="tab"
+                                    :class="{ 'is-active': helpActiveTab === 'templates' }"
+                                    :aria-selected="helpActiveTab === 'templates'"
+                                    aria-controls="automation-help-panel-templates"
+                                    @click="openHelpTab('templates')">模板语法</button>
+                            </div>
 
-                            <!-- Section 1: 多值匹配 -->
-                            <div>
-                                <h4 class="font-bold text-[var(--accent-main)] mb-2 text-base">1. 多值匹配语法 (Multi-Value)
-                                </h4>
-                                <p class="text-[var(--text-dim)] mb-3">
-                                    在条件值中，你可以使用管道符 <code
-                                        class="bg-[var(--bg-code)] px-1.5 py-0.5 rounded text-yellow-500 font-mono">|</code>
-                                    来分隔多个目标值。这允许你在单行条件中实现“或”逻辑。
-                                </p>
+                            <section x-show="helpActiveTab === 'conditions'" id="automation-help-panel-conditions"
+                                role="tabpanel" aria-labelledby="automation-help-tab-conditions"
+                                class="automation-help-panel space-y-6">
+                                <div>
+                                    <h4 class="font-bold text-[var(--accent-main)] mb-2 text-base">条件</h4>
+                                    <p class="text-[var(--text-dim)] mb-3">
+                                        在条件值中，你可以使用管道符 <code
+                                            class="bg-[var(--bg-code)] px-1.5 py-0.5 rounded text-yellow-500 font-mono">|</code>
+                                        来分隔多个目标值。这允许你在单行条件中实现“或”逻辑。
+                                    </p>
 
-                                <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-3">
-                                    <div class="grid grid-cols-1 gap-3">
-                                        <div>
-                                            <div class="font-bold text-xs text-blue-400 mb-1">✅ 肯定类操作符 (包含 / 等于)</div>
-                                            <div class="text-xs text-[var(--text-dim)] mb-1">
-                                                只要命中列表中的 <span class="font-bold text-white">任意一个</span> 值，条件即为真 (OR 逻辑)。
+                                    <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-3">
+                                        <div class="grid grid-cols-1 gap-3">
+                                            <div>
+                                                <div class="font-bold text-xs text-blue-400 mb-1">✅ 肯定类操作符 (包含 / 等于)</div>
+                                                <div class="text-xs text-[var(--text-dim)] mb-1">
+                                                    只要命中列表中的 <span class="font-bold text-white">任意一个</span> 值，条件即为真 (OR 逻辑)。
+                                                </div>
+                                                <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">
+                                                    <span class="text-purple-400">Tags</span> <span class="text-gray-500">contains</span> <span class="text-green-400">elf|orc|goblin</span>
+                                                    <br>
+                                                    <span class="text-gray-500 opacity-60">// 匹配包含 "elf" 或者 "orc" 或者 "goblin" 的卡片</span>
+                                                </div>
                                             </div>
-                                            <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">
-                                                <span class="text-purple-400">Tags</span> <span
-                                                    class="text-gray-500">contains</span> <span
-                                                    class="text-green-400">elf|orc|goblin</span>
-                                                <br>
-                                                <span class="text-gray-500 opacity-60">// 匹配包含 "elf" 或者 "orc" 或者
-                                                    "goblin" 的卡片</span>
+
+                                            <div>
+                                                <div class="font-bold text-xs text-red-400 mb-1">🚫 否定类操作符 (不包含 / 不等于)</div>
+                                                <div class="text-xs text-[var(--text-dim)] mb-1">
+                                                    必须 <span class="font-bold text-white">同时不匹配</span> 列表中的所有值，条件才为真 (NOR 逻辑)。
+                                                </div>
+                                                <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">
+                                                    <span class="text-purple-400">Creator</span> <span class="text-gray-500">not_contains</span> <span class="text-green-400">UserA|UserB</span>
+                                                    <br>
+                                                    <span class="text-gray-500 opacity-60">// 排除 UserA 和 UserB 的作品 (既不是A也不是B)</span>
+                                                </div>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
 
+                                <div>
+                                    <h4 class="font-bold text-[var(--text-sub)] mb-2 text-base">书写规范</h4>
+                                    <ul class="list-disc list-inside space-y-1 text-[var(--text-dim)] ml-2">
+                                        <li>无需使用引号包裹值（如 <code class="text-red-400 line-through">"elf"|"orc"</code> 是错误的，直接写 <code class="text-green-400">elf|orc</code>）。</li>
+                                        <li>管道符 <code class="font-mono">|</code> 前后的空格会被自动去除 (Trim)。</li>
+                                        <li>适用于所有文本和列表类型字段 (Name, Tags, Description 等)。</li>
+                                        <li><span class="text-yellow-500">注意：</span>此语法不适用于 "正则匹配 (Regex)" 操作符，因为正则本身就支持 <code class="font-mono">|</code> 且逻辑更复杂。</li>
+                                    </ul>
+                                </div>
+                            </section>
+
+                            <section x-show="helpActiveTab === 'actions'" id="automation-help-panel-actions"
+                                role="tabpanel" aria-labelledby="automation-help-tab-actions"
+                                class="automation-help-panel space-y-6">
+                                <div>
+                                    <h4 class="font-bold text-[var(--accent-main)] mb-2 text-base">动作</h4>
+                                    <p class="text-[var(--text-dim)] mb-3">
+                                        动作按触发场景分批执行。不同触发场景只会运行对应的动作子集，因此请根据实际入口选择合适动作。
+                                    </p>
+                                    <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-3 space-y-3">
                                         <div>
-                                            <div class="font-bold text-xs text-red-400 mb-1">🚫 否定类操作符 (不包含 / 不等于)</div>
-                                            <div class="text-xs text-[var(--text-dim)] mb-1">
-                                                必须 <span class="font-bold text-white">同时不匹配</span> 列表中的所有值，条件才为真 (NOR
-                                                逻辑)。
-                                            </div>
-                                            <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">
-                                                <span class="text-purple-400">Creator</span> <span
-                                                    class="text-gray-500">not_contains</span> <span
-                                                    class="text-green-400">UserA|UserB</span>
-                                                <br>
-                                                <span class="text-gray-500 opacity-60">// 排除 UserA 和 UserB 的作品
-                                                    (既不是A也不是B)</span>
-                                            </div>
-                                        </div>
-                                        <div class="mt-2 pt-2 border-t border-[var(--border-light)] border-dashed">
                                             <div class="font-bold text-xs text-orange-400 mb-1">🏷️ 批量标签动作</div>
                                             <div class="text-xs text-[var(--text-dim)] mb-1">
                                                 在执行 "添加标签" 或 "移除标签" 时，一次性处理多个标签。
@@ -526,98 +637,195 @@
                                                 <span class="text-gray-500 opacity-60" x-show="$store.global.settingsForm.automation_slash_is_tag_separator">// 当前已启用 / 分隔，也可写为 female/elf/mage</span>
                                             </div>
                                         </div>
+
+                                        <div>
+                                            <div class="font-bold text-xs text-blue-400 mb-2">论坛标签与模板动作</div>
+                                            <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
+                                                <li><strong>fetch_forum_tags</strong>：自动从来源链接抓取论坛标签，可配置排除标签、标签替换、合并模式。</li>
+                                                <li><strong>merge_tags</strong>：将多个旧标签统一替换为同一个目标标签，适合做同义词归并。</li>
+                                                <li><strong>rename_file_by_template</strong>：按模板重命名文件，适合把角色名、版本、导入日期等字段拼成规范文件名。</li>
+                                                <li><strong>split_category_to_tags</strong>：把当前分类路径按 <code class="font-mono">/</code> 拆成多个标签，例如 <code class="font-mono">a/b/c</code> 会追加 <code class="font-mono">a</code>、<code class="font-mono">b</code>、<code class="font-mono">c</code>。</li>
+                                            </ul>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <!-- Section 2: 书写规范 -->
-                            <div>
-                                <h4 class="font-bold text-[var(--text-sub)] mb-2 text-base">2. 书写规范</h4>
-                                <ul class="list-disc list-inside space-y-1 text-[var(--text-dim)] ml-2">
-                                    <li>无需使用引号包裹值（如 <code class="text-red-400 line-through">"elf"|"orc"</code> 是错误的，直接写
-                                        <code class="text-green-400">elf|orc</code>）。</li>
-                                    <li>管道符 <code class="font-mono">|</code> 前后的空格会被自动去除 (Trim)。</li>
-                                    <li>适用于所有文本和列表类型字段 (Name, Tags, Description 等)。</li>
-                                    <li><span class="text-yellow-500">注意：</span>此语法不适用于 "正则匹配 (Regex)" 操作符，因为正则本身就支持
-                                        <code class="font-mono">|</code> 且逻辑更复杂。</li>
-                                </ul>
-                            </div>
-
-                        <!-- Section 3: 论坛标签抓取 -->
-                            <div>
-                                <h4 class="font-bold text-[var(--accent-main)] mb-2 text-base">3. 论坛标签抓取 (Fetch Forum Tags)</h4>
-                                <p class="text-[var(--text-dim)] mb-3">
-                                    自动从类脑论坛帖子抓取标签并为角色卡打标。使用前需要在角色卡详情页设置"来源链接"。
-                                </p>
-                                <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-3">
-                                    <div class="font-bold text-xs text-green-400 mb-2">配置说明：</div>
-                                    <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
-                                        <li><strong>排除标签</strong>：填写不需要的标签，默认用 <code class="font-mono text-yellow-500">|</code> 分隔<span x-show="$store.global.settingsForm.automation_slash_is_tag_separator">，也支持 /</span></li>
-                                        <li><strong>标签替换</strong>：格式为"原标签→新标签"，多个规则默认用 <code class="font-mono text-yellow-500">|</code> 分隔<span x-show="$store.global.settingsForm.automation_slash_is_tag_separator">，也支持 /</span></li>
-                                        <li><strong>合并模式</strong>：选择"合并"保留现有标签，或"替换"清空后添加</li>
-                                    </ul>
-                                    <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono mt-2">
-                                        <span class="text-purple-400">示例</span><br>
-                                        <span x-text="$store.global.settingsForm.automation_slash_is_tag_separator ? '排除标签: 其他/待审核' : '排除标签: 其他|待审核'"></span><br>
-                                        <span x-text="$store.global.settingsForm.automation_slash_is_tag_separator ? '标签替换: 其他→杂项/调教→BDSM' : '标签替换: 其他→杂项|调教→BDSM'"></span><br>
-                                        合并模式: 合并
-                                    </div>
-                                    <div class="mt-2 text-xs text-[var(--text-dim)]">
-                                        <span class="text-yellow-500">💡 提示：</span>分隔符规则与条件匹配语法一致（是否支持 <code class="font-mono">/</code> 由设置决定）
+                                <div>
+                                    <h4 class="font-bold text-[var(--accent-main)] mb-2 text-base">论坛标签抓取 (Fetch Forum Tags)</h4>
+                                    <p class="text-[var(--text-dim)] mb-3">
+                                        自动从类脑论坛帖子抓取标签并为角色卡打标。使用前需要在角色卡详情页设置"来源链接"。
+                                    </p>
+                                    <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-3">
+                                        <div class="font-bold text-xs text-green-400 mb-2">配置说明：</div>
+                                        <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
+                                            <li><strong>排除标签</strong>：填写不需要的标签，默认用 <code class="font-mono text-yellow-500">|</code> 分隔<span x-show="$store.global.settingsForm.automation_slash_is_tag_separator">，也支持 /</span></li>
+                                            <li><strong>标签替换</strong>：格式为"原标签→新标签"，多个规则默认用 <code class="font-mono text-yellow-500">|</code> 分隔<span x-show="$store.global.settingsForm.automation_slash_is_tag_separator">，也支持 /</span></li>
+                                            <li><strong>合并模式</strong>：选择"合并"保留现有标签，或"替换"清空后添加</li>
+                                        </ul>
+                                        <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono mt-2">
+                                            <span class="text-purple-400">示例</span><br>
+                                            <span x-text="$store.global.settingsForm.automation_slash_is_tag_separator ? '排除标签: 其他/待审核' : '排除标签: 其他|待审核'"></span><br>
+                                            <span x-text="$store.global.settingsForm.automation_slash_is_tag_separator ? '标签替换: 其他→杂项/调教→BDSM' : '标签替换: 其他→杂项|调教→BDSM'"></span><br>
+                                            合并模式: 合并
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="mt-3 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
-                                    <div class="font-bold text-xs text-blue-400 mb-1">触发时机：</div>
-                                    <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
-                                        <li><strong>导入时</strong>：全局规则集自动执行普通动作（移动文件夹、添加/移除标签、设置收藏、名称同步等），<span class="text-yellow-500">不执行抓取论坛标签与标签合并</span></li>
-                                        <li><strong>更新链接时</strong>：在卡片详情页修改"来源链接"并保存时，仅触发"抓取论坛标签"动作（<span class="text-yellow-500">其他动作不执行</span>）</li>
-                                        <li><strong>手动打标时</strong>：仅在"批量标签管理输入框"和"详情页自定义添加标签输入框"点击添加时，触发"标签合并"动作（<span class="text-yellow-500">从标签库点选不触发；仅处理标签，不执行移动/收藏/名称同步</span>）</li>
-                                    </ul>
-                                </div>
-                            </div>
+                            </section>
 
-                            <!-- Section 4: 标签合并 -->
-                            <div>
-                                <h4 class="font-bold text-[var(--accent-main)] mb-2 text-base">4. 标签合并 (merge_tags)</h4>
-                                <p class="text-[var(--text-dim)] mb-3">
-                                    用于把多个同义标签统一成同一个目标标签，避免同义词导致筛选分散。
-                                </p>
-                                <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-3">
-                                    <div class="font-bold text-xs text-green-400 mb-2">书写格式：</div>
-                                    <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">
-                                        <span x-text="$store.global.settingsForm.automation_slash_is_tag_separator ? 'femdom→女上/female→女性/waifu→老婆' : 'femdom→女上|female→女性|waifu→老婆'"></span>
-                                    </div>
-                                    <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)] mt-2">
-                                        <li>每条规则使用 <code class="font-mono text-yellow-500">旧标签→新标签</code></li>
-                                        <li>多条规则默认用 <code class="font-mono text-yellow-500">|</code> 分隔<span x-show="$store.global.settingsForm.automation_slash_is_tag_separator">，也支持 /</span></li>
-                                        <li>触发后会将命中的旧标签替换为新标签，并自动去重</li>
-                                    </ul>
-                                </div>
-                            </div>
-
-                            <!-- Section 5: 常用字段说明 -->
-                            <div>
-                                <h4 class="font-bold text-[var(--text-sub)] mb-2 text-base">5. 常用字段说明</h4>
-                                <div class="grid grid-cols-2 gap-2 text-xs">
-                                    <div class="p-2 border border-[var(--border-light)] rounded">
-                                        <span class="font-bold text-blue-400">Tags (标签)</span>
-                                        <p class="text-[var(--text-dim)] mt-1">列表匹配。检查卡片的标签列表中是否包含目标。</p>
-                                    </div>
-                                    <div class="p-2 border border-[var(--border-light)] rounded">
-                                        <span class="font-bold text-blue-400">Raw Content (文本)</span>
-                                        <p class="text-[var(--text-dim)] mt-1">Description, First Mes 等。全文搜索匹配。</p>
-                                    </div>
-                                    <div class="p-2 border border-[var(--border-light)] rounded">
-                                        <span class="font-bold text-blue-400">WI Name/Content</span>
-                                        <p class="text-[var(--text-dim)] mt-1">高级匹配。会遍历所有世界书条目进行检查。</p>
-                                    </div>
-                                    <div class="p-2 border border-[var(--border-light)] rounded">
-                                        <span class="font-bold text-blue-400">Local Note (本地备注)</span>
-                                        <p class="text-[var(--text-dim)] mt-1">匹配你在 ST Manager 中填写的私有备注。</p>
+                            <section x-show="helpActiveTab === 'triggers'" id="automation-help-panel-triggers"
+                                role="tabpanel" aria-labelledby="automation-help-tab-triggers"
+                                class="automation-help-panel space-y-6">
+                                <div>
+                                    <h4 class="font-bold text-[var(--accent-main)] mb-2 text-base">触发时机</h4>
+                                    <p class="text-[var(--text-dim)] mb-3">
+                                        全局规则不是每个入口都执行全部动作。不同触发场景只会运行对应的动作子集，避免在不合适的场景里改名或改标签。
+                                    </p>
+                                    <div class="p-3 bg-blue-500/10 border border-blue-500/30 rounded">
+                                        <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
+                                            <li><strong>导入时</strong>：会执行普通动作（移动文件夹、添加/移除标签、设置收藏、名称同步、rename_file_by_template、split_category_to_tags）；导入时会跳过抓取论坛标签与标签合并。</li>
+                                            <li><strong>更新链接时</strong>：在卡片详情页修改"来源链接"并保存时，更新链接时只执行抓取论坛标签。</li>
+                                            <li><strong>手动打标时</strong>：仅在"批量标签管理输入框"和"详情页自定义添加标签输入框"点击添加时触发；手动打标时只执行标签合并。</li>
+                                        </ul>
                                     </div>
                                 </div>
-                            </div>
 
+                                <div>
+                                    <h4 class="font-bold text-[var(--text-sub)] mb-2 text-base">常用字段说明</h4>
+                                    <div class="grid grid-cols-2 gap-2 text-xs automation-help-grid">
+                                        <div class="p-2 border border-[var(--border-light)] rounded">
+                                            <span class="font-bold text-blue-400">Tags (标签)</span>
+                                            <p class="text-[var(--text-dim)] mt-1">列表匹配。检查卡片的标签列表中是否包含目标。</p>
+                                        </div>
+                                        <div class="p-2 border border-[var(--border-light)] rounded">
+                                            <span class="font-bold text-blue-400">Raw Content (文本)</span>
+                                            <p class="text-[var(--text-dim)] mt-1">Description, First Mes 等。全文搜索匹配。</p>
+                                        </div>
+                                        <div class="p-2 border border-[var(--border-light)] rounded">
+                                            <span class="font-bold text-blue-400">WI Name/Content</span>
+                                            <p class="text-[var(--text-dim)] mt-1">高级匹配。会遍历所有世界书条目进行检查。</p>
+                                        </div>
+                                        <div class="p-2 border border-[var(--border-light)] rounded">
+                                            <span class="font-bold text-blue-400">Local Note (本地备注)</span>
+                                            <p class="text-[var(--text-dim)] mt-1">匹配你在 ST Manager 中填写的私有备注。</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section x-show="helpActiveTab === 'templates'" id="automation-help-panel-templates"
+                                role="tabpanel" aria-labelledby="automation-help-tab-templates"
+                                class="automation-help-panel space-y-6">
+                                <div>
+                                    <h4 class="font-bold text-[var(--accent-main)] mb-2 text-base">模板语法</h4>
+                                    <p class="text-[var(--text-dim)] mb-3">
+                                        <code class="font-mono">rename_file_by_template</code> 会把 <code class="font-mono">{% raw %}{{...}}{% endraw %}</code> 里的字段替换成当前卡片数据。<code class="font-mono">split_category_to_tags</code> 不读取模板，只会按当前分类路径拆分标签。
+                                    </p>
+                                    <div class="automation-template-cheatsheet text-xs mb-3">
+                                        <span class="font-bold text-[var(--text-main)]">字段写法：</span>
+                                        <code class="font-mono">{% raw %}{{field}}{% endraw %}</code>
+                                        <span class="mx-2 text-[var(--text-dim)]">|</span>
+                                        <span class="font-bold text-[var(--text-main)]">过滤器写法：</span>
+                                        <code class="font-mono">{% raw %}{{field|filter}}{% endraw %}</code>
+                                        <span class="mx-2 text-[var(--text-dim)]">|</span>
+                                        <span class="font-bold text-[var(--text-main)]">带参数过滤器：</span>
+                                        <code class="font-mono">{% raw %}{{field|filter:param}}{% endraw %}</code>
+                                    </div>
+                                    <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-3 space-y-3">
+                                        <div class="automation-template-reference-grid">
+                                            <div class="automation-template-reference-column">
+                                                <div class="font-bold text-xs text-blue-400 mb-1">支持字段</div>
+                                                <div class="text-xs text-[var(--text-dim)] mb-2">
+                                                    支持字段：char_name、char_version、filename、filename_stem、category、import_time、import_date、modified_time、modified_date
+                                                </div>
+                                                <div class="automation-template-field-grid grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-blue-400">char_name</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">角色卡名</div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-blue-400">char_version</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">角色卡版本文本，可配合 <code class="font-mono">version</code> 清洗</div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-blue-400">filename</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">当前文件名（含扩展名）</div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-blue-400">filename_stem</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">当前文件名（不含扩展名）</div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-blue-400">category</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">当前分类路径，如 <code class="font-mono">a/b</code></div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-blue-400">import_time / import_date</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">导入时间戳 / 导入日期</div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)] md:col-span-2">
+                                                        <div class="font-bold text-blue-400">modified_time / modified_date</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">文件修改时间戳 / 文件修改日期</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="automation-template-reference-column">
+                                                <div class="font-bold text-xs text-blue-400 mb-1">支持过滤器</div>
+                                                <div class="text-xs text-[var(--text-dim)]">
+                                                    支持 <code class="font-mono">trim</code>、<code class="font-mono">default</code>、<code class="font-mono">limit</code>、<code class="font-mono">date</code>、<code class="font-mono">version</code>。日期字段支持 <code class="font-mono">date</code> 过滤器，例如 <code class="font-mono">date:%Y-%m-%d</code> 或 <code class="font-mono">date:%Y%m%d</code>。
+                                                </div>
+                                                <div class="text-xs text-[var(--text-dim)] mt-1">
+                                                    日期字段支持 date 过滤器。
+                                                </div>
+                                                <div class="automation-template-filter-list space-y-2 mt-3 text-xs">
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-green-400">trim：去掉首尾空格</div>
+                                                        <div class="font-mono mt-1">{% raw %}{{char_name|trim}}{% endraw %}</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">示例：<code class="font-mono">"  Alice  "</code> -> <code class="font-mono">"Alice"</code></div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-green-400">default：为空时使用备用值</div>
+                                                        <div class="font-mono mt-1">{% raw %}{{char_version|default:unknown}}{% endraw %}</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">示例：空版本 -> <code class="font-mono">unknown</code></div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-green-400">limit：截断过长文本</div>
+                                                        <div class="font-mono mt-1">{% raw %}{{filename_stem|limit:20}}{% endraw %}</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">示例：<code class="font-mono">very-long-character-name-demo</code> -> <code class="font-mono">very-long-character-</code></div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-green-400">date：格式化导入时间或修改时间</div>
+                                                        <div class="font-mono mt-1">{% raw %}{{import_date|date:%Y-%m-%d}}{% endraw %}</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">示例：时间戳 -> <code class="font-mono">2026-04-01</code></div>
+                                                    </div>
+                                                    <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
+                                                        <div class="font-bold text-green-400">version：从版本文本里提取主版本号</div>
+                                                        <div class="font-mono mt-1">{% raw %}{{char_version|version}}{% endraw %}</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">示例：<code class="font-mono">Version 1.2 beta by author</code> -> <code class="font-mono">v1.2</code></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="font-bold text-xs text-green-400 mb-1">文件重命名示例</div>
+                                            <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">{% raw %}{{char_name}} - {{char_version|version}} - {{import_date|date:%Y-%m-%d}}{% endraw %}</div>
+                                            <div class="text-xs text-[var(--text-dim)] mt-1">例如生成“角色名 - v1.2 - 2026-04-01”这种文件名。</div>
+                                        </div>
+                                        <div>
+                                            <div class="font-bold text-xs text-green-400 mb-1">拆分类标签示例</div>
+                                            <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">category = a/b/c  ->  tags += [a, b, c]</div>
+                                            <div class="text-xs text-[var(--text-dim)] mt-1"><code class="font-mono">split_category_to_tags</code> 不读取模板，也不会使用回退模板或最大长度；它只是把当前分类路径按 <code class="font-mono">/</code> 拆成多个标签。</div>
+                                        </div>
+                                        <div>
+                                            <div class="font-bold text-xs text-blue-400 mb-1">补救模板与长度限制</div>
+                                            <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
+                                                <li>主模板结果为空时，会尝试使用 fallback 模板。</li>
+                                                <li>文件名模板建议只拼接必要字段，并配合最大长度限制避免过长文件名。</li>
+                                                <li>分类拆分动作可结合“排除分类标签”过滤不想保留的类别词。</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
                         </div>
 
                         <!-- 底部 -->

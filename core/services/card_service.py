@@ -5,6 +5,7 @@ import shutil
 import sqlite3
 import re
 import logging
+from collections.abc import Mapping
 from PIL import Image
 from urllib.parse import quote
 
@@ -685,6 +686,9 @@ def sync_card_names_internal(
     set_wi_name_from_filename=False,
     set_filename_from_char_name=False,
     set_filename_from_wi_name=False,
+    desired_filename_base=None,
+    desired_filename_template=None,
+    ui_data=None,
 ):
     """
     同步角色卡名称 / 世界书名称 / 文件名。
@@ -758,14 +762,58 @@ def sync_card_names_internal(
         # 3) 角色名/世界书名称 -> 文件名（可同时勾选，角色名优先）
         desired_filename_source = None
 
-        if set_filename_from_wi_name:
+        if isinstance(desired_filename_base, str) and desired_filename_base.strip():
+            desired_filename_source = desired_filename_base.strip()
+
+        if not desired_filename_source and isinstance(desired_filename_template, str) and desired_filename_template.strip():
+            from core.automation.template_runtime import build_safe_filename_result, build_snapshot_template_fields
+
+            resolved_ui_data = ui_data if isinstance(ui_data, Mapping) else load_ui_data()
+            cache_card = None
+            if ctx.cache:
+                cache_card = ctx.cache.id_map.get(card_id)
+
+            snapshot_card = dict(cache_card or {})
+            snapshot_card.setdefault('id', card_id)
+            snapshot_card.setdefault('filename', old_filename)
+            snapshot_card.setdefault('category', card_id.rsplit('/', 1)[0] if '/' in card_id else '')
+
+            try:
+                snapshot_card['last_modified'] = os.path.getmtime(old_full_path)
+            except Exception:
+                snapshot_card.setdefault('last_modified', time.time())
+
+            new_char_name = str(data_block.get('name') or '').strip()
+            if new_char_name:
+                snapshot_card['char_name'] = new_char_name
+
+            fields = dict(snapshot_card)
+            fields.update(build_snapshot_template_fields(card_id, snapshot_card, ui_data=resolved_ui_data))
+            fields.setdefault('card', fields.get('char_name') or fields.get('filename_stem') or old_base_name)
+
+            rename_result = build_safe_filename_result(
+                current_filename=old_filename,
+                template=desired_filename_template,
+                fields=fields,
+            )
+            details['observability'] = rename_result.get('observability', {})
+            if rename_result.get('suppressed'):
+                return True, old_id, 'No changes', details
+            if rename_result.get('noop'):
+                return True, old_id, 'No changes', details
+
+            desired_filename_source = rename_result.get('stem')
+
+        template_filename_locked = bool(desired_filename_source)
+
+        if set_filename_from_wi_name and not template_filename_locked:
             character_book = data_block.get('character_book')
             if isinstance(character_book, dict):
                 wi_name = str(character_book.get('name') or '').strip()
                 if wi_name:
                     desired_filename_source = wi_name
 
-        if set_filename_from_char_name:
+        if set_filename_from_char_name and not template_filename_locked:
             char_name = str(data_block.get('name') or '').strip()
             if char_name:
                 desired_filename_source = char_name

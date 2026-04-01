@@ -1569,6 +1569,190 @@ def test_mobile_tool_and_custom_modal_variants_prefer_dynamic_viewport_height():
     assert 'min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh)) !important;' in automation_block
 
 
+def test_automation_modal_template_exposes_new_action_options_and_structured_inputs():
+    automation_template = read_project_file('templates/modals/automation.html')
+    rename_block = automation_template.split("action.type === 'rename_file_by_template'", 1)[1].split('</template>', 1)[0]
+    split_block = automation_template.split("action.type === 'split_category_to_tags'", 1)[1].split('</template>', 1)[0]
+
+    assert '<option value="rename_file_by_template">🧩 模板重命名文件</option>' in automation_template
+    assert '<option value="split_category_to_tags">📝 分类拆分为标签</option>' in automation_template
+    assert "action.type === 'rename_file_by_template'" in automation_template
+    assert "action.type === 'split_category_to_tags'" in automation_template
+    assert 'x-model="cfg.template"' in rename_block
+    assert 'x-model="cfg.fallback_template"' in rename_block
+    assert 'x-model.number="cfg.max_length"' in rename_block
+    assert 'x-model="cfg.exclude_category_tags"' not in rename_block
+    assert 'x-model="cfg.exclude_category_tags"' in split_block
+    assert '排除分类标签:' in split_block
+    assert '当前分类路径会自动按 / 拆分' in split_block
+    assert '回退模板:' not in split_block
+    assert '最大长度:' not in split_block
+    assert '@change="initActionConfig(action)"' in automation_template
+    assert 'x-data="{ cfg: initActionConfig(action) }"' in automation_template
+    assert "action.type === 'fetch_forum_tags'" in automation_template
+    assert "action.config = { template: '', fallback_template: '', max_length: 120, exclude_category_tags: '' }" not in automation_template
+
+
+def test_automation_modal_js_centralizes_template_action_config_and_removes_duplicate_methods():
+    automation_js = read_project_file('static/js/components/automationModal.js')
+
+    assert "const TEMPLATE_ACTION_TYPES = ['rename_file_by_template', 'split_category_to_tags'];" in automation_js
+    assert 'function createRenameTemplateConfig(value = {}) {' in automation_js
+    assert 'function createSplitCategoryTagsConfig(value = {}) {' in automation_js
+    assert "action.type === 'rename_file_by_template'" in automation_js
+    assert "action.type === 'split_category_to_tags'" in automation_js
+    assert 'createRenameTemplateConfig(rawValue)' in automation_js
+    assert 'createSplitCategoryTagsConfig(rawValue)' in automation_js
+    assert 'createRenameTemplateConfig(action.config || action.value || {})' in automation_js
+    assert 'createSplitCategoryTagsConfig(action.config || action.value || {})' in automation_js
+    assert automation_js.count('deleteRule(index) {') == 1
+    assert automation_js.count('moveRule(index, dir) {') == 1
+
+
+def test_automation_help_modal_uses_four_tab_structure_with_new_guidance():
+    automation_template = read_project_file('templates/modals/automation.html')
+
+    assert 'automation-help-tabs' in automation_template
+    assert 'automation-help-panel' in automation_template
+    assert 'helpActiveTab' in automation_template
+    assert 'role="tablist"' in automation_template
+
+    tab_specs = (
+        ('conditions', '条件'),
+        ('actions', '动作'),
+        ('triggers', '触发时机'),
+        ('templates', '模板语法'),
+    )
+
+    for tab_key, tab_label in tab_specs:
+        assert tab_label in automation_template
+        assert f'role="tab"' in automation_template
+        assert f'id="automation-help-tab-{tab_key}"' in automation_template
+        assert f'aria-controls="automation-help-panel-{tab_key}"' in automation_template
+        assert f"x-show=\"helpActiveTab === '{tab_key}'\"" in automation_template
+        assert f'role="tabpanel"' in automation_template
+        assert f'id="automation-help-panel-{tab_key}"' in automation_template
+        assert f'aria-labelledby="automation-help-tab-{tab_key}"' in automation_template
+
+    assert 'rename_file_by_template' in automation_template
+    assert 'split_category_to_tags' in automation_template
+    assert '不同触发场景只会运行对应的动作子集' in automation_template
+    assert '导入时会跳过抓取论坛标签与标签合并' in automation_template
+    assert '更新链接时只执行抓取论坛标签' in automation_template
+    assert '手动打标时只执行标签合并' in automation_template
+    assert '{% raw %}{{char_name}} - {{char_version|version}} - {{import_date|date:%Y-%m-%d}}{% endraw %}' in automation_template
+    assert '支持字段：char_name、char_version、filename、filename_stem、category、import_time、import_date、modified_time、modified_date' in automation_template
+    assert '日期字段支持 date 过滤器' in automation_template
+    assert 'date:%Y-%m-%d' in automation_template
+    assert 'date:%Y%m%d' in automation_template
+    assert 'category = a/b/c  ->  tags += [a, b, c]' in automation_template
+    assert 'split_category_to_tags' in automation_template
+    assert '不读取模板' in automation_template
+    assert '不会使用回退模板或最大长度' in automation_template
+
+
+def test_automation_help_modal_lists_filter_examples_for_non_jinja_users():
+    automation_template = read_project_file('templates/modals/automation.html')
+
+    assert 'automation-template-field-grid' in automation_template
+    assert 'automation-template-filter-list' in automation_template
+    assert 'trim：去掉首尾空格' in automation_template
+    assert 'default：为空时使用备用值' in automation_template
+    assert 'limit：截断过长文本' in automation_template
+    assert 'date：格式化导入时间或修改时间' in automation_template
+    assert 'version：从版本文本里提取主版本号' in automation_template
+    assert '{% raw %}{{char_name|trim}}{% endraw %}' in automation_template
+    assert '{% raw %}{{char_version|default:unknown}}{% endraw %}' in automation_template
+    assert '{% raw %}{{filename_stem|limit:20}}{% endraw %}' in automation_template
+    assert '{% raw %}{{import_date|date:%Y-%m-%d}}{% endraw %}' in automation_template
+    assert '{% raw %}{{char_version|version}}{% endraw %}' in automation_template
+
+
+def test_automation_help_modal_uses_reference_card_layout_for_fields_and_filters():
+    automation_template = read_project_file('templates/modals/automation.html')
+    automation_css = read_project_file('static/css/modules/modal-automation.css')
+
+    assert 'automation-template-reference-grid' in automation_template
+    assert 'automation-template-reference-column' in automation_template
+    assert 'automation-template-field-grid' in automation_template
+    assert 'automation-template-filter-list' in automation_template
+    assert '.automation-template-reference-grid' in automation_css
+    assert '.automation-template-reference-column' in automation_css
+    assert '.automation-template-field-grid' in automation_css
+    assert '.automation-template-filter-list' in automation_css
+
+
+def test_automation_help_modal_includes_template_quick_reference_cheatsheet():
+    automation_template = read_project_file('templates/modals/automation.html')
+
+    assert 'automation-template-cheatsheet' in automation_template
+    assert '字段写法：' in automation_template
+    assert '{% raw %}{{field}}{% endraw %}' in automation_template
+    assert '过滤器写法：' in automation_template
+    assert '{% raw %}{{field|filter}}{% endraw %}' in automation_template
+    assert '带参数过滤器：' in automation_template
+    assert '{% raw %}{{field|filter:param}}{% endraw %}' in automation_template
+
+
+def test_rename_template_action_exposes_quick_fill_example_buttons():
+    automation_template = read_project_file('templates/modals/automation.html')
+    automation_js = read_project_file('static/js/components/automationModal.js')
+
+    assert '套用示例' in automation_template
+    assert '角色名 + 版本' in automation_template
+    assert '角色名 + 导入日期' in automation_template
+    assert '角色名 + 版本 + 修改日期' in automation_template
+    assert 'applyRenameTemplatePreset(action, ' in automation_template
+    assert 'applyRenameTemplatePreset(action, preset)' in automation_js
+    assert "preset === 'name_version'" in automation_js
+    assert "preset === 'name_import_date'" in automation_js
+    assert "preset === 'name_version_modified_date'" in automation_js
+
+
+def test_automation_help_modal_template_examples_are_jinja_safe_literals():
+    automation_template = read_project_file('templates/modals/automation.html')
+
+    assert '<code class="font-mono">{{...}}</code>' not in automation_template
+    assert '<div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">{{char_name}} - {{creator}}</div>' not in automation_template
+    assert '<div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">{{tags}}</div>' not in automation_template
+    assert '{% raw %}{{...}}{% endraw %}' in automation_template
+    assert '{% raw %}{{char_name}} - {{char_version|version}} - {{import_date|date:%Y-%m-%d}}{% endraw %}' in automation_template
+    assert 'category = a/b/c  ->  tags += [a, b, c]' in automation_template
+
+
+def test_automation_help_modal_js_and_css_define_tab_state_and_mobile_layout():
+    automation_js = read_project_file('static/js/components/automationModal.js')
+    automation_css = read_project_file('static/css/modules/modal-automation.css')
+    close_modal_block = extract_js_function_block(automation_js, 'closeModal() {')
+
+    assert "helpActiveTab: 'conditions'" in automation_js
+    assert 'openHelpTab(tab)' in automation_js
+    assert 'showHelpModal = true' in automation_js
+    assert "this.helpActiveTab = tab;" in automation_js
+    assert "this.helpActiveTab = 'conditions';" in close_modal_block
+    assert 'this.showHelpModal = false;' in close_modal_block
+
+    for selector in (
+        '.automation-help-tabs',
+        '.automation-help-tab',
+        '.automation-help-panel',
+    ):
+        assert selector in automation_css
+
+    mobile_block = extract_media_block(automation_css, '@media (max-width: 768px)')
+    help_tab_block = extract_exact_css_block(automation_css, '.automation-help-tab')
+    active_tab_block = extract_exact_css_block(automation_css, '.automation-help-tab.is-active')
+    mobile_tabs_block = extract_exact_css_block(mobile_block, '.automation-help-tabs')
+    mobile_tab_block = extract_exact_css_block(mobile_block, '.automation-help-tab')
+
+    assert 'border:' in help_tab_block
+    assert 'transition:' in help_tab_block
+    assert 'border-color: var(--accent-main);' in active_tab_block
+    assert 'color: var(--text-main);' in active_tab_block
+    assert 'flex-wrap: wrap' in mobile_tabs_block
+    assert 'width: 100%' in mobile_tab_block or 'flex: 1 1' in mobile_tab_block
+
+
 def test_detail_modal_template_marks_multicard_mobile_tabs_for_stacked_layout():
     detail_template = read_project_file('templates/modals/detail_card.html')
 

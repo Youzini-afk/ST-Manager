@@ -5,11 +5,66 @@
 
 import { listRuleSets, getRuleSet, saveRuleSet, deleteRuleSet, setGlobalRuleset, getGlobalRuleset, importRuleSet, getExportRuleSetUrl } from '../api/automation.js';
 
+const TEMPLATE_ACTION_TYPES = ['rename_file_by_template', 'split_category_to_tags'];
+
+function createFetchForumTagsConfig(value = {}) {
+    return {
+        exclude_tags: typeof value.exclude_tags === 'string' ? value.exclude_tags : '',
+        replace_rules_text: typeof value.replace_rules_text === 'string' ? value.replace_rules_text : '',
+        merge_mode: typeof value.merge_mode === 'string' && value.merge_mode ? value.merge_mode : 'merge'
+    };
+}
+
+function createRenameTemplateConfig(value = {}) {
+    return {
+        template: typeof value.template === 'string' ? value.template : '',
+        fallback_template: typeof value.fallback_template === 'string' ? value.fallback_template : '',
+        max_length: Number.isFinite(Number(value.max_length)) && Number(value.max_length) > 0
+            ? Number(value.max_length)
+            : 120,
+    };
+}
+
+function createSplitCategoryTagsConfig(value = {}) {
+    return {
+        exclude_category_tags: typeof value.exclude_category_tags === 'string' ? value.exclude_category_tags : ''
+    };
+}
+
+function getRenameTemplatePreset(preset) {
+    if (preset === 'name_version') {
+        return {
+            template: '{{char_name}} - {{char_version|version}}',
+            fallback_template: '{{char_name}}',
+            max_length: 120,
+        };
+    }
+
+    if (preset === 'name_import_date') {
+        return {
+            template: '{{char_name}} - {{import_date|date:%Y-%m-%d}}',
+            fallback_template: '{{char_name}}',
+            max_length: 120,
+        };
+    }
+
+    if (preset === 'name_version_modified_date') {
+        return {
+            template: '{{char_name}} - {{char_version|version}} - {{modified_date|date:%Y-%m-%d}}',
+            fallback_template: '{{char_name}}',
+            max_length: 120,
+        };
+    }
+
+    return createRenameTemplateConfig();
+}
+
 export default function automationModal() {
     return {
         showMobileSidebar: false,
         showAutomationModal: false,
         showHelpModal: false,
+        helpActiveTab: 'conditions',
         ruleSets: [],
         activeRuleSet: null,
         globalRulesetId: null,
@@ -180,6 +235,15 @@ export default function automationModal() {
                                         action.value = (rawValue || '').toString();
                                     }
                                 }
+
+                                if (TEMPLATE_ACTION_TYPES.includes(action.type)) {
+                                    const rawValue = (action.value && typeof action.value === 'object' && !Array.isArray(action.value))
+                                        ? action.value
+                                        : {};
+                                    action.config = action.type === 'rename_file_by_template'
+                                        ? createRenameTemplateConfig(rawValue)
+                                        : createSplitCategoryTagsConfig(rawValue);
+                                }
                             });
                         }
                     });
@@ -251,6 +315,22 @@ export default function automationModal() {
                         if (action.type === 'merge_tags') {
                             action.value = (action.value || '').toString().trim();
                         }
+
+                        if (TEMPLATE_ACTION_TYPES.includes(action.type)) {
+                            const config = action.type === 'rename_file_by_template'
+                                ? createRenameTemplateConfig(action.config || action.value || {})
+                                : createSplitCategoryTagsConfig(action.config || action.value || {});
+                            action.value = action.type === 'rename_file_by_template'
+                                ? {
+                                    template: config.template,
+                                    fallback_template: config.fallback_template,
+                                    max_length: config.max_length,
+                                }
+                                : {
+                                    exclude_category_tags: config.exclude_category_tags
+                                };
+                            delete action.config;
+                        }
                     });
                 }
             });
@@ -297,6 +377,13 @@ export default function automationModal() {
         closeModal() {
             this.showAutomationModal = false;
             this.activeRuleSet = null;
+            this.showHelpModal = false;
+            this.helpActiveTab = 'conditions';
+        },
+
+        openHelpTab(tab) {
+            this.helpActiveTab = tab;
+            this.showHelpModal = true;
         },
 
         // === 规则编辑器逻辑 ===
@@ -380,34 +467,28 @@ export default function automationModal() {
         // Initialize action config (for fetch_forum_tags)
         initActionConfig(action) {
             if (action.type === 'fetch_forum_tags') {
-                // Initialize config object if not exists
-                if (!action.config) {
-                    action.config = {
-                        exclude_tags: '',
-                        replace_rules_text: '',
-                        merge_mode: 'merge'
-                    };
-                }
+                action.config = createFetchForumTagsConfig(action.config || action.value || {});
+            } else if (action.type === 'rename_file_by_template') {
+                action.config = createRenameTemplateConfig(action.config || action.value || {});
+            } else if (action.type === 'split_category_to_tags') {
+                action.config = createSplitCategoryTagsConfig(action.config || action.value || {});
             } else {
                 // For other action types, remove config if exists
                 if (action.config) {
                     delete action.config;
                 }
             }
+
+            return action.config || null;
+        },
+
+        applyRenameTemplatePreset(action, preset) {
+            if (!action || action.type !== 'rename_file_by_template') return;
+            action.config = getRenameTemplatePreset(preset);
+            return action.config;
         },
         
         // Utils
-        deleteRule(index) {
-            if(confirm("删除此规则？")) this.editingRules.splice(index, 1);
-        },
-        moveRule(index, dir) {
-            const newIndex = index + dir;
-            if (newIndex < 0 || newIndex >= this.editingRules.length) return;
-            const temp = this.editingRules[index];
-            this.editingRules[index] = this.editingRules[newIndex];
-            this.editingRules[newIndex] = temp;
-            this.editingRules = [...this.editingRules]; 
-        },
         scrollToBottom() {
             this.$nextTick(() => {
                 const container = document.querySelector('.auto-body');

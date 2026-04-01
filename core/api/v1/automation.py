@@ -1,30 +1,32 @@
 import logging
 import json
 import os
+from copy import deepcopy
 from io import BytesIO
-from flask import Blueprint, request, jsonify, send_file, make_response
+from flask import Blueprint, request, jsonify, send_file
 from core.automation.manager import rule_manager
 from core.automation.engine import AutomationEngine
 from core.automation.executor import AutomationExecutor
 from core.automation.constants import (
-    FIELD_MAP,
     ACT_FETCH_FORUM_TAGS,
     ACT_MERGE_TAGS,
+    ACT_RENAME_FILE_BY_TEMPLATE,
     ACT_SET_CHAR_NAME_FROM_FILENAME,
     ACT_SET_WI_NAME_FROM_FILENAME,
     ACT_SET_FILENAME_FROM_CHAR_NAME,
     ACT_SET_FILENAME_FROM_WI_NAME,
+    TRIGGER_CONTEXT_MANUAL_RUN,
 )
+from core.automation.normalizer import normalize_actions_for_context
 from core.context import ctx
-from core.services.card_service import resolve_ui_key
 from core.services.card_service import modify_card_attributes_internal
 from core.data.ui_store import load_ui_data
 from core.data.db_session import get_db
-from core.config import CARDS_FOLDER, load_config
-from core.utils.image import extract_card_info
+from core.config import load_config
 from core.utils.text import calculate_token_count
 from core.utils.tag_parser import split_action_tags
 from core.automation.tag_merge import apply_merge_actions_to_tags
+from core.services import automation_service
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('automation', __name__)
@@ -120,152 +122,53 @@ def execute_rules():
 
         if not ctx.cache.initialized: ctx.cache.reload_from_db()
         
-        # 定义所有属于"深层数据"的字段名 (包含 UI 字段名 和 内部数据字段名)
-        deep_trigger_keys = {
-            'character_book', 'extensions', # 内部对象名
-            'wi_name', 'wi_content',        # 世界书
-            'regex_name', 'regex_content',  # 正则脚本
-            'st_script_name', 'st_script_content', # ST脚本
-            'description', 'first_mes', 'mes_example', 'alternate_greetings',
-            'personality', 'scenario', 'creator_notes', 
-            'system_prompt', 'post_history_instructions',
-            'char_version'
-        }
-        
-        needs_deep_scan = False
-
-        for r_idx, r in enumerate(ruleset.get('rules', [])):
-            if not r.get('enabled', True): continue
-            
-            # 兼容处理：确保有 groups
-            groups = r.get('groups', [])
-            if not groups and r.get('conditions'):
-                groups = [{'conditions': r.get('conditions')}]
-            
-            for g_idx, g in enumerate(groups):
-                for c_idx, cond in enumerate(g.get('conditions', [])):
-                    field_key = cond.get('field', '')
-                    mapped_key = FIELD_MAP.get(field_key, '')
-
-                    # 核心判断：只要字段名包含在触发列表中，或者其映射名在列表中
-                    if (field_key in deep_trigger_keys) or (mapped_key in deep_trigger_keys):
-                        needs_deep_scan = True
-                        break
-                if needs_deep_scan: break
-            if needs_deep_scan: break
-
         # =================================================================
         # 2. 执行循环
         # =================================================================
+        batch_targets = []
         for cid in card_ids:
-            # 查找基础数据
             card_obj = ctx.cache.id_map.get(cid)
-            if not card_obj: 
+            if not card_obj:
                 continue
-            
-            context_data = dict(card_obj)
-            
-            ui_key = resolve_ui_key(cid)
-            ui_info = ui_data.get(ui_key, {})
-            
-            context_data['ui_summary'] = ui_info.get('summary', '')
-            context_data['source_link'] = ui_info.get('link', '')
-            
-            # file_size 可能不在缓存里，如果规则需要，实时获取
-            if 'file_size' not in context_data:
-                try:
-                    full_path = os.path.join(CARDS_FOLDER, cid.replace('/', os.sep))
-                    if os.path.exists(full_path):
-                        context_data['file_size'] = os.path.getsize(full_path)
-                    else:
-                        context_data['file_size'] = 0
-                except:
-                    context_data['file_size'] = 0
-            
-            # === 如果需要深层扫描，强制读取文件 ===
-            if needs_deep_scan:
-                try:
-                    full_path = os.path.join(CARDS_FOLDER, cid.replace('/', os.sep))
-                    if os.path.exists(full_path):
-                        info = extract_card_info(full_path)
-                        if info:
-                            data_block = info.get('data', info) if 'data' in info else info
-                            
-                            # 待注入的字段列表
-                            fields_to_patch = [
-                                'character_book', 'extensions',
-                                'description', 'first_mes', 'mes_example', 
-                                'alternate_greetings', 'personality', 'scenario',
-                                'creator_notes', 'system_prompt', 'post_history_instructions'
-                            ]
-                            
-                            for f in fields_to_patch:
-                                if f not in context_data or not context_data[f]:
-                                    context_data[f] = data_block.get(f)
-                            
-                            # 特殊映射: character_version -> char_version
-                            if 'char_version' not in context_data or not context_data['char_version']:
-                                context_data['char_version'] = data_block.get('character_version', '')
+            batch_targets.append((cid, deepcopy(card_obj)))
 
-                except Exception as e:
-                    logger.warning(f"Deep scan failed for {cid}: {e}")
-                        
-            if 'token_count' not in context_data:
-                 # 简单补全，防止报错
-                 context_data['token_count'] = 0
+        for cid, card_obj in batch_targets:
             
-            ui_key = resolve_ui_key(cid)
-            ui_info = ui_data.get(ui_key, {})
-            context_data['ui_summary'] = ui_info.get('summary', '')
+            context_data, ui_data = automation_service._build_rule_context(
+                cid,
+                card_obj,
+                ruleset,
+                ui_data=ui_data,
+            )
+
+            if 'token_count' not in context_data:
+                  # 简单补全，防止报错
+                  context_data['token_count'] = 0
             
             # 2. 评估（手动执行时，无条件的规则也视为匹配）
             plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
+            normalized_plan = normalize_actions_for_context(
+                plan_raw.get('actions', []),
+                TRIGGER_CONTEXT_MANUAL_RUN,
+                card_snapshot=context_data,
+            )
             
-            # 3. 整理 Plan (engine 返回的是 actions 列表，需转换为 Executor 需要的格式)
-            # Engine 返回: { 'actions': [ {'type':'move_folder', 'value':'...'}, ... ] }
-            # Executor 需要: { 'move': ..., 'add_tags': ..., ... }
-            
-            if not plan_raw['actions']: continue
-            
-            exec_plan = {
-                'move': None,
-                'add_tags': set(),
-                'remove_tags': set(),
-                'favorite': None,
-                'fetch_forum_tags': None,
-                'set_char_name_from_filename': False,
-                'set_wi_name_from_filename': False,
-                'set_filename_from_char_name': False,
-                'set_filename_from_wi_name': False,
-            }
-            merge_actions = []
-            
-            for act in plan_raw['actions']:
-                t = act['type']
-                v = act.get('value')
-                if t == 'move_folder': exec_plan['move'] = v
-                elif t == 'add_tag':
-                    tags = split_action_tags(v, slash_as_separator=slash_as_separator)
-                    exec_plan['add_tags'].update(tags)
-                elif t == 'remove_tag':
-                    tags = split_action_tags(v, slash_as_separator=slash_as_separator)
-                    exec_plan['remove_tags'].update(tags)
-                elif t == 'set_favorite': exec_plan['favorite'] = (str(v).lower() == 'true')
-                elif t == ACT_SET_CHAR_NAME_FROM_FILENAME:
-                    exec_plan['set_char_name_from_filename'] = True
-                elif t == ACT_SET_WI_NAME_FROM_FILENAME:
-                    exec_plan['set_wi_name_from_filename'] = True
-                elif t == ACT_SET_FILENAME_FROM_CHAR_NAME:
-                    exec_plan['set_filename_from_char_name'] = True
-                elif t == ACT_SET_FILENAME_FROM_WI_NAME:
-                    exec_plan['set_filename_from_wi_name'] = True
-                elif t == 'fetch_forum_tags':
-                    if isinstance(v, dict):
-                        exec_plan['fetch_forum_tags'] = v
-                    else:
-                        exec_plan['fetch_forum_tags'] = {}
-                elif t == ACT_MERGE_TAGS:
-                    merge_actions.append(act)
+            if not normalized_plan['actions']:
+                continue
+
+            executable_actions = [
+                act for act in normalized_plan.get('actions', [])
+                if isinstance(act, dict)
+            ]
+
+            exec_plan = automation_service._build_exec_plan_from_actions(
+                executable_actions,
+                slash_as_separator=slash_as_separator,
+            )
+            merge_actions = [
+                act for act in executable_actions
+                if isinstance(act, dict) and act.get('type') == ACT_MERGE_TAGS
+            ]
             
             # 4. 执行
             res = executor.apply_plan(cid, exec_plan, ui_data)
