@@ -5,6 +5,7 @@
 
 const htmlComponentRenderCache = new WeakMap();
 const pretextIntrinsicSignatureCache = new WeakMap();
+const pretextEstimateCache = new Map();
 let pretextModule = null;
 let pretextModulePromise = null;
 let renderRuntimeModule = null;
@@ -415,6 +416,19 @@ export function estimatePretextBlockHeight(content, options = {}) {
         lineCount: Math.max(1, Math.round(fallbackHeight / Math.max(1, lineHeight))),
         height: fallbackHeight,
     };
+    const cacheKey = JSON.stringify({
+        text,
+        font,
+        maxWidth,
+        lineHeight,
+        minHeight: Number.parseInt(options.minHeight, 10) || 0,
+        maxHeight: Number.parseInt(options.maxHeight, 10) || 0,
+        whiteSpace: options.whiteSpace === 'normal' ? 'normal' : 'pre-wrap',
+    });
+    const cachedEstimate = pretextEstimateCache.get(cacheKey);
+    if (cachedEstimate) {
+        return cachedEstimate;
+    }
 
     try {
         const module = pretextModule;
@@ -426,7 +440,7 @@ export function estimatePretextBlockHeight(content, options = {}) {
             whiteSpace: options.whiteSpace === 'normal' ? 'normal' : 'pre-wrap',
         });
         const measured = module.layout(prepared, maxWidth, lineHeight);
-        return {
+        const estimate = {
             text,
             font,
             maxWidth,
@@ -434,8 +448,11 @@ export function estimatePretextBlockHeight(content, options = {}) {
             lineCount: Number(measured.lineCount || 0),
             height: clampPretextHeight(measured.height, options),
         };
+        pretextEstimateCache.set(cacheKey, estimate);
+        return estimate;
     } catch (error) {
         console.warn('Pretext estimate fallback used:', error);
+        pretextEstimateCache.set(cacheKey, fallbackEstimate);
         return fallbackEstimate;
     }
 }

@@ -6983,7 +6983,9 @@ export default function chatGrid() {
                 ? this.renderMessageSimpleHtml(message)
                 : this.renderMessageDisplayHtml(message);
 
-            this.applyReaderPretextIntrinsicSize(el, message, variant, html);
+            if (this.shouldApplyReaderPretextIntrinsicSize(variant, message)) {
+                this.applyReaderPretextIntrinsicSize(el, message, variant, html);
+            }
             const signature = JSON.stringify({
                 chatId,
                 floor,
@@ -7003,6 +7005,13 @@ export default function chatGrid() {
             if (variant === 'full') {
                 this.mountMessageDisplayNow(el, message);
             }
+        },
+
+        shouldApplyReaderPretextIntrinsicSize(variant, message) {
+            void message;
+            if (this.isReaderPageMode) return false;
+            if (variant !== 'simple') return false;
+            return true;
         },
 
         applyReaderPretextIntrinsicSize(el, message, variant = 'full', renderedHtml = '') {

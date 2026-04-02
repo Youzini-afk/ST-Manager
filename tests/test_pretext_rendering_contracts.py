@@ -23,9 +23,11 @@ def test_dom_utils_exposes_pretext_backed_intrinsic_size_helpers():
     assert 'export function applyPretextIntrinsicSize(' in source
     assert 'export function estimatePretextBlockHeight(' in source
     assert "import('../vendor/pretext/layout.js')" in source
+    assert 'const pretextEstimateCache = new Map();' in source
     assert 'let pretextModule = null;' in source
     assert 'module.prepare(' in source
     assert 'module.layout(' in source
+    assert 'pretextEstimateCache.get(cacheKey)' in source
     assert 'containIntrinsicSize' in source
 
 
@@ -35,6 +37,15 @@ def test_chat_reader_uses_pretext_intrinsic_size_hint_before_mounting_message_ht
     assert 'applyPretextIntrinsicSize' in source
     assert "this.applyReaderPretextIntrinsicSize(el, message, variant, html);" in source
     assert 'estimatePretextBlockHeight' in source
+    assert 'shouldApplyReaderPretextIntrinsicSize(variant, message)' in source
+
+
+def test_chat_reader_skips_pretext_for_page_mode_full_render_hot_path():
+    source = read_project_file('static/js/components/chatGrid.js')
+
+    assert 'shouldApplyReaderPretextIntrinsicSize(variant, message) {' in source
+    assert "if (variant !== 'simple') return false;" in source
+    assert 'if (this.isReaderPageMode) return false;' in source
 
 
 def test_large_preview_surfaces_use_pretext_intrinsic_size_hints():
