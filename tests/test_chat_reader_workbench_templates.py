@@ -2122,9 +2122,13 @@ def test_preset_grid_template_uses_selection_without_card_level_category_actions
 def test_sidebar_template_uses_scrollable_worldinfo_and_preset_category_sections():
     sidebar_template = read_project_file('templates/components/sidebar.html')
     sidebar_source = read_project_file('static/js/components/sidebar.js')
+    layout_css = read_project_file('static/css/modules/layout.css')
 
     assert 'worldinfo-sidebar-tree' in sidebar_template
     assert 'preset-sidebar-tree' in sidebar_template
+    assert "currentMode === 'worldinfo' && visibleSidebar" in sidebar_template
+    assert "currentMode === 'presets' && visibleSidebar" in sidebar_template
+    assert "class=\"p-4 space-y-2 flex-1 min-h-0 flex flex-col\"" in sidebar_template
     assert '@dragover.prevent="handleDragOverRoot($event)"' in sidebar_template
     assert '@drop.prevent="handleDropOnRoot($event)"' in sidebar_template
     assert '@dragover.prevent="presetRootDragOver($event)"' in sidebar_template
@@ -2134,6 +2138,10 @@ def test_sidebar_template_uses_scrollable_worldinfo_and_preset_category_sections
     assert 'canMovePresetSelection()' in sidebar_source
     assert 'presetRootDrop(e)' in sidebar_source
     assert 'presetRootDragOver(e)' in sidebar_source
+    assert '.worldinfo-sidebar-tree,' in layout_css
+    assert '.preset-sidebar-tree {' in layout_css
+    assert 'min-height: 0;' in layout_css
+    assert 'overflow-y: auto;' in layout_css
 
 
 def test_worldinfo_css_exposes_hover_visible_selection_overlay():
