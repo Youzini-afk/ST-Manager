@@ -133,6 +133,31 @@ export default function wiGrid() {
             this.selectedIds = ids;
         },
 
+        handleWorldInfoClick(e, item) {
+            if (e.ctrlKey || e.metaKey) {
+                this.toggleSelection(item);
+                return;
+            }
+
+            if (e.shiftKey && this.lastSelectedId) {
+                const selectableItems = (this.wiList || []).filter(currentItem => this.canSelectWorldInfoItem(currentItem));
+                const startIdx = selectableItems.findIndex(currentItem => currentItem.id === this.lastSelectedId);
+                const endIdx = selectableItems.findIndex(currentItem => currentItem.id === item.id);
+
+                if (startIdx !== -1 && endIdx !== -1) {
+                    const min = Math.min(startIdx, endIdx);
+                    const max = Math.max(startIdx, endIdx);
+                    const rangeIds = selectableItems.slice(min, max + 1).map(currentItem => currentItem.id);
+                    const currentSet = new Set(this.selectedIds);
+                    rangeIds.forEach(id => currentSet.add(id));
+                    this.selectedIds = Array.from(currentSet);
+                }
+                return;
+            }
+
+            this.openWiDetail(item);
+        },
+
         dragStart(e, item) {
             if (!this.canSelectWorldInfoItem(item)) {
                 e.preventDefault();

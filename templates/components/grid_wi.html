@@ -20,7 +20,7 @@
         <div x-show="!isLoading"
             class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
             <template x-for="item in wiList" :key="item.id">
-                <div @click="openWiDetail(item)"
+                <div @click="handleWorldInfoClick($event, item)"
                     class="wi-grid-card group relative border rounded-xl p-3 cursor-pointer transition-all duration-200 flex flex-col"
                     :class="[$store.global.deviceType === 'mobile' ? '' : 'h-52', selectedIds.includes(item.id) ? 'selected' : '', canSelectWorldInfoItem(item) ? '' : 'is-selection-disabled']"
                     :data-wi-id="item.id"

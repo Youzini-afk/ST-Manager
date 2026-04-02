@@ -827,6 +827,7 @@ def test_worldinfo_list_keeps_global_folder_tree_when_category_filter_is_active(
     assert '科幻' in payload['all_folders']
     assert '奇幻' in payload['all_folders']
     assert '奇幻/空目录' in payload['all_folders']
+    assert payload['folder_capabilities']['奇幻']['has_physical_folder'] is True
 
 
 def test_worldinfo_root_folder_capabilities_allow_create_subcategory(monkeypatch, tmp_path):

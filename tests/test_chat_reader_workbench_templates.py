@@ -1979,6 +1979,8 @@ def test_worldinfo_grid_template_exposes_category_metadata_and_mode_hints():
     assert '(item.source_type || item.type) === \'embedded\'' not in wi_grid_template
     assert 'selectedIds.includes(item.id)' in wi_grid_template
     assert 'toggleSelection(item)' in wi_grid_template
+    assert 'handleWorldInfoClick($event, item)' in wi_grid_template
+    assert '@click.ctrl.stop' not in wi_grid_template
     assert 'draggable="true"' in wi_grid_template
     assert 'jumpToCardFromWi(getWorldInfoOwnerId(item))' in wi_grid_template
     assert '如需调整分类，请移动所属角色卡' not in wi_grid_template
@@ -2004,6 +2006,8 @@ def test_preset_grid_template_exposes_category_metadata_and_mode_hints():
     assert 'class="text-[10px] text-[var(--text-dim)] space-y-1 mb-3"' not in preset_grid_template
     assert 'selectedIds.includes(item.id)' in preset_grid_template
     assert 'toggleSelection(item)' in preset_grid_template
+    assert 'handlePresetClick($event, item)' in preset_grid_template
+    assert '@click.ctrl.stop' not in preset_grid_template
     assert 'draggable="true"' in preset_grid_template
 
 
@@ -2044,6 +2048,9 @@ def test_worldinfo_grid_js_uses_category_metadata_and_explicit_upload_fallback_c
     assert 'requires_global_fallback_confirmation' in wi_grid_source
     assert 'allow_global_fallback' in wi_grid_source
     assert 'toggleSelection(item)' in wi_grid_source
+    assert 'handleWorldInfoClick(e, item)' in wi_grid_source
+    assert 'if (e.ctrlKey || e.metaKey)' in wi_grid_source
+    assert 'if (e.shiftKey && this.lastSelectedId)' in wi_grid_source
     assert 'dragStart(e, item)' in wi_grid_source
     assert 'canSelectWorldInfoItem(item)' in wi_grid_source
     assert 'canDeleteWorldInfoSelection()' in wi_grid_source
@@ -2070,6 +2077,9 @@ def test_preset_grid_js_uses_category_metadata_and_explicit_upload_fallback_cont
     assert 'requires_global_fallback_confirmation' in preset_grid_source
     assert 'allow_global_fallback' in preset_grid_source
     assert 'toggleSelection(item)' in preset_grid_source
+    assert 'handlePresetClick(e, item)' in preset_grid_source
+    assert 'if (e.ctrlKey || e.metaKey)' in preset_grid_source
+    assert 'if (e.shiftKey && this.lastSelectedId)' in preset_grid_source
     assert 'dragStart(e, item)' in preset_grid_source
     assert 'canSelectPresetItem(item)' in preset_grid_source
     assert 'canDeletePresetSelection()' in preset_grid_source
@@ -2095,7 +2105,8 @@ def test_preset_grid_js_uses_category_metadata_and_explicit_upload_fallback_cont
 def test_preset_grid_template_uses_selection_without_card_level_category_actions():
     preset_template = read_project_file('templates/components/grid_presets.html')
 
-    assert 'toggleSelection(item, $event)' in preset_template
+    assert 'toggleSelection(item)' in preset_template
+    assert 'handlePresetClick($event, item)' in preset_template
     assert 'dragStart($event, item)' in preset_template
     assert 'draggable="true"' in preset_template
     assert 'data-preset-id' in preset_template
