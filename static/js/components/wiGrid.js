@@ -7,6 +7,11 @@ import { listWorldInfo, uploadWorldInfo, createWorldInfo, deleteWorldInfo } from
 
 export default function wiGrid() {
     return {
+        flippedWorldInfoIds: {},
+        worldInfoBulkBackMode: false,
+        worldInfoAutoFlipBackDelayMs: 1800,
+        _worldInfoAutoFlipBackTimers: {},
+
         // === Store 代理 ===
         get wiList() { return this.$store.global.wiList; },
         set wiList(val) { this.$store.global.wiList = val; },
@@ -88,8 +93,145 @@ export default function wiGrid() {
             return item?.owner_card_id || item?.card_id || '';
         },
 
+        getWorldInfoDisplayCategory(item) {
+            return item?.display_category || item?.physical_category || '';
+        },
+
+        formatCategoryLabel(category) {
+            const raw = String(category || '').trim();
+            if (!raw) return '根目录';
+
+            const normalized = raw
+                .replace(/\\+/g, '/')
+                .replace(/\/+/g, '/')
+                .replace(/^\/+|\/+$/g, '');
+            if (!normalized) return '根目录';
+            return normalized;
+        },
+
         getWorldInfoItemById(id) {
             return (this.wiList || []).find(item => item.id === id) || null;
+        },
+
+        getWorldInfoRenderKey(item) {
+            const id = String(item?.id || '');
+            const summary = String(item?.ui_summary || '');
+            return `${id}::${summary}`;
+        },
+
+        openMarkdownView(content) {
+            if (!content) return;
+            window.dispatchEvent(new CustomEvent('open-markdown-view', {
+                detail: content
+            }));
+        },
+
+        worldInfoHasLocalNote(item) {
+            const summary = item && typeof item.ui_summary === 'string' ? item.ui_summary.trim() : '';
+            return summary.length > 0;
+        },
+
+        openWorldInfoLocalNote(item) {
+            if (!this.worldInfoHasLocalNote(item)) return;
+            this.openMarkdownView(item.ui_summary);
+        },
+
+        isWorldInfoFlipped(itemId) {
+            return !!this.flippedWorldInfoIds[String(itemId)];
+        },
+
+        toggleWorldInfoFace(itemId) {
+            const key = String(itemId);
+            const next = { ...this.flippedWorldInfoIds };
+            next[key] = !next[key];
+            if (!next[key]) delete next[key];
+            this.flippedWorldInfoIds = next;
+            this.clearWorldInfoAutoFlipBackTimer(key);
+        },
+
+        handleWorldInfoMouseEnter(itemId) {
+            this.clearWorldInfoAutoFlipBackTimer(String(itemId));
+        },
+
+        handleWorldInfoMouseLeave(itemId) {
+            this.scheduleWorldInfoAutoFlipBack(itemId);
+        },
+
+        scheduleWorldInfoAutoFlipBack(itemId) {
+            if (this.$store.global.deviceType === 'mobile') return;
+            if (this.worldInfoBulkBackMode) return;
+            if (!this.isWorldInfoFlipped(itemId)) return;
+
+            const key = String(itemId);
+            this.clearWorldInfoAutoFlipBackTimer(key);
+            this._worldInfoAutoFlipBackTimers[key] = setTimeout(() => {
+                if (this.worldInfoBulkBackMode || !this.isWorldInfoFlipped(itemId)) {
+                    this.clearWorldInfoAutoFlipBackTimer(key);
+                    return;
+                }
+
+                const next = { ...this.flippedWorldInfoIds };
+                delete next[key];
+                this.flippedWorldInfoIds = next;
+                this.clearWorldInfoAutoFlipBackTimer(key);
+            }, this.worldInfoAutoFlipBackDelayMs);
+        },
+
+        clearWorldInfoAutoFlipBackTimer(itemKey) {
+            const timer = this._worldInfoAutoFlipBackTimers[itemKey];
+            if (!timer) return;
+
+            clearTimeout(timer);
+            delete this._worldInfoAutoFlipBackTimers[itemKey];
+        },
+
+        clearAllWorldInfoAutoFlipBackTimers() {
+            Object.keys(this._worldInfoAutoFlipBackTimers).forEach(key => this.clearWorldInfoAutoFlipBackTimer(key));
+        },
+
+        syncWorldInfoUiState() {
+            const activeIds = new Set((this.wiList || []).map(item => String(item.id)));
+
+            const nextFlipped = {};
+            if (this.worldInfoBulkBackMode) {
+                activeIds.forEach(key => {
+                    nextFlipped[key] = true;
+                });
+            } else {
+                Object.keys(this.flippedWorldInfoIds).forEach(key => {
+                    if (activeIds.has(key) && this.flippedWorldInfoIds[key]) {
+                        nextFlipped[key] = true;
+                    }
+                });
+            }
+            this.flippedWorldInfoIds = nextFlipped;
+
+            Object.keys(this._worldInfoAutoFlipBackTimers).forEach(key => {
+                if (this.worldInfoBulkBackMode || !activeIds.has(String(key)) || !nextFlipped[key]) {
+                    this.clearWorldInfoAutoFlipBackTimer(key);
+                }
+            });
+        },
+
+        toggleWorldInfoBulkFlipMode() {
+            if (this.worldInfoBulkBackMode) {
+                this.clearAllWorldInfoAutoFlipBackTimers();
+                this.flippedWorldInfoIds = {};
+                this.worldInfoBulkBackMode = false;
+                return;
+            }
+
+            const next = {};
+            (this.wiList || []).forEach(item => {
+                next[String(item.id)] = true;
+            });
+            this.clearAllWorldInfoAutoFlipBackTimers();
+            this.flippedWorldInfoIds = next;
+            this.worldInfoBulkBackMode = true;
+        },
+
+        get visibleWorldInfoFlippedCount() {
+            return (this.wiList || []).reduce((count, item) => count + (this.isWorldInfoFlipped(item.id) ? 1 : 0), 0);
         },
 
         selectedWorldInfoItems() {
@@ -234,7 +376,10 @@ export default function wiGrid() {
             if (!confirm(`确定将选中的 ${count} 本世界书移至回收站吗？`)) return;
 
             for (const item of items) {
-                const res = await deleteWorldInfo(item.path);
+                const res = await deleteWorldInfo({
+                    file_path: item.path,
+                    source_type: item.source_type || item.type,
+                });
                 if (!res?.success) {
                     alert(`删除失败: ${res?.msg || '未知错误'}`);
                     return;
@@ -263,10 +408,31 @@ export default function wiGrid() {
                 this.fetchWorldInfoList();
             });
 
+            this.$watch('$store.global.wiList', () => {
+                this.syncWorldInfoUiState();
+            });
+
             // 监听刷新事件
             window.addEventListener('refresh-wi-list', (e) => {
                 if (e.detail && e.detail.resetPage) this.wiCurrentPage = 1;
                 this.fetchWorldInfoList();
+            });
+
+            window.addEventListener('wi-note-updated', (e) => {
+                const detail = e.detail || {};
+                if (!detail?.id) return;
+                const currentItems = Array.isArray(this.wiList) ? [...this.wiList] : [];
+                let changed = false;
+                currentItems.forEach((item, index) => {
+                    if (!item || item.id !== detail.id) return;
+                    item.ui_summary = detail.ui_summary || '';
+                    currentItems[index] = { ...item };
+                    changed = true;
+                });
+                if (changed) {
+                    this.wiList = currentItems;
+                }
+                this.syncWorldInfoUiState();
             });
 
             // 监听搜索框输入
@@ -321,6 +487,7 @@ export default function wiGrid() {
                         this.$store.global.wiAllFolders = res.all_folders || [];
                         this.$store.global.wiCategoryCounts = res.category_counts || {};
                         this.$store.global.wiFolderCapabilities = res.folder_capabilities || {};
+                        this.syncWorldInfoUiState();
 
                         this.wiTotalItems = res.total || 0;
                         this.wiTotalPages = Math.ceil(this.wiTotalItems / pageSize) || 1;

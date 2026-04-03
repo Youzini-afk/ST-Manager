@@ -65,11 +65,23 @@ export async function uploadWorldInfo(formData) {
 }
 
 // 删除世界书
-export async function deleteWorldInfo(filePath) {
+export async function deleteWorldInfo(target) {
+    const payload = (target && typeof target === 'object' && !Array.isArray(target))
+        ? target
+        : { file_path: target };
     const res = await fetch('/api/world_info/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_path: filePath })
+        body: JSON.stringify(payload)
+    });
+    return res.json();
+}
+
+export async function saveWorldInfoNote(payload) {
+    const res = await fetch('/api/world_info/note/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
     });
     return res.json();
 }

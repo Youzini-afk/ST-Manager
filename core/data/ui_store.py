@@ -16,6 +16,7 @@ LAST_SENT_TO_ST_KEY = 'last_sent_to_st'
 TAG_TAXONOMY_KEY = '_tag_taxonomy_v1'
 ISOLATED_CATEGORIES_KEY = '_isolated_categories_v1'
 RESOURCE_ITEM_CATEGORIES_KEY = '_resource_item_categories_v1'
+WORLDINFO_NOTES_KEY = '_worldinfo_notes_v1'
 
 DEFAULT_TAG_CATEGORY = '未分类'
 DEFAULT_TAG_CATEGORY_COLOR = '#64748b'
@@ -196,6 +197,86 @@ def _normalize_resource_item_categories(raw):
     return result
 
 
+def _normalize_worldinfo_note_path(value):
+    if value is None:
+        return ''
+
+    path = os.path.normcase(os.path.normpath(str(value).strip()))
+    if not path or path == '.':
+        return ''
+    return path.replace('\\', '/')
+
+
+def _normalize_worldinfo_note_card_id(value):
+    if value is None:
+        return ''
+
+    card_id = str(value).replace('\\', '/').strip().strip('/')
+    if not card_id:
+        return ''
+    return card_id
+
+
+def build_worldinfo_note_key(source_type, file_path='', card_id=''):
+    normalized_source = str(source_type or '').strip().lower()
+    if normalized_source in ('global', 'resource'):
+        path_key = _normalize_worldinfo_note_path(file_path)
+        if not path_key:
+            return ''
+        return f'{normalized_source}::{path_key}'
+
+    if normalized_source == 'embedded':
+        normalized_card_id = _normalize_worldinfo_note_card_id(card_id)
+        if not normalized_card_id:
+            return ''
+        return f'embedded::{normalized_card_id}'
+
+    return ''
+
+
+def _normalize_worldinfo_notes(raw):
+    source = raw if isinstance(raw, dict) else {}
+    normalized = {}
+
+    for raw_key, raw_value in source.items():
+        if not isinstance(raw_key, str):
+            continue
+
+        try:
+            raw_source, raw_target = raw_key.split('::', 1)
+        except ValueError:
+            continue
+
+        if raw_source in ('global', 'resource'):
+            key = build_worldinfo_note_key(raw_source, file_path=raw_target)
+        elif raw_source == 'embedded':
+            key = build_worldinfo_note_key(raw_source, card_id=raw_target)
+        else:
+            key = ''
+
+        if not key:
+            continue
+
+        note_info = raw_value if isinstance(raw_value, dict) else {}
+        summary = note_info.get('summary', '')
+        if not isinstance(summary, str):
+            summary = str(summary or '')
+        if not summary.strip():
+            continue
+
+        try:
+            updated_at = max(0, int(note_info.get('updated_at') or 0))
+        except (TypeError, ValueError):
+            updated_at = 0
+
+        normalized[key] = {
+            'summary': summary,
+            'updated_at': updated_at,
+        }
+
+    return dict(sorted(normalized.items(), key=lambda item: item[0]))
+
+
 def _is_resource_item_categories_equal(left, right):
     left_norm = _normalize_resource_item_categories(left)
     right_norm = _normalize_resource_item_categories(right)
@@ -321,6 +402,84 @@ def get_resource_item_categories(ui_data):
     if not isinstance(ui_data, dict):
         return _normalize_resource_item_categories({})
     return _normalize_resource_item_categories(ui_data.get(RESOURCE_ITEM_CATEGORIES_KEY))
+
+
+def get_worldinfo_notes(ui_data):
+    if not isinstance(ui_data, dict):
+        return _normalize_worldinfo_notes({})
+    return _normalize_worldinfo_notes(ui_data.get(WORLDINFO_NOTES_KEY))
+
+
+def get_worldinfo_note(ui_data, source_type, file_path='', card_id=''):
+    note_key = build_worldinfo_note_key(source_type, file_path=file_path, card_id=card_id)
+    if not note_key:
+        return {}
+    return get_worldinfo_notes(ui_data).get(note_key, {})
+
+
+def set_worldinfo_note(ui_data, source_type, summary, file_path='', card_id=''):
+    if not isinstance(ui_data, dict):
+        return False
+
+    note_key = build_worldinfo_note_key(source_type, file_path=file_path, card_id=card_id)
+    if not note_key:
+        return False
+
+    normalized = get_worldinfo_notes(ui_data)
+    summary_text = summary if isinstance(summary, str) else str(summary or '')
+
+    if not summary_text.strip():
+        if note_key not in normalized:
+            return False
+        del normalized[note_key]
+        if normalized:
+            ui_data[WORLDINFO_NOTES_KEY] = normalized
+        else:
+            ui_data.pop(WORLDINFO_NOTES_KEY, None)
+        return True
+
+    current_summary = normalized.get(note_key, {}).get('summary', '')
+    if current_summary == summary_text:
+        return False
+
+    normalized[note_key] = {
+        'summary': summary_text,
+        'updated_at': int(time.time()),
+    }
+    ui_data[WORLDINFO_NOTES_KEY] = normalized
+    return True
+
+
+def delete_worldinfo_note(ui_data, source_type, file_path='', card_id=''):
+    return set_worldinfo_note(ui_data, source_type, '', file_path=file_path, card_id=card_id)
+
+
+def delete_worldinfo_notes_for_card_prefix(ui_data, card_prefix):
+    if not isinstance(ui_data, dict):
+        return False
+
+    normalized_prefix = _normalize_worldinfo_note_card_id(card_prefix)
+    if not normalized_prefix:
+        return False
+
+    notes = get_worldinfo_notes(ui_data)
+    changed = False
+    exact_key = build_worldinfo_note_key('embedded', card_id=normalized_prefix)
+    nested_prefix = f'embedded::{normalized_prefix}/'
+
+    for note_key in list(notes.keys()):
+        if note_key == exact_key or note_key.startswith(nested_prefix):
+            del notes[note_key]
+            changed = True
+
+    if not changed:
+        return False
+
+    if notes:
+        ui_data[WORLDINFO_NOTES_KEY] = notes
+    else:
+        ui_data.pop(WORLDINFO_NOTES_KEY, None)
+    return True
 
 
 def set_resource_item_categories(ui_data, payload):

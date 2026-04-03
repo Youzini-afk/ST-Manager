@@ -1203,6 +1203,8 @@ html.light-mode .wi-help-modal-content {
   box-shadow: 0 6px 12px -8px var(--shadow-color);
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .wi-grid-card.selected {
@@ -1243,6 +1245,47 @@ html.light-mode .wi-grid-card:hover {
   left: auto;
   right: 10px;
   top: 10px;
+}
+
+.wi-grid-card .card-flip-inner {
+  flex: 1 1 auto;
+}
+
+.wi-card-front,
+.wi-card-back {
+  border-radius: inherit;
+}
+
+.wi-card-front {
+  padding: 0.75rem;
+}
+
+.wi-card-back {
+  background: linear-gradient(
+    180deg,
+    rgba(var(--bg-panel-rgb), 0.54),
+    rgba(var(--bg-panel-rgb), 0.68)
+  );
+}
+
+.wi-back-note {
+  min-height: 5.2rem;
+}
+
+.wi-card-bottom-toolbar {
+  position: relative;
+  z-index: 5;
+}
+
+.wi-item-flip-corner {
+  z-index: 45;
+}
+
+.wi-grid-card.is-flipped .wi-grid-tool-btn,
+.wi-grid-card.is-flipped .card-select-indicator {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: scale(0.92);
 }
 
 .wi-grid-tool-btn {

@@ -188,3 +188,62 @@ def test_delete_folder_delete_children_recursive(monkeypatch, folder_fixture):
     ui_after = _read_ui_data(ui_path)
     assert ui_after == {}
 
+
+def test_delete_cards_cleans_embedded_worldinfo_notes(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    trash_dir = tmp_path / 'trash'
+    db_path = tmp_path / 'db.sqlite'
+    ui_path = tmp_path / 'ui_data.json'
+    card_rel = 'cards/lucy.png'
+    card_path = cards_dir / 'cards' / 'lucy.png'
+
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    trash_dir.mkdir(parents=True, exist_ok=True)
+    card_path.parent.mkdir(parents=True, exist_ok=True)
+    card_path.write_bytes(b'png')
+
+    _init_db(db_path)
+    _insert_card_meta(db_path, card_id=card_rel, category='cards')
+
+    ui_path.write_text(
+        json.dumps(
+            {
+                card_rel: {'summary': 'card note'},
+                '_worldinfo_notes_v1': {
+                    'embedded::cards/lucy.png': {'summary': 'embedded note'},
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding='utf-8',
+    )
+
+    class _FakeCache:
+        def __init__(self):
+            self.id_map = {card_rel: {'id': card_rel, 'is_bundle': False}}
+            self.category_counts = {}
+
+        def delete_card_update(self, _cid):
+            return None
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TRASH_FOLDER', str(trash_dir))
+    monkeypatch.setattr(cards_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(cards_api, 'DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr(cards_api, 'load_config', lambda: {'resources_dir': 'resources'})
+    monkeypatch.setattr(cards_api, 'get_db', lambda: sqlite3.connect(str(db_path)))
+    monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *args, **kwargs: None)
+    monkeypatch.setattr(cards_api, 'resolve_ui_key', lambda cid: cid)
+    monkeypatch.setattr(cards_api.ctx, 'cache', _FakeCache())
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/delete_cards', json={'card_ids': [card_rel], 'delete_resources': False})
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['success'] is True
+
+    ui_after = _read_ui_data(ui_path)
+    assert 'embedded::cards/lucy.png' not in ui_after.get('_worldinfo_notes_v1', {})
+

@@ -19,6 +19,9 @@ from core.data.ui_store import (
     UI_DATA_FILE,
     get_resource_item_categories,
     set_resource_item_categories,
+    get_worldinfo_note,
+    set_worldinfo_note,
+    delete_worldinfo_note,
 )
 from core.services.cache_service import invalidate_wi_list_cache
 from core.services.wi_entry_history_service import (
@@ -188,6 +191,18 @@ def _normalize_resource_item_key(path: str) -> str:
         return os.path.normcase(os.path.normpath(str(path))).replace('\\', '/')
     except Exception:
         return ''
+
+
+def _build_worldinfo_note_kwargs(source_type: str, file_path: str = '', card_id: str = '') -> dict:
+    normalized_source = str(source_type or '').strip().lower()
+    if normalized_source == 'embedded':
+        return {'card_id': card_id}
+    return {'file_path': file_path}
+
+
+def _get_worldinfo_ui_summary(ui_data: dict, source_type: str, file_path: str = '', card_id: str = '') -> str:
+    note = get_worldinfo_note(ui_data, source_type, **_build_worldinfo_note_kwargs(source_type, file_path=file_path, card_id=card_id))
+    return note.get('summary', '') if isinstance(note, dict) else ''
 
 
 def _iter_category_ancestors(category: str):
@@ -557,7 +572,7 @@ def _apply_world_info_preview(data, cfg: dict, preview_limit=None, force_full: b
 from core.utils.image import extract_card_info # 用于 export logic
 
 logger = logging.getLogger(__name__)
-WI_LIST_CACHE_VERSION = 2
+WI_LIST_CACHE_VERSION = 3
 
 bp = Blueprint('wi', __name__)
 
@@ -601,11 +616,11 @@ def api_list_world_infos():
             card_category_sig = _build_card_category_sig(getattr(ctx.cache, 'cards', []))
 
         if wi_type == 'global':
-            sig = ('global', WI_LIST_CACHE_VERSION, global_dir_sig, db_sig, cards_dir_sig, card_category_sig)
+            sig = ('global', WI_LIST_CACHE_VERSION, global_dir_sig, ui_data_sig, db_sig, cards_dir_sig, card_category_sig)
         elif wi_type == 'resource':
             sig = ('resource', WI_LIST_CACHE_VERSION, resource_dir_sig, ui_data_sig, card_category_sig)
         elif wi_type == 'embedded':
-            sig = ('embedded', WI_LIST_CACHE_VERSION, db_sig, cards_dir_sig, card_category_sig)
+            sig = ('embedded', WI_LIST_CACHE_VERSION, ui_data_sig, db_sig, cards_dir_sig, card_category_sig)
         else:  # all
             sig = ('all', WI_LIST_CACHE_VERSION, global_dir_sig, resource_dir_sig, ui_data_sig, db_sig, cards_dir_sig, card_category_sig)
 
@@ -792,6 +807,7 @@ def api_list_world_infos():
                                     "owner_card_id": "",
                                     "owner_card_name": "",
                                     "owner_card_category": "",
+                                    "ui_summary": _get_worldinfo_ui_summary(ui_data, 'global', file_path=full_path),
                                 })
                         except Exception as e: 
                             print(f"Error reading WI {f}: {e}")
@@ -855,6 +871,7 @@ def api_list_world_infos():
                                         "owner_card_id": card.get('id', ''),
                                         "owner_card_name": card.get('char_name', ''),
                                         "owner_card_category": owner_category,
+                                        "ui_summary": _get_worldinfo_ui_summary(ui_data, 'resource', file_path=full_path),
                                     })
                             except: continue
         # 3. 角色卡内嵌 (Embedded) - 查询数据库
@@ -880,6 +897,7 @@ def api_list_world_infos():
                     "owner_card_id": row['id'],
                     "owner_card_name": row['char_name'],
                     "owner_card_category": owner_category,
+                    "ui_summary": _get_worldinfo_ui_summary(ui_data, 'embedded', card_id=row['id']),
                 })
 
         source_items = list(items)
@@ -889,7 +907,13 @@ def api_list_world_infos():
             items = [i for i in items if _is_in_category_subtree(i.get('display_category', ''), category)]
 
         if search:
-            items = [i for i in items if search in i['name'].lower() or (i.get('card_name') and search in i['card_name'].lower())]
+            items = [
+                i for i in items if (
+                    search in i['name'].lower()
+                    or (i.get('card_name') and search in i['card_name'].lower())
+                    or search in str(i.get('ui_summary', '')).lower()
+                )
+            ]
             
         items.sort(key=lambda x: x.get('mtime', 0), reverse=True)
         folder_meta = _add_physical_folder_nodes(_build_folder_metadata(source_items), current_wi_folder)
@@ -1182,8 +1206,10 @@ def api_get_world_info_detail():
         wi_id = req.get('id')
         source_type = req.get('source_type')
         file_path = req.get('file_path')
+        card_id = req.get('card_id')
         preview_limit = request.json.get('preview_limit')
         force_full = bool(request.json.get('force_full', False))
+        ui_data = load_ui_data()
 
         if source_type == 'embedded' and wi_id and not file_path:
             try:
@@ -1208,7 +1234,9 @@ def api_get_world_info_detail():
                 return jsonify({"success": False, "msg": "未找到内嵌世界书"})
 
             cfg = load_config()
-            return jsonify(_apply_world_info_preview(book, cfg, preview_limit=preview_limit, force_full=force_full))
+            resp = _apply_world_info_preview(book, cfg, preview_limit=preview_limit, force_full=force_full)
+            resp['ui_summary'] = _get_worldinfo_ui_summary(ui_data, 'embedded', card_id=card_id)
+            return jsonify(resp)
 
         if not file_path:
              return jsonify({"success": False, "msg": "文件路径为空"})
@@ -1245,9 +1273,67 @@ def api_get_world_info_detail():
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        return jsonify(_apply_world_info_preview(data, cfg, preview_limit=preview_limit, force_full=force_full))
+        resp = _apply_world_info_preview(data, cfg, preview_limit=preview_limit, force_full=force_full)
+        effective_source = source_type if source_type in ('global', 'resource') else ('resource' if _is_under_base(file_path, resources_dir) else 'global')
+        resp['ui_summary'] = _get_worldinfo_ui_summary(ui_data, effective_source, file_path=file_path)
+        return jsonify(resp)
     except Exception as e:
         return jsonify({"success": False, "msg": str(e)})
+
+
+@bp.route('/api/world_info/note/save', methods=['POST'])
+def api_save_world_info_note():
+    try:
+        req = request.get_json(silent=True) or {}
+        source_type = str(req.get('source_type') or '').strip().lower()
+        file_path = req.get('file_path') or ''
+        card_id = req.get('card_id') or ''
+        summary = req.get('summary', '')
+
+        cfg = load_config()
+        if source_type in ('global', 'resource'):
+            if not file_path:
+                return jsonify({'success': False, 'msg': '文件路径为空'})
+
+            if not os.path.isabs(file_path):
+                file_path = os.path.normpath(os.path.join(BASE_DIR, file_path))
+            else:
+                file_path = os.path.normpath(file_path)
+
+            if not _is_valid_wi_file(file_path, cfg):
+                return jsonify({'success': False, 'msg': '非法路径'})
+        elif source_type == 'embedded':
+            if not card_id:
+                try:
+                    _prefix, card_id = str(req.get('id') or '').split('::', 1)
+                except ValueError:
+                    card_id = ''
+            if not card_id:
+                return jsonify({'success': False, 'msg': '卡片 ID 为空'})
+        else:
+            return jsonify({'success': False, 'msg': '非法来源'})
+
+        ui_data = load_ui_data()
+        changed = set_worldinfo_note(
+            ui_data,
+            source_type,
+            summary,
+            **_build_worldinfo_note_kwargs(source_type, file_path=file_path, card_id=card_id)
+        )
+        if changed:
+            save_ui_data(ui_data)
+            invalidate_wi_list_cache()
+
+        return jsonify({
+            'success': True,
+            'ui_summary': _get_worldinfo_ui_summary(ui_data, source_type, file_path=file_path, card_id=card_id),
+            'source_type': source_type,
+            'file_path': file_path,
+            'card_id': card_id,
+        })
+    except Exception as e:
+        logger.error(f'Save worldinfo note error: {e}')
+        return jsonify({'success': False, 'msg': str(e)})
 
 @bp.route('/api/world_info/save', methods=['POST'])
 def api_save_world_info():
@@ -1645,6 +1731,10 @@ def api_wi_clipboard_reorder():
 @bp.route('/api/world_info/delete', methods=['POST'])
 def api_delete_world_info():
     try:
+        source_type = str((request.json or {}).get('source_type') or '').strip().lower()
+        if source_type == 'embedded':
+            return jsonify({"success": False, "msg": "内嵌世界书不支持删除，请改为删除本地备注"})
+
         # 传入完整文件路径
         file_path = request.json.get('file_path')
         if not file_path:
@@ -1666,6 +1756,10 @@ def api_delete_world_info():
 
         # 执行移动到回收站
         if safe_move_to_trash(file_path, TRASH_FOLDER):
+            ui_data = load_ui_data()
+            if source_type in ('global', 'resource'):
+                if delete_worldinfo_note(ui_data, source_type, file_path=file_path):
+                    save_ui_data(ui_data)
             # 刷新列表缓存
             invalidate_wi_list_cache()
             return jsonify({"success": True})

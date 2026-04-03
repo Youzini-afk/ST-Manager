@@ -127,6 +127,24 @@
                             x-text="activeWiDetail?.path"></div>
                     </details>
 
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="text-[10px] uppercase font-bold text-gray-500">本地备注</div>
+                            <div class="flex items-center gap-1">
+                                <button @click="openActiveWorldInfoNotePreview()" class="wi-filter-chip" :disabled="!(activeWiNoteDraft || activeWiDetail?.ui_summary)">预览</button>
+                                <button @click="clearActiveWorldInfoNote()" class="wi-filter-chip text-red-300">清空备注</button>
+                            </div>
+                        </div>
+                        <textarea x-model="activeWiNoteDraft"
+                            class="w-full min-h-[7rem] bg-[var(--bg-body)] border border-[var(--border-light)] rounded p-2 text-xs text-[var(--text-main)] resize-y focus:border-accent-main outline-none"
+                            placeholder="这是仅存储在本地的私有备注，不会写入世界书文件..."></textarea>
+                        <button @click="saveActiveWorldInfoNote()" class="w-full btn-primary py-2 rounded text-xs font-bold"
+                            :disabled="isSavingWorldInfoNote">
+                            <span x-show="!isSavingWorldInfoNote">保存备注</span>
+                            <span x-show="isSavingWorldInfoNote">保存中...</span>
+                        </button>
+                    </div>
+
                     <!-- 快速筛选 -->
                     <div class="wi-reader-filters">
                         <div class="text-[10px] uppercase font-bold text-gray-500 mb-2">Quick Filters</div>
@@ -230,6 +248,12 @@
                            flex items-center justify-center gap-1">
                             🗑️ 删除此文件
                         </button>
+                    </template>
+
+                    <template x-if="activeWiDetail?.type === 'embedded'">
+                        <div class="w-full py-1 text-[10px] text-[var(--text-dim)] rounded text-center border border-[var(--border-light)]">
+                            内嵌世界书不支持删除本体，只可删除备注
+                        </div>
                     </template>
                 </div>
             </aside>

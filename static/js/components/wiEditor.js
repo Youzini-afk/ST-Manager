@@ -6,6 +6,7 @@
 import {
     getWorldInfoDetail,
     saveWorldInfo,
+    saveWorldInfoNote,
     listWiEntryHistory,
     clipboardList,
     clipboardAdd,
@@ -101,6 +102,25 @@ export default function wiEditor() {
             return this.editingData;
         },
 
+        openLargeEditor(field, title, isArray = false, index = 0, editingData = this.editingData) {
+            window.dispatchEvent(new CustomEvent('open-large-editor', {
+                detail: {
+                    field,
+                    title,
+                    isArray,
+                    index,
+                    editingData,
+                }
+            }));
+        },
+
+        openMarkdownView(content) {
+            if (!content) return;
+            window.dispatchEvent(new CustomEvent('open-markdown-view', {
+                detail: content
+            }));
+        },
+
         // === 初始化 ===
         init() {
             // 监听打开编辑器事件
@@ -116,6 +136,13 @@ export default function wiEditor() {
             // 监听时光机恢复，确保编辑器内存与磁盘恢复结果同步
             window.addEventListener('wi-restore-applied', (e) => {
                 this._handleRestoreApplied(e?.detail || {});
+            });
+
+            window.addEventListener('wi-note-updated', (e) => {
+                const detail = e.detail || {};
+                if (!detail?.id || !this.editingWiFile || this.editingWiFile.id !== detail.id) return;
+                this.editingWiFile = { ...this.editingWiFile, ui_summary: detail.ui_summary || '' };
+                this.editingData.ui_summary = detail.ui_summary || '';
             });
 
             // 监听关闭
@@ -1705,6 +1732,7 @@ export default function wiEditor() {
 
                 // 赋值给响应式对象
                 this.editingData = dataObj;
+                this.editingData.ui_summary = item?.ui_summary || dataObj?.ui_summary || '';
                 this.editingWiFile = item;
                 this._ensureEntryUids();
                 let targetIndex = 0;
@@ -1811,10 +1839,11 @@ export default function wiEditor() {
                         this.currentWiIndex = 0;
                         this.isEditingClipboard = false;
                         this.currentClipboardIndex = -1;
-                        const dummyObj = {
-                            id: null,
-                            character_book: res.data // 这里是原始数据
-                        };
+                    const dummyObj = {
+                        id: null,
+                        character_book: res.data,
+                        ui_summary: res.ui_summary || item.ui_summary || ''
+                    };
                         handleSuccess(dummyObj, "Global/Resource");
                     } else {
                         alert(res.msg);
@@ -1842,6 +1871,7 @@ export default function wiEditor() {
                     // normalizeWiBook 会为每个条目分配索引 id（0,1,2,3...）
                     const book = normalizeWiBook(res.data, item.name || "World Info");
                     this.editingData.character_book = book;
+                    this.editingData.ui_summary = res.ui_summary || item.ui_summary || '';
                     this.editingWiFile = item;
                     this._ensureEntryUids();
                     this.openFullScreenWI();
@@ -1901,6 +1931,54 @@ export default function wiEditor() {
         },
 
         // === 保存逻辑 ===
+
+        buildEditingWorldInfoNotePayload(summary) {
+            const file = this.editingWiFile || {};
+            const payload = {
+                source_type: file.type,
+                summary,
+            };
+
+            if (file.type === 'embedded') {
+                payload.card_id = this.editingData.id || file.card_id;
+            } else {
+                payload.file_path = file.file_path || file.path;
+            }
+            return payload;
+        },
+
+        emitEditingWorldInfoNoteUpdated(uiSummary) {
+            if (!this.editingWiFile) return;
+            const detail = {
+                ...this.editingWiFile,
+                ui_summary: uiSummary || ''
+            };
+            this.editingWiFile = detail;
+            this.editingData.ui_summary = uiSummary || '';
+            window.dispatchEvent(new CustomEvent('wi-note-updated', { detail }));
+            window.dispatchEvent(new CustomEvent('refresh-wi-list'));
+        },
+
+        async saveEditingWorldInfoNote() {
+            if (!this.editingWiFile) return;
+            try {
+                const res = await saveWorldInfoNote(this.buildEditingWorldInfoNotePayload(this.editingData.ui_summary || ''));
+                if (!res?.success) {
+                    alert(`保存备注失败: ${res?.msg || '未知错误'}`);
+                    return;
+                }
+                this.emitEditingWorldInfoNoteUpdated(res.ui_summary || '');
+                this.$store.global.showToast('💾 世界书备注已保存', 1600);
+            } catch (e) {
+                alert(`保存备注失败: ${e}`);
+            }
+        },
+
+        openEditingWorldInfoNotePreview() {
+            const content = this.editingData?.ui_summary || '';
+            if (!content) return;
+            this.openMarkdownView(content);
+        },
 
         async saveWiFileChanges(withSnapshot = false) {
             if (!this.editingWiFile) return;

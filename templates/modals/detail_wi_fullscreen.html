@@ -458,6 +458,25 @@
                             </div>
                         </div>
 
+                        <div class="props-group">
+                            <div class="props-header text-green-400">本地备注 (Local Note)</div>
+                            <div class="props-body space-y-2">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="text-[10px] text-gray-500">仅保存在本地，不写入世界书文件</span>
+                                    <div class="flex items-center gap-1">
+                                        <button class="expand-btn" @click="openLargeEditor('ui_summary','本地备注', false, 0, editingData)">⤢</button>
+                                        <button class="expand-btn" @click="openEditingWorldInfoNotePreview()">👁</button>
+                                    </div>
+                                </div>
+                                <textarea x-model="editingData.ui_summary"
+                                    class="w-full bg-[var(--bg-body)] border border-[var(--border-light)] rounded p-2 text-xs text-[var(--text-main)] focus:border-accent-main outline-none resize-y min-h-[9rem]"
+                                    placeholder="这是仅存储在本地的私有备注，不会写入世界书文件..."></textarea>
+                                <button @click="saveEditingWorldInfoNote()" class="btn-primary w-full py-2 rounded text-xs font-bold">
+                                    保存备注
+                                </button>
+                            </div>
+                        </div>
+
                         <!-- 4. 逻辑与过滤 -->
                         <div class="props-group" x-data="{ expanded: false }">
                             <div class="props-header cursor-pointer hover:bg-[var(--bg-hover)]"

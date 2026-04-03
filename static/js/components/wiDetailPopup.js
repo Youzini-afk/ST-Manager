@@ -4,7 +4,7 @@
  */
 
 import { wiHelpers } from '../utils/wiHelpers.js';
-import { deleteWorldInfo, getWorldInfoDetail } from '../api/wi.js';
+import { deleteWorldInfo, getWorldInfoDetail, saveWorldInfoNote } from '../api/wi.js';
 import { getCardDetail } from '../api/card.js';
 import { normalizeWiBook } from '../utils/data.js';
 import { formatWiKeys, estimateTokens, getTotalWiTokens, getWiTokenClass } from '../utils/format.js';
@@ -15,6 +15,8 @@ export default function wiDetailPopup() {
         showMobileSidebar: false,
         showWiDetailModal: false,
         activeWiDetail: null, // 当前查看的 WI 对象 (包含 id, name, type, path 等)
+        activeWiNoteDraft: '',
+        isSavingWorldInfoNote: false,
 
         // 阅览室数据
         isLoading: false,
@@ -66,6 +68,7 @@ export default function wiDetailPopup() {
                 this.uiFilter = null;
                 this.uiStrategy = null;
                 this.searchTerm = "";
+                this.activeWiNoteDraft = nextDetail?.ui_summary || '';
                 this.isTruncated = false;
                 this.totalEntries = 0;
                 this.previewLimit = 0;
@@ -86,6 +89,15 @@ export default function wiDetailPopup() {
             // 监听关闭事件 (如果其他组件需要强制关闭它)
             window.addEventListener('close-wi-detail-modal', () => {
                 this.showWiDetailModal = false;
+            });
+
+            window.addEventListener('wi-note-updated', (e) => {
+                const detail = e.detail || {};
+                if (!detail?.id) return;
+                if (this.activeWiDetail && this.activeWiDetail.id === detail.id) {
+                    this.activeWiDetail = { ...this.activeWiDetail, ui_summary: detail.ui_summary || '' };
+                    this.activeWiNoteDraft = detail.ui_summary || '';
+                }
             });
         },
 
@@ -210,6 +222,11 @@ export default function wiDetailPopup() {
                     });
                     if (res.success) {
                         rawData = res.data;
+                        this.activeWiDetail = {
+                            ...this.activeWiDetail,
+                            ui_summary: res.ui_summary || this.activeWiDetail?.ui_summary || ''
+                        };
+                        this.activeWiNoteDraft = this.activeWiDetail.ui_summary || '';
                         if (res.truncated) {
                             this.isTruncated = true;
                             this.totalEntries = res.total_entries || 0;
@@ -402,6 +419,67 @@ export default function wiDetailPopup() {
             }
         },
 
+        buildActiveWorldInfoNotePayload(summary) {
+            const detail = this.activeWiDetail || {};
+            const payload = {
+                source_type: detail.type,
+                summary,
+            };
+            if (detail.type === 'embedded') {
+                payload.card_id = detail.card_id;
+            } else {
+                payload.file_path = detail.path;
+            }
+            return payload;
+        },
+
+        emitWorldInfoNoteUpdated(uiSummary) {
+            if (!this.activeWiDetail) return;
+            const detail = {
+                ...this.activeWiDetail,
+                ui_summary: uiSummary || ''
+            };
+            this.activeWiDetail = detail;
+            window.dispatchEvent(new CustomEvent('wi-note-updated', { detail }));
+            window.dispatchEvent(new CustomEvent('refresh-wi-list'));
+        },
+
+        async saveActiveWorldInfoNote() {
+            if (!this.activeWiDetail || this.isSavingWorldInfoNote) return;
+
+            this.isSavingWorldInfoNote = true;
+            try {
+                const res = await saveWorldInfoNote(this.buildActiveWorldInfoNotePayload(this.activeWiNoteDraft || ''));
+                if (!res?.success) {
+                    alert(`保存备注失败: ${res?.msg || '未知错误'}`);
+                    return;
+                }
+                this.activeWiNoteDraft = res.ui_summary || '';
+                this.emitWorldInfoNoteUpdated(res.ui_summary || '');
+                this.$store.global.showToast('💾 世界书备注已保存', 1600);
+            } catch (err) {
+                alert(`保存备注失败: ${err}`);
+            } finally {
+                this.isSavingWorldInfoNote = false;
+            }
+        },
+
+        async clearActiveWorldInfoNote() {
+            if (!this.activeWiDetail || this.isSavingWorldInfoNote) return;
+            if (!confirm('确定清空这本世界书的本地备注吗？')) return;
+
+            this.activeWiNoteDraft = '';
+            await this.saveActiveWorldInfoNote();
+        },
+
+        openActiveWorldInfoNotePreview() {
+            const content = this.activeWiNoteDraft || this.activeWiDetail?.ui_summary || '';
+            if (!content) return;
+            window.dispatchEvent(new CustomEvent('open-markdown-view', {
+                detail: content
+            }));
+        },
+
         // === 交互逻辑 ===
 
         // 删除当前世界书
@@ -417,7 +495,10 @@ export default function wiDetailPopup() {
             const name = this.activeWiDetail.name || "该世界书";
             if (!confirm(`⚠️ 确定要删除 "${name}" 吗？\n文件将被移至回收站。`)) return;
 
-            deleteWorldInfo(this.activeWiDetail.path)
+            deleteWorldInfo({
+                file_path: this.activeWiDetail.path,
+                source_type: this.activeWiDetail.type,
+            })
                 .then(res => {
                     if (res.success) {
                         this.showWiDetailModal = false;

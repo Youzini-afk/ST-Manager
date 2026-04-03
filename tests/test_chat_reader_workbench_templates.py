@@ -1993,6 +1993,37 @@ def test_worldinfo_grid_template_exposes_category_metadata_and_mode_hints():
     assert 'wi-book-classification' not in wi_grid_template
 
 
+def test_worldinfo_grid_template_supports_flip_note_preview_and_note_actions():
+    wi_grid_template = read_project_file('templates/components/grid_wi.html')
+
+    assert 'card-flip-inner' in wi_grid_template
+    assert ':key="getWorldInfoRenderKey(item)"' in wi_grid_template
+    assert 'wi-item-flip-corner' in wi_grid_template
+    assert 'local-note-preview wi-back-note' in wi_grid_template
+    assert 'toggleWorldInfoFace(item.id)' in wi_grid_template
+    assert 'worldInfoHasLocalNote(item)' in wi_grid_template
+    assert 'openWorldInfoLocalNote(item)' in wi_grid_template
+
+
+def test_worldinfo_detail_template_includes_local_note_editor_actions():
+    wi_detail_template = read_project_file('templates/modals/detail_wi_popup.html')
+
+    assert '本地备注' in wi_detail_template
+    assert 'saveActiveWorldInfoNote()' in wi_detail_template
+    assert 'clearActiveWorldInfoNote()' in wi_detail_template
+    assert 'openActiveWorldInfoNotePreview()' in wi_detail_template
+    assert 'activeWiDetail?.type === \'embedded\'' in wi_detail_template or 'activeWiDetail?.type !== \'embedded\'' in wi_detail_template
+
+
+def test_worldinfo_editor_template_includes_local_note_panel():
+    wi_editor_template = read_project_file('templates/modals/detail_wi_fullscreen.html')
+
+    assert '本地备注 (Local Note)' in wi_editor_template
+    assert 'saveEditingWorldInfoNote()' in wi_editor_template
+    assert "openLargeEditor('ui_summary','本地备注', false, 0, editingData)" in wi_editor_template
+    assert 'openEditingWorldInfoNotePreview()' in wi_editor_template
+
+
 def test_preset_grid_template_exposes_category_metadata_and_mode_hints():
     preset_grid_template = read_project_file('templates/components/grid_presets.html')
 
@@ -2064,6 +2095,16 @@ def test_worldinfo_grid_js_uses_category_metadata_and_explicit_upload_fallback_c
     assert 'movableItems.length !== selectedItems.length' not in wi_grid_source
     assert 'ids = [item.id]' not in wi_grid_source
     assert 'if (!this.canMoveWorldInfoSelection()) {' in wi_grid_source
+
+
+def test_worldinfo_grid_js_syncs_local_note_updates_without_waiting_for_refetch():
+    wi_grid_source = read_project_file('static/js/components/wiGrid.js')
+
+    assert 'wi-note-updated' in wi_grid_source
+    assert 'getWorldInfoRenderKey(item)' in wi_grid_source
+    assert 'item.id !== detail.id' in wi_grid_source or 'item.id === detail.id' in wi_grid_source
+    assert "item.ui_summary = detail.ui_summary || ''" in wi_grid_source
+    assert 'this.wiList = currentItems;' in wi_grid_source
 
 
 def test_preset_grid_js_uses_category_metadata_and_explicit_upload_fallback_contract():

@@ -34,6 +34,7 @@ from core.data.ui_store import (
     DEFAULT_TAG_CATEGORY_COLOR,
     DEFAULT_TAG_CATEGORY_OPACITY,
     _normalize_tag_taxonomy,
+    delete_worldinfo_notes_for_card_prefix,
 )
 from core.data.cache import GlobalMetadataCache
 from core.consts import SIDECAR_EXTENSIONS
@@ -1739,6 +1740,8 @@ def api_delete_cards():
                 if is_deleted:
                     if cid in ui_data:
                         del ui_data[cid]
+                        ui_changed = True
+                    if delete_worldinfo_notes_for_card_prefix(ui_data, cid):
                         ui_changed = True
                     cursor.execute("DELETE FROM card_metadata WHERE id = ?", (cid,))
             
