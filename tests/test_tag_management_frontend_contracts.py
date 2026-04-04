@@ -1,0 +1,289 @@
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def read_project_file(relative_path):
+    return (PROJECT_ROOT / relative_path).read_text(encoding='utf-8')
+
+
+def extract_js_function_block(source, signature):
+    start = source.index(signature)
+    brace_start = source.index('{', start)
+    depth = 0
+
+    for idx in range(brace_start, len(source)):
+        char = source[idx]
+        if char == '{':
+            depth += 1
+        elif char == '}':
+            depth -= 1
+            if depth == 0:
+                return source[start:idx + 1]
+
+    raise AssertionError(f'Could not extract JS block for {signature!r}')
+
+
+def test_automation_modal_defines_shared_tag_splitter_contract_for_slash_separator_setting():
+    source = read_project_file('static/js/components/automationModal.js')
+    save_section = extract_js_function_block(source, 'saveCurrentRuleSet() {')
+
+    assert 'splitTagTokens(' in source
+    assert 'parseReplaceRulesText' in save_section
+    assert 'splitTagTokens(' in save_section
+
+
+def test_state_defines_localstorage_backed_tag_view_pref_contracts():
+    source = read_project_file('static/js/state.js')
+
+    assert 'const TAG_VIEW_PREFS_STORAGE_KEY =' in source
+    assert 'loadTagViewPrefs() {' in source
+    assert 'saveTagViewPrefs(nextPrefs) {' in source
+    assert "localStorage.getItem(TAG_VIEW_PREFS_STORAGE_KEY)" in source
+    assert "localStorage.setItem(TAG_VIEW_PREFS_STORAGE_KEY" in source
+
+
+def test_state_bootstrap_loads_tag_view_prefs_before_components_consume_them():
+    source = read_project_file('static/js/state.js')
+
+    assert 'tagViewPrefs:' in source
+    assert 'mixedCategoryView: true' in source
+    assert 'this.loadTagViewPrefs();' in source
+
+
+def test_tag_filter_modal_uses_store_backed_tag_view_prefs_contract():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+
+    assert 'this.$store.global.loadTagViewPrefs()' in source
+    assert 'this.$store.global.saveTagViewPrefs({' in source
+    assert 'mixedCategoryView: this.mixedCategoryView' in source
+
+
+def test_tag_filter_modal_reloads_tag_view_prefs_when_reopened_in_same_session():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+
+    open_watch_section = source.split("if (val) {", 1)[1].split('return;', 1)[0]
+    open_event_section = source.split("window.addEventListener('open-tag-filter-modal', () => {", 1)[1].split('});', 1)[0]
+
+    assert 'this.loadDesktopWorkbenchPrefs();' in open_watch_section
+    assert 'this.loadDesktopWorkbenchPrefs();' in open_event_section
+    assert 'this.rememberLastTagView = tagViewPrefs.rememberLastTagView === true;' in source
+    assert 'this.mixedCategoryView = this.rememberLastTagView' in source
+    assert '? tagViewPrefs.mixedCategoryView !== false' in source
+
+
+def test_tag_filter_modal_desktop_workbench_uses_shared_search_matcher_contract():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+    filtered_pool_section = extract_js_function_block(source, 'get filteredTagsPool() {')
+
+    assert 'matchAnyTagSearchToken' in source
+    assert 'const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);' in filtered_pool_section
+    assert 'matchAnyTagSearchToken(t, query, { slashIsSeparator })' in filtered_pool_section
+
+
+def test_tag_filter_modal_desktop_workbench_loads_and_saves_governance_prefs_via_api_contract():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+
+    assert 'getTagManagementPrefs' in source
+    assert 'saveTagManagementPrefs' in source
+    assert 'loadTagManagementPrefs() {' in source
+    assert 'saveTagManagementPrefsState() {' in source
+    assert "this.lockTagLibrary = prefs.lock_tag_library === true;" in source
+    assert 'this.tagBlacklistInput = (prefs.tag_blacklist || []).join(' in source
+
+
+def test_tag_filter_modal_desktop_workbench_remember_last_tag_view_uses_store_helpers_contract():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+
+    assert 'rememberLastTagView: false' in source
+    assert 'loadDesktopWorkbenchPrefs() {' in source
+    assert 'saveDesktopWorkbenchPrefs() {' in source
+    assert 'this.rememberLastTagView = tagViewPrefs.rememberLastTagView === true;' in source
+    assert 'rememberLastTagView: this.rememberLastTagView' in source
+    assert 'mixedCategoryView: this.mixedCategoryView' in source
+    assert 'categoryFilterInclude: this.categoryFilterInclude' in source
+    assert 'categoryFilterExclude: this.categoryFilterExclude' in source
+    assert 'lastCategorySortName: this.selectedCategorySortName' in source
+
+
+def test_state_tag_view_prefs_contract_includes_category_filter_and_last_category_fields():
+    source = read_project_file('static/js/state.js')
+
+    assert 'categoryFilterInclude: []' in source
+    assert 'categoryFilterExclude: []' in source
+    assert "lastCategorySortName: ''" in source
+
+
+def test_tag_filter_modal_governance_blacklist_uses_shared_splitter_with_optional_slash_separator():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+    save_section = extract_js_function_block(source, 'saveTagManagementPrefsState() {')
+
+    assert 'splitTagTokens(' in source
+    assert 'const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);' in save_section
+    assert 'splitTagTokens(this.tagBlacklistInput, { slashIsSeparator })' in save_section
+
+
+def test_tag_filter_modal_desktop_category_internal_sort_hooks_persist_via_taxonomy_contract():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+    template = read_project_file('templates/modals/tag_filter.html')
+
+    assert 'selectedCategorySortName: ' in source
+    assert 'get selectedCategorySortTags() {' in source
+    assert 'moveSelectedCategoryTag(tag, delta) {' in source
+    assert 'moveSelectedCategoryTagUp(tag) {' in source
+    assert 'moveSelectedCategoryTagDown(tag) {' in source
+    assert 'resetSelectedCategoryTagOrder() {' in source
+    assert 'category_tag_order' in source
+    assert 'saveTagTaxonomy({ taxonomy })' in source
+    assert 'x-model="selectedCategorySortName"' in template
+    assert '@click="moveSelectedCategoryTagUp(tag)"' in template
+    assert '@click="moveSelectedCategoryTagDown(tag)"' in template
+    assert '@click="resetSelectedCategoryTagOrder()"' in template
+
+
+def test_batch_tag_modal_manual_inputs_use_shared_splitter_without_search_matching_contract():
+    source = read_project_file('static/js/components/batchTagModal.js')
+    add_section = extract_js_function_block(source, 'batchAddTag(tag) {')
+    remove_section = extract_js_function_block(source, 'batchRemoveTag(tag) {')
+
+    assert 'splitTagTokens(' in source
+    assert 'splitTagTokens(' in add_section
+    assert 'splitTagTokens(' in remove_section
+    assert 'matchAnyTagSearchToken(' not in add_section
+    assert 'matchAnyTagSearchToken(' not in remove_section
+
+
+def test_detail_modal_manual_add_input_uses_shared_splitter_without_search_semantics_contract():
+    source = read_project_file('static/js/components/detailModal.js')
+    add_section = extract_js_function_block(source, 'addTag() {')
+
+    assert 'splitTagTokens(' in source
+    assert 'splitTagTokens(' in add_section
+    assert 'matchAnyTagSearchToken(' not in add_section
+    assert 'splitPattern' not in add_section
+
+
+def test_templates_keep_manual_tag_inputs_distinct_from_search_inputs_contract():
+    batch_template = read_project_file('templates/modals/batch_tag.html')
+    detail_template = read_project_file('templates/modals/detail_card.html')
+
+    assert 'x-model="batchTagInputAdd"' in batch_template
+    assert 'x-model="batchTagInputRemove"' in batch_template
+    assert 'x-model="batchTagPickerSearch"' in batch_template
+    assert 'placeholder="搜索标签（支持多个关键词，逗号/竖线分隔）…"' in batch_template
+    assert 'x-model="batchTagPickerSearch"' in batch_template
+    assert 'placeholder="输入标签…"' in batch_template
+    assert batch_template.count('placeholder="输入标签…"') == 2
+    assert 'placeholder="搜索标签库（支持多个关键词，逗号/竖线分隔）..."' in detail_template
+    assert 'x-model="newTagInput"' in detail_template
+    assert ':placeholder="$store.global.settingsForm.automation_slash_is_tag_separator ? ' in detail_template
+    assert ':title="$store.global.settingsForm.automation_slash_is_tag_separator ? ' in detail_template
+
+
+def test_batch_tag_modal_uses_shared_search_matcher_and_copy_contract():
+    template = read_project_file('templates/modals/batch_tag.html')
+    source = read_project_file('static/js/components/batchTagModal.js')
+    filtered_pool_section = extract_js_function_block(source, 'get filteredBatchTagPool() {')
+
+    assert "import { matchAnyTagSearchToken, splitTagTokens } from '../state.js';" in source
+    assert 'matchAnyTagSearchToken(t, query' in filtered_pool_section
+    assert 'placeholder="搜索标签（支持多个关键词，逗号/竖线分隔）…"' in template
+
+
+def test_batch_tag_modal_template_contract_keeps_wider_room_without_desktop_workbench_ui():
+    template = read_project_file('templates/modals/batch_tag.html')
+
+    assert 'batch-tag-modal-shell' in template
+    assert 'tag-filter-desktop-workbench' not in template
+    assert 'tag-category-manager-panel' not in template
+    assert 'sort' not in template.lower()
+
+
+def test_batch_tag_modal_uses_shared_tag_view_prefs_on_open_and_updates_contract():
+    source = read_project_file('static/js/components/batchTagModal.js')
+    init_section = extract_js_function_block(source, 'init() {')
+
+    assert 'loadTagViewPrefs() {' in source
+    assert 'saveTagViewPrefs() {' in source
+    assert 'this.$store.global.loadTagViewPrefs()' in source
+    assert 'this.$store.global.saveTagViewPrefs({' in source
+    assert 'mixedCategoryView: this.mixedCategoryView' in source
+    assert 'categoryFilterInclude: this.batchCategoryFilterInclude' in source
+    assert 'categoryFilterExclude: this.batchCategoryFilterExclude' in source
+    assert 'this.loadTagViewPrefs();' in init_section
+    assert 'this.batchCategoryFilterInclude = [];' not in init_section
+    assert 'this.batchCategoryFilterExclude = [];' not in init_section
+    assert 'this.mixedCategoryView = true;' not in init_section
+    assert 'this.saveTagViewPrefs();' in source
+
+
+def test_batch_tag_modal_honors_remember_last_tag_view_false_on_open_contract():
+    source = read_project_file('static/js/components/batchTagModal.js')
+
+    assert 'const rememberLastTagView = tagViewPrefs.rememberLastTagView === true;' in source
+    assert 'this.mixedCategoryView = rememberLastTagView' in source
+    assert '? [...tagViewPrefs.categoryFilterInclude]' in source
+    assert ': [];' in source
+    assert '? [...tagViewPrefs.categoryFilterExclude]' in source
+
+
+def test_detail_tag_library_uses_shared_search_matcher_and_view_prefs_contract():
+    template = read_project_file('templates/modals/detail_card.html')
+    source = read_project_file('static/js/components/detailModal.js')
+    filtered_pool_section = extract_js_function_block(source, 'get filteredTagLibraryPool() {')
+    open_picker_section = extract_js_function_block(source, 'openTagPicker() {')
+
+    assert "import { matchAnyTagSearchToken, splitTagTokens } from '../state.js';" in source
+    assert 'matchAnyTagSearchToken(tag, query' in filtered_pool_section
+    assert 'loadTagViewPrefs() {' in source
+    assert 'saveTagViewPrefs() {' in source
+    assert 'this.$store.global.loadTagViewPrefs()' in source
+    assert 'this.$store.global.saveTagViewPrefs({' in source
+    assert 'this.loadTagViewPrefs();' in open_picker_section
+    assert 'placeholder="搜索标签库（支持多个关键词，逗号/竖线分隔）..."' in template
+    assert "x-text=\"mixedCategoryView ? '切换分组显示' : '切换混合显示'\"" in template
+
+
+def test_detail_tag_library_restores_shared_category_filter_view_prefs_on_open_contract():
+    source = read_project_file('static/js/components/detailModal.js')
+    open_detail_section = extract_js_function_block(source, 'openDetail(c) {')
+
+    assert 'loadTagViewPrefs() {' in source
+    assert 'categoryFilterInclude: this.detailCategoryFilterInclude' in source
+    assert 'categoryFilterExclude: this.detailCategoryFilterExclude' in source
+    assert 'this.detailCategoryFilterInclude = Array.isArray(tagViewPrefs.categoryFilterInclude)' in source
+    assert 'this.detailCategoryFilterExclude = Array.isArray(tagViewPrefs.categoryFilterExclude)' in source
+    assert 'this.loadTagViewPrefs();' in open_detail_section
+    assert 'this.detailCategoryFilterInclude = [];' not in open_detail_section
+    assert 'this.detailCategoryFilterExclude = [];' not in open_detail_section
+
+
+def test_detail_tag_library_honors_remember_last_tag_view_false_on_open_contract():
+    source = read_project_file('static/js/components/detailModal.js')
+
+    assert 'const rememberLastTagView = tagViewPrefs.rememberLastTagView === true;' in source
+    assert 'this.mixedCategoryView = rememberLastTagView' in source
+    assert '? [...tagViewPrefs.categoryFilterInclude]' in source
+    assert '? [...tagViewPrefs.categoryFilterExclude]' in source
+    assert ': [];' in source
+
+
+def test_detail_tag_library_uses_shared_view_prefs_without_live_store_sync_contract():
+    source = read_project_file('static/js/components/detailModal.js')
+
+    assert 'loadTagViewPrefs() {' in source
+    assert 'saveTagViewPrefs() {' in source
+    assert 'this.$store.global.loadTagViewPrefs()' in source
+    assert 'this.$store.global.saveTagViewPrefs({' in source
+    assert "$watch('$store.global.tagViewPrefs.mixedCategoryView'" not in source
+
+
+def test_detail_tag_library_stays_lightweight_without_desktop_workbench_or_ordering_contract():
+    template = read_project_file('templates/modals/detail_card.html')
+    source = read_project_file('static/js/components/detailModal.js')
+
+    assert 'tag-filter-desktop-workbench' not in template
+    assert 'categoryManager' not in source
+    assert 'isSortMode' not in source
+    assert 'saveTagOrder' not in source

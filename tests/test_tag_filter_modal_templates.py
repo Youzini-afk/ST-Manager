@@ -282,3 +282,87 @@ def test_tag_filter_template_mobile_category_panel_restores_manager_entry_and_su
     assert 'class="tag-filter-mobile-category-manager"' in mobile_shell_section
     assert "x-show=\"$store.global.deviceType === 'mobile' && showCategoryManager && mobileActiveTab === 'category'\"" in mobile_shell_section
     assert 'class="tag-category-manager-list custom-scrollbar"' in mobile_shell_section
+
+
+def test_tag_filter_template_desktop_workbench_shell_contract():
+    template_source = read_project_file('templates/modals/tag_filter.html')
+
+    assert 'class="tag-filter-desktop-shell"' in template_source
+    assert 'class="tag-filter-desktop-toolbar"' in template_source
+    assert 'class="tag-filter-desktop-workbench"' in template_source
+    assert 'class="tag-filter-desktop-sidebar"' in template_source
+    assert 'class="tag-filter-desktop-main"' in template_source
+    assert '<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell">' in template_source
+
+
+def test_tag_filter_template_desktop_workbench_sections_keep_transition_modes_reachable():
+    template_source = read_project_file('templates/modals/tag_filter.html')
+    desktop_shell_section = template_source.split('<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell">', 1)[1].split('</div>\n        <div x-show="$store.global.deviceType !== \'mobile\'" class="tag-cloud-container custom-scrollbar">', 1)[0]
+
+    assert 'class="tag-filter-desktop-sidebar"' in desktop_shell_section
+    assert 'class="tag-filter-desktop-main"' in desktop_shell_section
+    assert '@click="toggleSortMode()"' in desktop_shell_section
+    assert '@click="toggleDeleteMode()"' in desktop_shell_section
+    assert '@click="toggleCategoryMode()"' in desktop_shell_section
+    assert 'x-show="$store.global.deviceType !== \'mobile\' && showCategoryMode && !isSortMode"' in desktop_shell_section
+    assert 'x-show="$store.global.deviceType !== \'mobile\' && showCategoryManager && !isSortMode"' in desktop_shell_section
+
+
+def test_tag_filter_template_desktop_workbench_exposes_governance_and_remember_view_controls_contract():
+    template_source = read_project_file('templates/modals/tag_filter.html')
+    desktop_shell_section = template_source.split('<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell">', 1)[1].split('</div>\n        <div x-show="$store.global.deviceType !== \'mobile\'" class="tag-cloud-container custom-scrollbar">', 1)[0]
+
+    assert 'x-model="rememberLastTagView"' in desktop_shell_section
+    assert 'x-model="lockTagLibrary"' in desktop_shell_section
+    assert 'x-model="tagBlacklistInput"' in desktop_shell_section
+    assert '@change="saveDesktopWorkbenchPrefs()"' in desktop_shell_section
+    assert '@change="saveTagManagementPrefsState()"' in desktop_shell_section
+    assert '@blur="saveTagManagementPrefsState()"' in desktop_shell_section
+
+
+def test_tag_filter_template_category_sort_selector_persists_last_category_choice_contract():
+    template_source = read_project_file('templates/modals/tag_filter.html')
+
+    assert '<select x-model="selectedCategorySortName" @change="saveDesktopWorkbenchPrefs()" class="form-input"' in template_source
+
+
+def test_tag_filter_desktop_workbench_shell_css_contract():
+    source = read_project_file('static/css/modules/modal-tools.css')
+
+    assert '.tag-filter-desktop-shell {' in source
+    assert '.tag-filter-desktop-toolbar {' in source
+    assert '.tag-filter-desktop-workbench {' in source
+    assert '.tag-filter-desktop-sidebar {' in source
+    assert '.tag-filter-desktop-main {' in source
+
+
+def test_tag_filter_desktop_workbench_sections_css_sizes_sidebar_and_main():
+    source = read_project_file('static/css/modules/modal-tools.css')
+    desktop_shell_section = source.split('.tag-filter-desktop-shell {', 1)[1].split('@media (max-width: 768px) {', 1)[0]
+
+    assert 'display: flex' in desktop_shell_section
+    assert 'flex-direction: column' in desktop_shell_section
+    assert 'min-height: 0' in desktop_shell_section
+    assert 'grid-template-columns:' in desktop_shell_section
+    assert 'minmax(16rem, 20rem)' in desktop_shell_section
+    assert 'minmax(0, 1fr)' in desktop_shell_section
+    assert 'overflow-y: auto' in desktop_shell_section
+
+
+def test_tag_filter_desktop_workbench_shell_css_widens_modal_container():
+    source = read_project_file('static/css/modules/modal-tools.css')
+    modal_container_section = source.split('.tag-modal-container {', 1)[1].split('.tag-cloud-container {', 1)[0]
+
+    assert 'width: min(1120px, 94vw);' in modal_container_section
+    assert 'max-width: 94vw;' in modal_container_section
+
+
+def test_tag_filter_template_desktop_workbench_shell_uses_x_if_branch_isolation():
+    template_source = read_project_file('templates/modals/tag_filter.html')
+
+    assert '<template x-if="$store.global.deviceType === \'mobile\'">' in template_source
+    assert '<template x-if="$store.global.deviceType !== \'mobile\'">' in template_source
+    assert '<div x-show="$store.global.deviceType === \'mobile\'" class="tag-filter-mobile-shell">' in template_source
+    assert '<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell">' in template_source
+    assert 'class="tag-filter-mobile-shell"' in template_source
+    assert 'class="tag-filter-desktop-shell"' in template_source

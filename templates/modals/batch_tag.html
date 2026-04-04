@@ -1,6 +1,6 @@
 <!-- 批量标签管理 -->
 <div x-data="batchTagModal" x-show="showBatchTagModal" x-cloak class="modal-overlay">
-    <div class="tag-modal-container flex flex-col" style="width: 600px; height: 80vh; max-height: 800px;"
+    <div class="tag-modal-container batch-tag-modal-shell flex flex-col" style="height: 82vh; max-height: 860px;"
         @click.away="showBatchTagModal=false">
         <div
             style="display:flex; justify-content:space-between; align-items:center; padding-bottom: 1rem; border-bottom: 1px solid var(--border-light); flex-shrink: 0;">
@@ -27,7 +27,7 @@
             </div>
             <div style="margin-top:1.5rem;">
                 <h4 class="text-sm font-bold text-purple-300 mb-2">从现有标签池选择（多选）</h4>
-                <input type="text" x-model="batchTagPickerSearch" placeholder="搜索标签…" class="form-input mb-2">
+                <input type="text" x-model="batchTagPickerSearch" placeholder="搜索标签（支持多个关键词，逗号/竖线分隔）…" class="form-input mb-2">
                 <div class="tag-category-filter-row" style="margin-bottom: 0.45rem;">
                     <button type="button" class="tag-category-filter-pill"
                         :class="isBatchCategoryFilterAllMixed ? 'active-mixed' : ''"

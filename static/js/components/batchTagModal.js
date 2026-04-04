@@ -4,6 +4,7 @@
  */
 
 import { batchUpdateTags } from '../api/system.js';
+import { matchAnyTagSearchToken, splitTagTokens } from '../state.js';
 
 export default function batchTagModal() {
     return {
@@ -26,6 +27,29 @@ export default function batchTagModal() {
         // 目标卡片 IDs
         targetIds: [],
 
+        loadTagViewPrefs() {
+            const tagViewPrefs = this.$store.global.loadTagViewPrefs();
+            const rememberLastTagView = tagViewPrefs.rememberLastTagView === true;
+            this.mixedCategoryView = rememberLastTagView
+                ? tagViewPrefs.mixedCategoryView !== false
+                : true;
+            this.batchCategoryFilterInclude = rememberLastTagView && Array.isArray(tagViewPrefs.categoryFilterInclude)
+                ? [...tagViewPrefs.categoryFilterInclude]
+                : [];
+            this.batchCategoryFilterExclude = rememberLastTagView && Array.isArray(tagViewPrefs.categoryFilterExclude)
+                ? [...tagViewPrefs.categoryFilterExclude]
+                : [];
+            return tagViewPrefs;
+        },
+
+        saveTagViewPrefs() {
+            return this.$store.global.saveTagViewPrefs({
+                mixedCategoryView: this.mixedCategoryView,
+                categoryFilterInclude: this.batchCategoryFilterInclude,
+                categoryFilterExclude: this.batchCategoryFilterExclude,
+            });
+        },
+
         init() {
             // 监听打开事件
             window.addEventListener('open-batch-tag-modal', (e) => {
@@ -47,9 +71,7 @@ export default function batchTagModal() {
                 this.batchTagInputRemove = "";
                 this.batchTagPickerSearch = "";
                 this.batchSelectedTags = [];
-                this.batchCategoryFilterInclude = [];
-                this.batchCategoryFilterExclude = [];
-                this.mixedCategoryView = true;
+                this.loadTagViewPrefs();
                 this.showBatchTagModal = true;
             });
         },
@@ -57,8 +79,10 @@ export default function batchTagModal() {
         // === 计算属性：过滤标签池 ===
         get filteredBatchTagPool() {
             const pool = this.$store.global.globalTagsPool || [];
-            if (!this.batchTagPickerSearch) return pool;
-            return pool.filter(t => t.toLowerCase().includes(this.batchTagPickerSearch.toLowerCase()));
+            const query = this.batchTagPickerSearch || '';
+            if (!query) return pool;
+            const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
+            return pool.filter(t => matchAnyTagSearchToken(t, query, { slashIsSeparator }));
         },
 
         get batchBaseTagGroups() {
@@ -158,16 +182,19 @@ export default function batchTagModal() {
 
             this.batchCategoryFilterInclude = include;
             this.batchCategoryFilterExclude = exclude;
+            this.saveTagViewPrefs();
         },
 
         showAllBatchCategoriesMixed() {
             this.batchCategoryFilterInclude = [];
             this.batchCategoryFilterExclude = [];
             this.mixedCategoryView = true;
+            this.saveTagViewPrefs();
         },
 
         toggleBatchCategoryView() {
             this.mixedCategoryView = !this.mixedCategoryView;
+            this.saveTagViewPrefs();
         },
 
         toggleBatchSelectTag(tag) {
@@ -184,8 +211,11 @@ export default function batchTagModal() {
         batchAddTag(tag) {
             const val = (tag || this.batchTagInputAdd || "").trim();
             if (!val) return;
+            const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
+            const tagsToAdd = splitTagTokens(val, { slashIsSeparator });
+            if (!tagsToAdd.length) return;
             
-            this._performBatchUpdate([val], [], "add", { triggerMerge: true });
+            this._performBatchUpdate(tagsToAdd, [], "add", { triggerMerge: true });
         },
 
         applyBatchAddTags() {
@@ -197,8 +227,11 @@ export default function batchTagModal() {
         batchRemoveTag(tag) {
             const val = (tag || this.batchTagInputRemove || "").trim();
             if (!val) return;
+            const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
+            const tagsToRemove = splitTagTokens(val, { slashIsSeparator });
+            if (!tagsToRemove.length) return;
             
-            this._performBatchUpdate([], [val], "remove");
+            this._performBatchUpdate([], tagsToRemove, "remove");
         },
 
         applyBatchRemoveTags() {

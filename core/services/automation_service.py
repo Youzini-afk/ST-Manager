@@ -25,6 +25,7 @@ from core.automation.tag_merge import apply_merge_actions_to_tags
 from core.context import ctx
 from core.data.ui_store import load_ui_data
 from core.services.card_service import modify_card_attributes_internal, resolve_ui_key
+from core.services.tag_management_service import build_governance_feedback
 from core.utils.tag_parser import split_action_tags
 from core.utils.image import extract_card_info
 
@@ -409,6 +410,11 @@ def auto_run_forum_tags_on_link_update(card_id):
                     'replace_rules': merge_payload.get('replace_rules', {}) or {},
                     'actions': int(merge_res.get('actions') or 0)
                 }
+                governance_feedback = build_governance_feedback(merge_payload)
+                if governance_feedback['skipped_unknown']:
+                    tag_merge['skipped_unknown'] = governance_feedback['skipped_unknown']
+                if governance_feedback['skipped_blacklist']:
+                    tag_merge['skipped_blacklist'] = governance_feedback['skipped_blacklist']
 
         res['final_tags'] = final_tags
         if tag_merge:

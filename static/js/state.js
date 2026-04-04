@@ -34,6 +34,46 @@ const THEME_PRESETS = {
 const DEFAULT_TAG_CATEGORY = '未分类';
 const DEFAULT_TAG_CATEGORY_COLOR = '#64748b';
 const DEFAULT_TAG_CATEGORY_OPACITY = 16;
+const TAG_VIEW_PREFS_STORAGE_KEY = 'st_manager_tag_view_prefs';
+
+function buildDefaultTagViewPrefs() {
+    return {
+        rememberLastTagView: false,
+        mixedCategoryView: true,
+        categoryFilterInclude: [],
+        categoryFilterExclude: [],
+        lastCategorySortName: '',
+    };
+}
+
+export function splitTagTokens(rawValue, options = {}) {
+    const source = String(rawValue || '');
+    if (!source.trim()) return [];
+
+    const slashIsSeparator = !!options.slashIsSeparator;
+    const splitPattern = slashIsSeparator ? /[|/,，\n]+/ : /[|,，\n]+/;
+    const seen = new Set();
+    const tokens = [];
+
+    source.split(splitPattern).forEach((part) => {
+        const token = String(part || '').trim();
+        if (!token || seen.has(token)) return;
+        seen.add(token);
+        tokens.push(token);
+    });
+
+    return tokens;
+}
+
+export function matchAnyTagSearchToken(haystack, query, options = {}) {
+    const value = String(haystack || '').trim().toLowerCase();
+    if (!value) return false;
+
+    const tokens = splitTagTokens(query, options).map(token => token.toLowerCase());
+    if (!tokens.length) return value.includes(String(query || '').trim().toLowerCase());
+
+    return tokens.some(token => value.includes(token));
+}
 
 function buildDefaultTagTaxonomy() {
     return {
@@ -120,6 +160,7 @@ export function initState() {
         sidebarTagGroups: [],
         globalTagGroups: [],
         tagTaxonomy: buildDefaultTagTaxonomy(),
+        tagViewPrefs: buildDefaultTagViewPrefs(),
         isolatedCategories: [],
         categoryCounts: {},
         libraryTotal: 0,
@@ -265,6 +306,7 @@ export function initState() {
         init() {
             this.checkServerStatus();
             this.loadUserPreferences();
+            this.loadTagViewPrefs();
             this.syncViewportHeight();
 
             if (!this._visualViewportResizeHandler) {
@@ -451,6 +493,72 @@ export function initState() {
             if (savedPerPage) this.settingsForm.items_per_page = parseInt(savedPerPage);
         },
 
+        loadTagViewPrefs() {
+            const fallback = buildDefaultTagViewPrefs();
+
+            try {
+                const raw = localStorage.getItem(TAG_VIEW_PREFS_STORAGE_KEY);
+                if (!raw) {
+                    this.tagViewPrefs = fallback;
+                    return this.tagViewPrefs;
+                }
+
+                const parsed = JSON.parse(raw);
+                const parsedObject = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+                this.tagViewPrefs = {
+                    ...fallback,
+                    ...parsedObject,
+                    rememberLastTagView: parsedObject.rememberLastTagView === true,
+                    mixedCategoryView: parsedObject.mixedCategoryView !== false,
+                    categoryFilterInclude: Array.isArray(parsedObject.categoryFilterInclude)
+                        ? parsedObject.categoryFilterInclude.filter(Boolean)
+                        : [],
+                    categoryFilterExclude: Array.isArray(parsedObject.categoryFilterExclude)
+                        ? parsedObject.categoryFilterExclude.filter(Boolean)
+                        : [],
+                    lastCategorySortName: typeof parsedObject.lastCategorySortName === 'string'
+                        ? parsedObject.lastCategorySortName
+                        : '',
+                };
+            } catch (_) {
+                this.tagViewPrefs = fallback;
+            }
+
+            return this.tagViewPrefs;
+        },
+
+        saveTagViewPrefs(nextPrefs) {
+            const current = this.tagViewPrefs && typeof this.tagViewPrefs === 'object'
+                ? this.tagViewPrefs
+                : buildDefaultTagViewPrefs();
+            const normalized = {
+                ...buildDefaultTagViewPrefs(),
+                ...current,
+                ...(nextPrefs && typeof nextPrefs === 'object' && !Array.isArray(nextPrefs) ? nextPrefs : {}),
+            };
+
+            normalized.rememberLastTagView = normalized.rememberLastTagView === true;
+            normalized.mixedCategoryView = normalized.mixedCategoryView !== false;
+            normalized.categoryFilterInclude = Array.isArray(normalized.categoryFilterInclude)
+                ? normalized.categoryFilterInclude.filter(Boolean)
+                : [];
+            normalized.categoryFilterExclude = Array.isArray(normalized.categoryFilterExclude)
+                ? normalized.categoryFilterExclude.filter(Boolean)
+                : [];
+            normalized.lastCategorySortName = typeof normalized.lastCategorySortName === 'string'
+                ? normalized.lastCategorySortName
+                : '';
+            this.tagViewPrefs = normalized;
+
+            try {
+                localStorage.setItem(TAG_VIEW_PREFS_STORAGE_KEY, JSON.stringify(normalized));
+            } catch (_) {
+                // ignore localStorage persistence failures and keep runtime state
+            }
+
+            return this.tagViewPrefs;
+        },
+
         // === 全局动作 ===
 
         // 切换深色模式
@@ -606,6 +714,38 @@ export function initState() {
                 });
             }
 
+            const categoryTagOrder = {};
+            const rawCategoryTagOrder = raw.category_tag_order;
+            if (rawCategoryTagOrder && typeof rawCategoryTagOrder === 'object' && !Array.isArray(rawCategoryTagOrder)) {
+                Object.entries(rawCategoryTagOrder).forEach(([rawCategory, rawTags]) => {
+                    const category = String(rawCategory || '').trim();
+                    if (!Array.isArray(rawTags)) return;
+
+                    rawTags.forEach((rawTag) => {
+                        const tag = String(rawTag || '').trim();
+                        if (!tag) return;
+
+                        const targetCategory = String(tagToCategory[tag] || '').trim();
+                        if (!targetCategory || !categories[targetCategory]) return;
+
+                        if (category !== targetCategory) {
+                            return;
+                        }
+
+                        const targetTags = categoryTagOrder[targetCategory] || [];
+                        if (targetTags.includes(tag)) return;
+                        targetTags.push(tag);
+                        categoryTagOrder[targetCategory] = targetTags;
+                    });
+                });
+
+                Object.keys(categoryTagOrder).forEach((category) => {
+                    if (!categories[category] || !categoryTagOrder[category].length) {
+                        delete categoryTagOrder[category];
+                    }
+                });
+            }
+
             let updatedAt = parseInt(raw.updated_at, 10);
             if (Number.isNaN(updatedAt) || updatedAt < 0) updatedAt = 0;
 
@@ -614,6 +754,7 @@ export function initState() {
                 category_order: categoryOrder,
                 categories,
                 tag_to_category: tagToCategory,
+                category_tag_order: categoryTagOrder,
                 updated_at: updatedAt,
             };
         },
@@ -677,6 +818,9 @@ export function initState() {
 
             const taxonomy = this.tagTaxonomy || buildDefaultTagTaxonomy();
             const order = Array.isArray(taxonomy.category_order) ? taxonomy.category_order : [];
+            const categoryTagOrder = taxonomy.category_tag_order && typeof taxonomy.category_tag_order === 'object'
+                ? taxonomy.category_tag_order
+                : {};
             const grouped = new Map();
 
             tagList.forEach((rawTag) => {
@@ -711,7 +855,30 @@ export function initState() {
                 category,
                 color: this.getCategoryColor(category),
                 opacity: this.getCategoryOpacity(category),
-                tags: grouped.get(category) || [],
+                tags: (() => {
+                    const tagsInCategory = [...(grouped.get(category) || [])];
+                    const orderedTags = Array.isArray(categoryTagOrder[category]) ? categoryTagOrder[category] : [];
+                    if (!orderedTags.length) return tagsInCategory;
+
+                    const tagSet = new Set(tagsInCategory);
+                    const seenTags = new Set();
+                    const result = [];
+
+                    orderedTags.forEach((rawTag) => {
+                        const tag = String(rawTag || '').trim();
+                        if (!tag || seenTags.has(tag) || !tagSet.has(tag)) return;
+                        seenTags.add(tag);
+                        result.push(tag);
+                    });
+
+                    tagsInCategory.forEach((tag) => {
+                        if (seenTags.has(tag)) return;
+                        seenTags.add(tag);
+                        result.push(tag);
+                    });
+
+                    return result;
+                })(),
             }));
         },
 

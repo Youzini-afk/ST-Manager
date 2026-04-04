@@ -714,7 +714,7 @@
 
                                     <div class="detail-inline-input detail-tag-library-search">
                                         <input x-ref="tagLibrarySearchInput" type="text" x-model="tagLibrarySearch"
-                                            placeholder="搜索标签库..." class="detail-inline-text">
+                                            placeholder="搜索标签库（支持多个关键词，逗号/竖线分隔）..." class="detail-inline-text">
                                         <button x-show="tagLibrarySearch" @click="tagLibrarySearch=''"
                                             class="detail-inline-add" title="清空搜索">✕</button>
                                     </div>
@@ -726,6 +726,10 @@
                                             title="显示全部分类（混合显示）">
                                             全部（混合）
                                         </button>
+                                        <button type="button" class="detail-tag-category-filter-pill"
+                                            @click="mixedCategoryView = !mixedCategoryView; saveTagViewPrefs()"
+                                            :title="mixedCategoryView ? '切换为分组显示' : '切换为混合显示'"
+                                            x-text="mixedCategoryView ? '切换分组显示' : '切换混合显示'"></button>
                                         <template x-for="name in detailFilterCategoryNames" :key="'detail-fcat-' + name">
                                             <button type="button" class="detail-tag-category-filter-pill"
                                                 :class="{

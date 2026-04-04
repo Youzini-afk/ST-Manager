@@ -4,6 +4,7 @@
  */
 
 import { listRuleSets, getRuleSet, saveRuleSet, deleteRuleSet, setGlobalRuleset, getGlobalRuleset, importRuleSet, getExportRuleSetUrl } from '../api/automation.js';
+import { splitTagTokens } from '../state.js';
 
 const TEMPLATE_ACTION_TYPES = ['rename_file_by_template', 'split_category_to_tags'];
 
@@ -259,7 +260,6 @@ export default function automationModal() {
             if (!this.activeRuleSet) return;
 
             const slashAsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
-            const listSplitPattern = slashAsSeparator ? /[,|/]/ : /[,|]/;
             const parseReplaceRulesText = (text) => {
                 const out = {};
                 const raw = (text || '').toString().trim();
@@ -272,8 +272,8 @@ export default function automationModal() {
                     const right = (match[2] || '').trim();
                     if (!left || !right) continue;
 
-                    const fromTags = left.split(listSplitPattern).map(s => s.trim()).filter(s => s);
-                    const toTags = right.split(listSplitPattern).map(s => s.trim()).filter(s => s);
+                    const fromTags = splitTagTokens(left, { slashIsSeparator: slashAsSeparator });
+                    const toTags = splitTagTokens(right, { slashIsSeparator: slashAsSeparator });
                     if (!fromTags.length || !toTags.length) continue;
 
                     const target = toTags[0];
@@ -296,7 +296,7 @@ export default function automationModal() {
                             // 构建 value 对象
                             const config = action.config;
                             const valueObj = {
-                                exclude_tags: config.exclude_tags ? config.exclude_tags.split(listSplitPattern).map(s => s.trim()).filter(s => s) : [],
+                                exclude_tags: splitTagTokens(config.exclude_tags, { slashIsSeparator: slashAsSeparator }),
                                 replace_rules: {},
                                 merge_mode: config.merge_mode || 'merge'
                             };

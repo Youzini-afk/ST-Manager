@@ -621,6 +621,121 @@ def test_auto_run_forum_tags_on_link_update_normalizes_fetch_only_then_runs_merg
     }
 
 
+def test_auto_run_forum_tags_on_link_update_filters_governed_tags_before_writeback(monkeypatch):
+    card_id = 'folder/demo.json'
+    fake_cache = SimpleNamespace(
+        id_map={
+            card_id: {
+                'id': card_id,
+                'filename': 'demo.json',
+                'char_name': 'Demo',
+                'tags': ['existing', 'blocked-tag', 'unknown-tag'],
+            }
+        },
+        bundle_map={},
+    )
+    captured = {}
+
+    monkeypatch.setattr(
+        automation_service,
+        'load_config',
+        lambda: {
+            'active_automation_ruleset': 'ruleset-1',
+            'automation_slash_is_tag_separator': False,
+        },
+    )
+    monkeypatch.setattr(automation_service.rule_manager, 'get_ruleset', lambda ruleset_id: {'rules': []})
+    monkeypatch.setattr(automation_service.ctx, 'cache', fake_cache, raising=False)
+    monkeypatch.setattr(automation_service, '_build_rule_context', lambda *args, **kwargs: ({'id': card_id}, {'ui': 'data'}))
+    monkeypatch.setattr(
+        automation_service.engine,
+        'evaluate',
+        lambda *args, **kwargs: {
+            'actions': [
+                {'type': ACT_FETCH_FORUM_TAGS, 'value': {'provider': 'forum'}},
+                {'type': ACT_MERGE_TAGS, 'value': {'legacy': 'modern'}},
+            ]
+        },
+    )
+
+    normalized_plan = {
+        'trigger_context': TRIGGER_CONTEXT_LINK_UPDATE,
+        'actions': [
+            {'type': ACT_FETCH_FORUM_TAGS, 'value': {'provider': 'normalized-forum'}},
+        ],
+        'derived': {'add_tags': set(), 'remove_tags': set()},
+        'observability': {
+            'category_tag_expansions': [],
+            'suppressed_filename_action_conflicts': [],
+            'noop_rename_reasons': [],
+        },
+    }
+
+    def _fake_normalize(actions, trigger_context, card_snapshot=None):
+        captured['normalize_actions'] = list(actions)
+        return normalized_plan
+
+    def _fake_apply_plan(card_id_arg, plan, ui_data):
+        captured['applied_plan'] = plan
+        fake_cache.id_map[card_id_arg]['tags'] = ['existing', 'allowed-tag', 'blocked-tag', 'unknown-tag']
+        return {
+            'final_id': card_id_arg,
+            'tags_added': ['existing', 'allowed-tag', 'blocked-tag', 'unknown-tag'],
+            'forum_tags_fetched': {
+                'provider': 'normalized-forum',
+                'tags': ['allowed-tag', 'blocked-tag', 'unknown-tag'],
+            },
+        }
+
+    def _fake_tag_merge(card_id_arg, tags, ui_data=None, runtime=None):
+        captured['merge_tags'] = list(tags)
+        return {
+            'run': True,
+            'actions': 1,
+            'result': {
+                'tags': ['existing', 'allowed-tag'],
+                'changed': True,
+                'replacements': [],
+                'replace_rules': {},
+                'skipped_unknown': ['unknown-tag'],
+                'skipped_blacklist': ['blocked-tag'],
+            },
+        }
+
+    def _fake_modify_card_attributes_internal(card_id_arg, add_tags=None, remove_tags=None, runtime=None):
+        captured['writeback'] = {
+            'card_id': card_id_arg,
+            'add_tags': list(add_tags or []),
+            'remove_tags': list(remove_tags or []),
+        }
+        return True
+
+    monkeypatch.setattr(automation_service, 'normalize_actions_for_context', _fake_normalize)
+    monkeypatch.setattr(automation_service.executor, 'apply_plan', _fake_apply_plan)
+    monkeypatch.setattr(automation_service, 'auto_run_tag_merge_on_tagging', _fake_tag_merge)
+    monkeypatch.setattr(automation_service, 'modify_card_attributes_internal', _fake_modify_card_attributes_internal, raising=False)
+
+    result = automation_service.auto_run_forum_tags_on_link_update(card_id)
+
+    assert result is not None
+    assert result['run'] is True
+    assert captured['applied_plan']['fetch_forum_tags'] == {'provider': 'normalized-forum'}
+    assert captured['merge_tags'] == ['existing', 'allowed-tag', 'blocked-tag', 'unknown-tag']
+    assert captured['writeback']['card_id'] == card_id
+    assert captured['writeback']['add_tags'] == []
+    assert set(captured['writeback']['remove_tags']) == {'blocked-tag', 'unknown-tag'}
+    assert result['result']['final_tags'] == ['existing', 'allowed-tag']
+    assert result['result']['tag_merge'] == {
+        'triggered': True,
+        'changed': True,
+        'replacements': [],
+        'replace_rules': {},
+        'actions': 1,
+        'skipped_unknown': ['unknown-tag'],
+        'skipped_blacklist': ['blocked-tag'],
+    }
+
+
 def test_auto_run_tag_merge_on_tagging_uses_shared_normalizer_for_tag_edit(monkeypatch):
     card_id = 'folder/demo.json'
     tags = ['legacy', 'keep']
@@ -1368,6 +1483,73 @@ def test_executor_apply_plan_propagates_template_rename_failure_and_skips_move(m
     }
     assert result['moved_to'] is None
     assert result['final_id'] == 'folder/original.json'
+
+
+def test_executor_fetch_forum_tags_preserves_processed_tags_and_exposes_governed_tags(monkeypatch):
+    from core.automation.executor import AutomationExecutor
+    from core.automation import executor as automation_executor
+
+    fake_cache = SimpleNamespace(
+        id_map={
+            'folder/demo.json': {
+                'id': 'folder/demo.json',
+                'filename': 'demo.json',
+                'tags': ['existing'],
+            }
+        }
+    )
+
+    class _FakeFetcher:
+        def fetch_tags(self, url):
+            return {
+                'success': True,
+                'tags': ['raw-allowed', 'raw-blocked'],
+                'title': 'Demo Thread',
+            }
+
+    class _FakeProcessor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def process(self, tags):
+            return ['allowed-tag', 'blocked-tag']
+
+        def merge_tags(self, existing_tags, processed_tags, merge_mode):
+            assert processed_tags == ['allowed-tag']
+            return list(existing_tags) + list(processed_tags)
+
+    monkeypatch.setattr(automation_executor, 'ctx', SimpleNamespace(cache=fake_cache), raising=False)
+    monkeypatch.setattr(automation_executor, 'resolve_ui_key', lambda card_id: card_id)
+    monkeypatch.setattr(automation_executor, 'get_tag_fetcher', lambda: _FakeFetcher())
+    monkeypatch.setattr(automation_executor, 'TagProcessor', _FakeProcessor)
+    monkeypatch.setattr(automation_executor, 'load_config', lambda: {'automation_slash_is_tag_separator': False})
+
+    result = AutomationExecutor()._fetch_forum_tags(
+        'folder/demo.json',
+        {'merge_mode': 'merge'},
+        ui_data={
+            'folder/demo.json': {'link': 'https://example.test/thread'},
+            '_tag_management_prefs_v1': {
+                'lock_tag_library': True,
+                'tag_blacklist': ['blocked-tag'],
+            },
+            '_tag_taxonomy_v1': {
+                'default_category': 'General',
+                'categories': {'General': {'color': '#123456', 'opacity': 30}},
+                'tag_to_category': {
+                    'allowed-tag': 'General',
+                    'existing': 'General',
+                },
+            },
+        },
+    )
+
+    assert result['success'] is True
+    assert result['processed_tags'] == ['allowed-tag', 'blocked-tag']
+    assert result['governed_tags'] == ['allowed-tag']
+    assert result['skipped_blacklist'] == ['blocked-tag']
+    assert result['skipped_unknown'] == []
+    assert result['tags'] == ['existing', 'allowed-tag']
 
 
 def test_sync_card_names_internal_template_rename_reuses_existing_migration_logic(monkeypatch, tmp_path):

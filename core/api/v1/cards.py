@@ -27,6 +27,8 @@ from core.data.ui_store import (
     ensure_import_time,
     get_tag_taxonomy,
     set_tag_taxonomy,
+    get_tag_management_prefs,
+    set_tag_management_prefs,
     remove_tags_from_tag_taxonomy,
     get_isolated_categories,
     set_isolated_categories,
@@ -43,6 +45,7 @@ from core.consts import SIDECAR_EXTENSIONS
 from core.services.scan_service import suppress_fs_events
 from core.services.cache_service import schedule_reload, force_reload, update_card_cache
 from core.services.card_service import update_card_content, rename_folder_in_db, rename_folder_in_ui, resolve_ui_key, swap_skin_to_cover
+from core.services.tag_management_service import build_governance_feedback, build_known_tag_set, filter_governed_tags
 from core.services.automation_service import (
     auto_run_rules_on_card,
     auto_run_forum_tags_on_link_update,
@@ -105,6 +108,9 @@ def _build_tag_groups(tags, taxonomy):
 
     raw_tag_to_category = taxonomy_data.get('tag_to_category')
     tag_to_category = raw_tag_to_category if isinstance(raw_tag_to_category, dict) else {}
+
+    raw_category_tag_order = taxonomy_data.get('category_tag_order')
+    category_tag_order = raw_category_tag_order if isinstance(raw_category_tag_order, dict) else {}
 
     category_order_raw = taxonomy_data.get('category_order')
     category_order = category_order_raw if isinstance(category_order_raw, list) else []
@@ -172,11 +178,15 @@ def _build_tag_groups(tags, taxonomy):
         except (TypeError, ValueError):
             opacity = DEFAULT_TAG_CATEGORY_OPACITY
         opacity = max(0, min(100, opacity))
+        ordered_tags = _apply_tag_order(
+            grouped.get(category_name, []),
+            category_tag_order.get(category_name, []),
+        )
         result.append({
             'category': category_name,
             'color': color,
             'opacity': opacity,
-            'tags': grouped.get(category_name, []),
+            'tags': ordered_tags,
         })
 
     return result
@@ -763,6 +773,18 @@ def api_get_tag_taxonomy():
         return jsonify({'success': False, 'msg': str(e)})
 
 
+@bp.route('/api/tag_management_prefs', methods=['GET'])
+def api_get_tag_management_prefs():
+    try:
+        ui_data = load_ui_data()
+        return jsonify({
+            'success': True,
+            'tag_management_prefs': get_tag_management_prefs(ui_data),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'msg': str(e)})
+
+
 @bp.route('/api/isolated_categories', methods=['GET'])
 def api_get_isolated_categories():
     try:
@@ -813,6 +835,16 @@ def api_save_tag_taxonomy():
         if isinstance(raw_tag_to_category, dict) and len(raw_tag_to_category) > 20000:
             return jsonify({'success': False, 'msg': '标签分类映射数量过多'}), 400
 
+        raw_category_tag_order = taxonomy_payload.get('category_tag_order')
+        if isinstance(raw_category_tag_order, dict):
+            total_ordered_tags = 0
+            for raw_tags in raw_category_tag_order.values():
+                if not isinstance(raw_tags, list):
+                    continue
+                total_ordered_tags += len(raw_tags)
+                if total_ordered_tags > 20000:
+                    return jsonify({'success': False, 'msg': '分类内标签排序数量过多'}), 400
+
         ui_data = load_ui_data()
         changed = set_tag_taxonomy(ui_data, taxonomy_payload)
         if changed:
@@ -821,6 +853,34 @@ def api_save_tag_taxonomy():
         return jsonify({
             'success': True,
             'taxonomy': get_tag_taxonomy(ui_data),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'msg': str(e)})
+
+
+@bp.route('/api/tag_management_prefs', methods=['POST'])
+def api_save_tag_management_prefs():
+    try:
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({'success': False, 'msg': '无效的标签管理偏好配置'}), 400
+
+        prefs_payload = payload.get('tag_management_prefs', payload)
+        if not isinstance(prefs_payload, dict):
+            return jsonify({'success': False, 'msg': '无效的标签管理偏好配置'}), 400
+
+        raw_blacklist = prefs_payload.get('tag_blacklist')
+        if isinstance(raw_blacklist, list) and len(raw_blacklist) > 20000:
+            return jsonify({'success': False, 'msg': '标签黑名单数量过多'}), 400
+
+        ui_data = load_ui_data()
+        changed = set_tag_management_prefs(ui_data, prefs_payload)
+        if changed:
+            save_ui_data(ui_data)
+
+        return jsonify({
+            'success': True,
+            'tag_management_prefs': get_tag_management_prefs(ui_data),
         })
     except Exception as e:
         return jsonify({'success': False, 'msg': str(e)})
@@ -3151,11 +3211,23 @@ def api_batch_tags():
 
         updated = 0
         all_added_tags = []
+        added_count = 0
         tag_merge_applied_cards = 0
         tag_merge_replacements = []
 
+        shared_ui_data = load_ui_data()
+        tag_governance = filter_governed_tags(
+            add_tags,
+            ui_data=shared_ui_data,
+            known_tags=build_known_tag_set(ui_data=shared_ui_data),
+        )
+        governed_add_tags = tag_governance['accepted']
+
         merge_runtime = get_global_tag_merge_runtime() if trigger_merge else None
-        shared_ui_data = load_ui_data() if merge_runtime else None
+        if not merge_runtime:
+            merge_ui_data = None
+        else:
+            merge_ui_data = shared_ui_data
 
         # 数据库连接 (为了持久化标签变更，防止重启丢失)
         # 虽然写入了 PNG，但数据库也有一份 tags 字段，需要同步
@@ -3182,7 +3254,7 @@ def api_batch_tags():
             if remove_set:
                 after = [t for t in after if t not in remove_set]
 
-            add_norm = _normalize_tag_list(add_tags)
+            add_norm = _normalize_tag_list(governed_add_tags)
             if add_norm:
                 existing = set(after)
                 for t in add_norm:
@@ -3190,12 +3262,13 @@ def api_batch_tags():
                         after.append(t)
                         existing.add(t)
                         all_added_tags.append(t)
+                        added_count += 1
 
             if merge_runtime:
                 merged_tags, merge_info = _apply_global_tag_merge_for_card(
                     cid,
                     after,
-                    ui_data=shared_ui_data,
+                    ui_data=merge_ui_data,
                     runtime=merge_runtime
                 )
                 after = merged_tags
@@ -3224,6 +3297,8 @@ def api_batch_tags():
         return jsonify({
             "success": True,
             "updated": updated,
+            "added_count": added_count,
+            **build_governance_feedback(tag_governance),
             "tag_merge": {
                 "cards": tag_merge_applied_cards,
                 "replacements": tag_merge_replacements

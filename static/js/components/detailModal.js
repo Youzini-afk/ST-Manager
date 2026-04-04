@@ -46,6 +46,7 @@ import { updateShadowContent, updateMixedPreviewContent } from '../utils/dom.js'
 import { createAutoSaver } from '../utils/autoSave.js'; 
 import { wiHelpers } from '../utils/wiHelpers.js';
 import { clearActiveRuntimeContext, setActiveRuntimeContext } from '../runtime/runtimeContext.js';
+import { matchAnyTagSearchToken, splitTagTokens } from '../state.js';
 
 export default function detailModal() {
     const autoSaver = createAutoSaver();
@@ -325,9 +326,33 @@ export default function detailModal() {
             const pool = Array.isArray(this.$store?.global?.globalTagsPool)
                 ? this.$store.global.globalTagsPool
                 : [];
-            const keyword = (this.tagLibrarySearch || '').trim().toLowerCase();
-            if (!keyword) return pool;
-            return pool.filter(tag => String(tag).toLowerCase().includes(keyword));
+            const query = this.tagLibrarySearch || '';
+            if (!query.trim()) return pool;
+            const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
+            return pool.filter(tag => matchAnyTagSearchToken(tag, query, { slashIsSeparator }));
+        },
+
+        loadTagViewPrefs() {
+            const tagViewPrefs = this.$store.global.loadTagViewPrefs();
+            const rememberLastTagView = tagViewPrefs.rememberLastTagView === true;
+            this.mixedCategoryView = rememberLastTagView
+                ? tagViewPrefs.mixedCategoryView !== false
+                : true;
+            this.detailCategoryFilterInclude = Array.isArray(tagViewPrefs.categoryFilterInclude) && rememberLastTagView
+                ? [...tagViewPrefs.categoryFilterInclude]
+                : [];
+            this.detailCategoryFilterExclude = Array.isArray(tagViewPrefs.categoryFilterExclude) && rememberLastTagView
+                ? [...tagViewPrefs.categoryFilterExclude]
+                : [];
+            return tagViewPrefs;
+        },
+
+        saveTagViewPrefs() {
+            return this.$store.global.saveTagViewPrefs({
+                mixedCategoryView: this.mixedCategoryView,
+                categoryFilterInclude: this.detailCategoryFilterInclude,
+                categoryFilterExclude: this.detailCategoryFilterExclude,
+            });
         },
 
         get detailBaseTagGroups() {
@@ -437,12 +462,14 @@ export default function detailModal() {
 
             this.detailCategoryFilterInclude = include;
             this.detailCategoryFilterExclude = exclude;
+            this.saveTagViewPrefs();
         },
 
         showAllDetailCategoriesMixed() {
             this.detailCategoryFilterInclude = [];
             this.detailCategoryFilterExclude = [];
             this.mixedCategoryView = true;
+            this.saveTagViewPrefs();
         },
 
         sanitizeDetailCategoryFilterState() {
@@ -490,6 +517,7 @@ export default function detailModal() {
                     this.detailCategoryFilterExclude = [];
                 }
             });
+
         },
 
         // === 新增：处理资源 Tab 的文件拖拽 ===
@@ -915,9 +943,7 @@ export default function detailModal() {
             this.tab = 'basic';
             this.showTagLibrary = true;
             this.tagLibrarySearch = '';
-            this.mixedCategoryView = true;
-            this.detailCategoryFilterInclude = [];
-            this.detailCategoryFilterExclude = [];
+            this.loadTagViewPrefs();
 
             // 深拷贝并清洗数据 (Flatten & Sanitize)
             let rawData = JSON.parse(JSON.stringify(c));
@@ -1786,9 +1812,8 @@ export default function detailModal() {
                 this.editingData.tags = [];
             }
 
-            const slashAsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
-            const splitPattern = slashAsSeparator ? /[,|/，\n]/ : /[,|，\n]/;
-            const tagsToAdd = rawInput.split(splitPattern).map(t => t.trim()).filter(t => t);
+            const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
+            const tagsToAdd = splitTagTokens(rawInput, { slashIsSeparator });
 
             let changed = false;
             tagsToAdd.forEach(val => {
@@ -1904,6 +1929,7 @@ export default function detailModal() {
         openTagPicker() {
             this.showTagLibrary = !this.showTagLibrary;
             if (this.showTagLibrary) {
+                this.loadTagViewPrefs();
                 this.$nextTick(() => {
                     if (this.$refs.tagLibrarySearchInput) {
                         this.$refs.tagLibrarySearchInput.focus();

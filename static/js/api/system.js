@@ -145,6 +145,20 @@ export async function saveTagTaxonomy(payload) {
     return res.json();
 }
 
+export async function getTagManagementPrefs() {
+    const res = await fetch('/api/tag_management_prefs');
+    return res.json();
+}
+
+export async function saveTagManagementPrefs(payload) {
+    const res = await fetch('/api/tag_management_prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    return res.json();
+}
+
 // === 备份与快照 ===
 
 export async function listBackups(payload) {

@@ -14,6 +14,7 @@ VERSION_REMARKS_KEY = '_version_remarks'
 IMPORT_TIME_KEY = 'import_time'
 LAST_SENT_TO_ST_KEY = 'last_sent_to_st'
 TAG_TAXONOMY_KEY = '_tag_taxonomy_v1'
+TAG_MANAGEMENT_PREFS_KEY = '_tag_management_prefs_v1'
 ISOLATED_CATEGORIES_KEY = '_isolated_categories_v1'
 RESOURCE_ITEM_CATEGORIES_KEY = '_resource_item_categories_v1'
 WORLDINFO_NOTES_KEY = '_worldinfo_notes_v1'
@@ -84,6 +85,12 @@ def _normalize_opacity(value, fallback=DEFAULT_TAG_CATEGORY_OPACITY):
 
 
 def _normalize_category_name(value):
+    if value is None:
+        return ''
+    return str(value).strip()
+
+
+def _normalize_tag_name(value):
     if value is None:
         return ''
     return str(value).strip()
@@ -361,6 +368,37 @@ def _normalize_tag_taxonomy(raw):
                 category_name = default_category
             tag_to_category[tag] = category_name
 
+    category_tag_order = {}
+    raw_category_tag_order = source.get('category_tag_order')
+    if isinstance(raw_category_tag_order, dict):
+        for raw_category, raw_tags in raw_category_tag_order.items():
+            category_name = _normalize_category_name(raw_category)
+            if not isinstance(raw_tags, list):
+                continue
+
+            for raw_tag in raw_tags:
+                tag = _normalize_tag_name(raw_tag)
+                if not tag:
+                    continue
+
+                target_category = tag_to_category.get(tag)
+                if target_category not in categories:
+                    continue
+
+                if target_category != category_name:
+                    continue
+
+                normalized_tags = category_tag_order.setdefault(target_category, [])
+                if tag in normalized_tags:
+                    continue
+                normalized_tags.append(tag)
+
+        category_tag_order = {
+            category_name: ordered_tags
+            for category_name, ordered_tags in category_tag_order.items()
+            if category_name in categories and ordered_tags
+        }
+
     updated_at = 0
     try:
         updated_at = int(source.get('updated_at') or 0)
@@ -375,6 +413,7 @@ def _normalize_tag_taxonomy(raw):
         'category_order': category_order,
         'categories': categories,
         'tag_to_category': tag_to_category,
+        'category_tag_order': category_tag_order,
         'updated_at': updated_at,
     }
 
@@ -389,6 +428,49 @@ def _is_tag_taxonomy_equal(left, right):
         and left_norm.get('category_order') == right_norm.get('category_order')
         and left_norm.get('categories') == right_norm.get('categories')
         and left_norm.get('tag_to_category') == right_norm.get('tag_to_category')
+        and left_norm.get('category_tag_order') == right_norm.get('category_tag_order')
+    )
+
+
+def _normalize_tag_management_prefs(raw):
+    """规范化标签管理偏好配置。"""
+    source = raw if isinstance(raw, dict) else {}
+
+    raw_blacklist = source.get('tag_blacklist')
+    tag_blacklist = []
+    seen_tags = set()
+    if isinstance(raw_blacklist, list):
+        for raw_tag in raw_blacklist:
+            if raw_tag is None:
+                continue
+            tag = str(raw_tag).strip()
+            if not tag or tag in seen_tags:
+                continue
+            seen_tags.add(tag)
+            tag_blacklist.append(tag)
+
+    updated_at = 0
+    try:
+        updated_at = int(source.get('updated_at') or 0)
+    except (TypeError, ValueError):
+        updated_at = 0
+
+    if updated_at < 0:
+        updated_at = 0
+
+    return {
+        'lock_tag_library': bool(source.get('lock_tag_library')),
+        'tag_blacklist': tag_blacklist,
+        'updated_at': updated_at,
+    }
+
+
+def _is_tag_management_prefs_equal(left, right):
+    left_norm = _normalize_tag_management_prefs(left)
+    right_norm = _normalize_tag_management_prefs(right)
+    return (
+        left_norm.get('lock_tag_library') == right_norm.get('lock_tag_library')
+        and left_norm.get('tag_blacklist') == right_norm.get('tag_blacklist')
     )
 
 
@@ -535,6 +617,30 @@ def set_tag_taxonomy(ui_data, taxonomy_payload):
 
     next_norm['updated_at'] = int(time.time())
     ui_data[TAG_TAXONOMY_KEY] = next_norm
+    return True
+
+
+def get_tag_management_prefs(ui_data):
+    """获取标签管理偏好配置。"""
+    if not isinstance(ui_data, dict):
+        return _normalize_tag_management_prefs({})
+    return _normalize_tag_management_prefs(ui_data.get(TAG_MANAGEMENT_PREFS_KEY))
+
+
+def set_tag_management_prefs(ui_data, prefs_payload):
+    """保存标签管理偏好配置。"""
+    if not isinstance(ui_data, dict):
+        return False
+
+    previous_raw = ui_data.get(TAG_MANAGEMENT_PREFS_KEY)
+    previous_norm = _normalize_tag_management_prefs(previous_raw)
+    next_norm = _normalize_tag_management_prefs(prefs_payload)
+
+    if _is_tag_management_prefs_equal(previous_norm, next_norm) and isinstance(previous_raw, dict):
+        return False
+
+    next_norm['updated_at'] = int(time.time())
+    ui_data[TAG_MANAGEMENT_PREFS_KEY] = next_norm
     return True
 
 

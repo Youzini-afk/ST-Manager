@@ -9,6 +9,7 @@ from core.automation.forum_tag_fetcher import get_tag_fetcher, TagProcessor
 from core.data.ui_store import load_ui_data
 from core.context import ctx
 from core.config import load_config
+from core.services.tag_management_service import build_governance_feedback, build_known_tag_set, filter_governed_tags
 
 logger = logging.getLogger(__name__)
 
@@ -169,20 +170,29 @@ class AutomationExecutor:
             )
 
             processed_tags = processor.process(fetch_result['tags'])
+            governed = filter_governed_tags(
+                processed_tags,
+                ui_data=ui_data,
+                known_tags=build_known_tag_set(ui_data=ui_data),
+            )
+            accepted_tags = governed['accepted']
 
             # 根据合并模式处理
             merge_mode = config.get('merge_mode', 'merge')
             existing_tags = card_data.get('tags', [])
-            final_tags = processor.merge_tags(existing_tags, processed_tags, merge_mode)
+            final_tags = processor.merge_tags(existing_tags, accepted_tags, merge_mode)
 
-            return {
+            result = {
                 'success': True,
                 'tags': final_tags,
                 'original_tags': fetch_result['tags'],
                 'processed_tags': processed_tags,
+                'governed_tags': accepted_tags,
                 'title': fetch_result.get('title'),
                 'merge_mode': merge_mode
             }
+            result.update(build_governance_feedback(governed))
+            return result
 
         except Exception as e:
             logger.error(f"抓取论坛标签时出错: {e}")
