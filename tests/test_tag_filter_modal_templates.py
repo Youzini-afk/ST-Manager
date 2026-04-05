@@ -88,7 +88,7 @@ def test_tag_filter_template_gates_legacy_control_surface_to_non_mobile_only():
     assert "x-show=\"$store.global.deviceType !== 'mobile'\"" in template_source
     assert "x-show=\"$store.global.deviceType !== 'mobile' && isSortMode\"" in template_source
     assert "x-show=\"$store.global.deviceType !== 'mobile' && customOrderEnabled && !isSortMode\"" in template_source
-    assert "x-show=\"$store.global.deviceType !== 'mobile' && !isSortMode\"" in template_source
+    assert "x-show=\"desktopWorkspaceMode === 'filter' || desktopWorkspaceMode === 'batch-category' || desktopWorkspaceMode === 'category-manager'\"" in template_source
     assert "x-if=\"$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'batch-category' && showCategoryMode && !isSortMode\"" in template_source
     assert "x-if=\"$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'category-manager' && showCategoryManager && !isSortMode\"" in template_source
     assert 'class="tag-cloud-container custom-scrollbar"' in template_source

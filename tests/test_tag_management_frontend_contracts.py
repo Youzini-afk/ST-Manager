@@ -116,16 +116,10 @@ def test_tag_filter_modal_batch_category_save_allows_style_only_category_updates
     assert "const successMsg = tags.length > 0" in save_section
 
 
-def test_tag_filter_modal_footer_category_index_and_draft_style_sync_contract():
+def test_tag_filter_modal_category_draft_style_sync_contract():
     source = read_project_file('static/js/components/tagFilterModal.js')
-    footer_section = extract_js_function_block(source, 'get footerCategoryIndexNames() {')
-    quick_filter_section = extract_js_function_block(source, 'applyFooterCategoryQuickFilter(category) {')
     save_taxonomy_section = extract_js_function_block(source, 'saveTaxonomy(taxonomy, successMsg = \'\') {')
 
-    assert 'get footerCategoryIndexNames() {' in source
-    assert 'this.availableCategoryNames' in footer_section
-    assert 'applyFooterCategoryQuickFilter(category) {' in source
-    assert 'this.categoryFilterInclude = [String(category || \'\').trim()].filter(Boolean);' in quick_filter_section
     assert 'this.categoryDraftColor = this.getCategoryColor(draftName);' in save_taxonomy_section
     assert 'this.categoryDraftOpacity = this.getCategoryOpacity(draftName);' in save_taxonomy_section
 

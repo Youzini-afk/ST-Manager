@@ -681,10 +681,10 @@
               </button>
               <template x-if="isGovernanceDrawerOpen">
                 <div class="tag-filter-governance-drawer">
-                <div class="tag-filter-governance-drawer-body">
-                  <div class="text-xs" style="color: var(--text-dim)">
+                  <div class="tag-filter-governance-drawer-body">
+                    <div class="text-xs" style="color: var(--text-dim)">
                       这里用于管理标签视图记忆，以及自动来源的标签准入规则。
-                  </div>
+                    </div>
                     <label
                       class="text-xs"
                       style="
@@ -719,7 +719,10 @@
                       />
                       拒绝新增未知标签（自动/批量来源）
                     </label>
-                    <div class="text-xs" style="margin-top: 0.15rem; color: var(--text-dim)">
+                    <div
+                      class="text-xs"
+                      style="margin-top: 0.15rem; color: var(--text-dim)"
+                    >
                       开启后，仅已存在于标签库中的标签允许被自动流程或批量流程写入；手动单个添加不受影响。
                     </div>
                   </div>
@@ -815,41 +818,6 @@
                 style="color: var(--text-dim)"
               >
                 当前使用自定义排序，可点击“恢复字符排序”回退到原始字母序。
-              </div>
-              <div
-                x-show="$store.global.deviceType !== 'mobile' && !isSortMode"
-                class="tag-category-filter-row tag-category-filter-row--workspace"
-              >
-                <button
-                  type="button"
-                  class="tag-category-filter-pill tag-category-filter-pill--workspace tag-category-filter-pill--all"
-                  :class="isCategoryFilterAllMixed ? 'active-mixed' : ''"
-                  @click="showAllCategoriesMixed()"
-                  title="显示全部分类（混合显示）"
-                >
-                  全部（混合）
-                </button>
-                <template
-                  x-for="name in filterCategoryNames"
-                  :key="'fcat-' + name"
-                >
-                  <button
-                    type="button"
-                    class="tag-category-filter-pill tag-category-filter-pill--workspace"
-                    :class="{
-                                        'active-included': getCategoryFilterState(name) === 'included',
-                                        'active-excluded': getCategoryFilterState(name) === 'excluded'
-                                    }"
-                    :style="`--tag-cat-color:${getCategoryColor(name)};`"
-                    @click="toggleCategoryFilter(name, $event)"
-                    :title="getCategoryFilterState(name) === 'included' ? `分类：${name}（已包含，点击改为排除）` : (getCategoryFilterState(name) === 'excluded' ? `分类：${name}（已排除，点击取消）` : `分类：${name}（点击包含，Shift+点击直接排除）`)"
-                  >
-                    <span
-                      class="tag-category-filter-dot tag-category-filter-dot--workspace"
-                    ></span>
-                    <span x-text="name"></span>
-                  </button>
-                </template>
               </div>
               <div
                 class="tag-filter-selected-basket tag-filter-selected-basket--workspace"
@@ -1295,7 +1263,9 @@
                     <div class="text-xs" style="color: var(--text-dim)">
                       目标分类
                     </div>
-                    <div class="tag-category-editor-row tag-category-editor-row-main">
+                    <div
+                      class="tag-category-editor-row tag-category-editor-row-main"
+                    >
                       <input
                         type="text"
                         x-model="categorySelectionInput"
@@ -1420,7 +1390,9 @@
                         清空选择
                       </button>
                     </div>
-                    <div class="tag-category-editor-row tag-category-editor-row-main">
+                    <div
+                      class="tag-category-editor-row tag-category-editor-row-main"
+                    >
                       <input
                         type="text"
                         x-model="blacklistSelectionInput"
@@ -1449,7 +1421,10 @@
                     <div class="text-xs" style="color: var(--text-dim)">
                       开启治理开关后，自动流程和批量流程会跳过这些黑名单标签。
                     </div>
-                    <div class="tag-filter-delete-pending-list custom-scrollbar" style="max-height: 10rem; margin-top: 0.6rem">
+                    <div
+                      class="tag-filter-delete-pending-list custom-scrollbar"
+                      style="max-height: 10rem; margin-top: 0.6rem"
+                    >
                       <template x-if="tagBlacklistTags.length === 0">
                         <div
                           class="text-xs"
@@ -1971,7 +1946,10 @@
                 "
               >
                 <div class="flex items-center gap-4">
-                  <div x-show="!isDeleteMode && !isSortMode" class="tag-category-filter-row tag-category-filter-row--workspace">
+                  <div
+                    x-show="desktopWorkspaceMode === 'filter' || desktopWorkspaceMode === 'batch-category' || desktopWorkspaceMode === 'category-manager'"
+                    class="tag-category-filter-row tag-category-filter-row--workspace"
+                  >
                     <button
                       type="button"
                       class="tag-category-filter-pill tag-category-filter-pill--workspace tag-category-filter-pill--all"
@@ -1981,7 +1959,10 @@
                     >
                       全部
                     </button>
-                    <template x-for="name in footerCategoryIndexNames" :key="'footer-fcat-' + name">
+                    <template
+                      x-for="name in footerCategoryIndexNames"
+                      :key="'footer-fcat-' + name"
+                    >
                       <button
                         type="button"
                         class="tag-category-filter-pill tag-category-filter-pill--workspace"
@@ -1993,7 +1974,9 @@
                         @click="applyFooterCategoryQuickFilter(name)"
                         :title="`快速查看分类：${name}`"
                       >
-                        <span class="tag-category-filter-dot tag-category-filter-dot--workspace"></span>
+                        <span
+                          class="tag-category-filter-dot tag-category-filter-dot--workspace"
+                        ></span>
                         <span x-text="name"></span>
                       </button>
                     </template>
