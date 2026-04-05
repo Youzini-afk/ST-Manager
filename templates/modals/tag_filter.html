@@ -1,182 +1,453 @@
 <!-- 标签筛选大模态框 -->
-<div x-show="showTagFilterModal" x-data="tagFilterModal" x-cloak class="modal-overlay" :class="isDesktopWorkspaceFullscreen && $store.global.deviceType !== 'mobile' ? 'modal-overlay--desktop-workspace-fullscreen' : ''">
-    <div class="tag-modal-container" :class="[isDesktopWorkspaceFullscreen && $store.global.deviceType !== 'mobile' ? 'tag-modal-container--desktop-fullscreen' : '', $store.global.deviceType !== 'mobile' ? 'tag-modal-container--desktop-workspace' : '']" @click.away="requestCloseModal()">
-        <template x-if="$store.global.deviceType === 'mobile'">
-        <div x-show="$store.global.deviceType === 'mobile'" class="tag-filter-mobile-shell">
-            <div class="tag-filter-mobile-topbar">
-                <div>
-                    <div class="text-xs" style="color: var(--text-dim);">移动端标签工具</div>
-                    <div style="font-size: 1rem; font-weight: 700;">标签库筛选</div>
-                </div>
-                <button @click="requestCloseModal()"
-                    style="color: var(--text-dim); font-size: 1.25rem; background: none; border: none; cursor: pointer;">✕</button>
+<div
+  x-show="showTagFilterModal"
+  x-data="tagFilterModal"
+  x-cloak
+  class="modal-overlay"
+  :class="isDesktopWorkspaceFullscreen && $store.global.deviceType !== 'mobile' ? 'modal-overlay--desktop-workspace-fullscreen' : ''"
+>
+  <div
+    class="tag-modal-container"
+    :class="[isDesktopWorkspaceFullscreen && $store.global.deviceType !== 'mobile' ? 'tag-modal-container--desktop-fullscreen' : '', $store.global.deviceType !== 'mobile' ? 'tag-modal-container--desktop-workspace' : '']"
+    @click.away="requestCloseModal()"
+  >
+    <template x-if="$store.global.deviceType === 'mobile'">
+      <div
+        x-show="$store.global.deviceType === 'mobile'"
+        class="tag-filter-mobile-shell"
+      >
+        <div class="tag-filter-mobile-topbar">
+          <div>
+            <div class="text-xs" style="color: var(--text-dim)">
+              移动端标签工具
             </div>
-            <div class="tag-filter-mobile-tabs" role="tablist" aria-label="标签筛选模式切换">
-                <button type="button" role="tab" @click="switchMobileTagTab('filter')"
-                    :aria-selected="mobileActiveTab === 'filter'">筛选</button>
-                <button type="button" role="tab" @click="switchMobileTagTab('sort')"
-                    :aria-selected="mobileActiveTab === 'sort'">排序</button>
-                <button type="button" role="tab" @click="switchMobileTagTab('delete')"
-                    :aria-selected="mobileActiveTab === 'delete'">删除</button>
-                <button type="button" role="tab" @click="switchMobileTagTab('category')"
-                    :aria-selected="mobileActiveTab === 'category'">分类</button>
-            </div>
-            <div class="tag-filter-mobile-utility">
-                <div x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'filter'"
-                    class="tag-filter-mobile-panel tag-filter-mobile-panel--filter">
-                    <input type="text" x-model="tagSearchQuery" placeholder="搜索标签..." class="form-input" :disabled="isSortMode"
-                        :style="isSortMode ? 'padding: 0.75rem; font-size: 1rem; opacity: 0.6; cursor: not-allowed;' : 'padding: 0.75rem; font-size: 1rem;'">
-                    <div x-show="!isSortMode" class="tag-category-filter-row">
-                        <button type="button" class="tag-category-filter-pill"
-                            :class="isCategoryFilterAllMixed ? 'active-mixed' : ''"
-                            @click="showAllCategoriesMixed()"
-                            title="显示全部分类（混合显示）">
-                            全部（混合）
-                        </button>
-                        <template x-for="name in filterCategoryNames" :key="'m-fcat-' + name">
-                            <button type="button" class="tag-category-filter-pill"
-                                :class="{
+            <div style="font-size: 1rem; font-weight: 700">标签库筛选</div>
+          </div>
+          <button
+            @click="requestCloseModal()"
+            style="
+              color: var(--text-dim);
+              font-size: 1.25rem;
+              background: none;
+              border: none;
+              cursor: pointer;
+            "
+          >
+            ✕
+          </button>
+        </div>
+        <div
+          class="tag-filter-mobile-tabs"
+          role="tablist"
+          aria-label="标签筛选模式切换"
+        >
+          <button
+            type="button"
+            role="tab"
+            @click="switchMobileTagTab('filter')"
+            :aria-selected="mobileActiveTab === 'filter'"
+          >
+            筛选
+          </button>
+          <button
+            type="button"
+            role="tab"
+            @click="switchMobileTagTab('sort')"
+            :aria-selected="mobileActiveTab === 'sort'"
+          >
+            排序
+          </button>
+          <button
+            type="button"
+            role="tab"
+            @click="switchMobileTagTab('delete')"
+            :aria-selected="mobileActiveTab === 'delete'"
+          >
+            删除
+          </button>
+          <button
+            type="button"
+            role="tab"
+            @click="switchMobileTagTab('category')"
+            :aria-selected="mobileActiveTab === 'category'"
+          >
+            分类
+          </button>
+        </div>
+        <div class="tag-filter-mobile-utility">
+          <div
+            x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'filter'"
+            class="tag-filter-mobile-panel tag-filter-mobile-panel--filter"
+          >
+            <input
+              type="text"
+              x-model="tagSearchQuery"
+              placeholder="搜索标签..."
+              class="form-input"
+              :disabled="isSortMode"
+              :style="isSortMode ? 'padding: 0.75rem; font-size: 1rem; opacity: 0.6; cursor: not-allowed;' : 'padding: 0.75rem; font-size: 1rem;'"
+            />
+            <div x-show="!isSortMode" class="tag-category-filter-row">
+              <button
+                type="button"
+                class="tag-category-filter-pill"
+                :class="isCategoryFilterAllMixed ? 'active-mixed' : ''"
+                @click="showAllCategoriesMixed()"
+                title="显示全部分类（混合显示）"
+              >
+                全部（混合）
+              </button>
+              <template
+                x-for="name in filterCategoryNames"
+                :key="'m-fcat-' + name"
+              >
+                <button
+                  type="button"
+                  class="tag-category-filter-pill"
+                  :class="{
                                     'active-included': getCategoryFilterState(name) === 'included',
                                     'active-excluded': getCategoryFilterState(name) === 'excluded'
                                 }"
-                                :style="`--tag-cat-color:${getCategoryColor(name)};`"
-                                @click="toggleCategoryFilter(name, $event)">
-                                <span class="tag-category-filter-dot"></span>
-                                <span x-text="name"></span>
-                            </button>
-                        </template>
-                    </div>
-                </div>
-                <div x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'delete'"
-                    class="tag-filter-mobile-panel tag-filter-mobile-panel--delete">
-                    <div class="text-xs" style="color: var(--text-dim);">
-                        已选择 <span class="text-accent font-bold" x-text="selectedTagsForDeletion.length"></span> 个待删除标签
-                    </div>
-                </div>
-                <div x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'sort'"
-                    class="tag-filter-mobile-panel tag-filter-mobile-panel--sort">
-                    <div class="text-xs" style="color: var(--text-dim);">
-                        使用上下按钮调整顺序，保存后将同步到全局标签库。
-                    </div>
-                </div>
-                <div x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'category'"
-                    class="tag-filter-mobile-panel tag-filter-mobile-panel--category">
-                    <div class="tag-category-editor-row">
-                        <span class="text-xs" style="color: var(--text-dim);">已选择 <span class="text-accent font-bold"
-                                x-text="categorySelectionCount"></span> 个标签</span>
-                        <button type="button" @click="selectedCategoryTags=[]" class="tag-category-clear">清空选择</button>
-                    </div>
-                    <div class="tag-category-editor-row tag-category-editor-row-main">
-                        <input type="text" x-model="categoryDraftName" placeholder="分类名称（例如：角色 / 题材）" class="form-input"
-                            style="font-size: 0.82rem; padding: 0.45rem 0.6rem;">
-                        <input type="color" x-model="categoryDraftColor" class="tag-category-color-input" title="分类颜色">
-                        <div class="tag-opacity-control" title="分类透明度（0-100）">
-                            <span class="tag-opacity-label">透明度</span>
-                            <input type="range" min="0" max="100" step="1" x-model.number="categoryDraftOpacity"
-                                class="tag-opacity-slider">
-                            <input type="number" min="0" max="100" step="1" x-model.number="categoryDraftOpacity"
-                                class="tag-opacity-number">
-                        </div>
-                        <button type="button" @click="saveCategoryBatch()" :disabled="!canSaveCategoryBatch"
-                            class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md"
-                            :style="canSaveCategoryBatch ? '' : 'opacity: 0.55; cursor: not-allowed;'">
-                            保存分类
-                        </button>
-                    </div>
-                    <div class="tag-category-quick-list">
-                        <template x-for="name in availableCategoryNames" :key="'mobile-cat-opt-' + name">
-                            <button type="button" class="tag-category-quick-btn" @click="setCategoryDraft(name)"
-                                :class="categoryDraftName === name ? 'active' : ''"
-                                :style="`--tag-cat-color:${getCategoryColor(name)};`">
-                                <span class="tag-category-quick-dot"></span>
-                                <span x-text="name"></span>
-                                <span class="tag-category-quick-opacity" x-text="getCategoryOpacity(name) + '%'" title="当前透明度"></span>
-                            </button>
-                        </template>
-                    </div>
-                    <button type="button" @click="toggleCategoryManager()"
-                        class="text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-white font-bold shadow-md"
-                        x-text="showCategoryManager ? '收起分类管理' : '分类管理'"></button>
-                    <div x-show="$store.global.deviceType === 'mobile' && showCategoryManager && mobileActiveTab === 'category'"
-                        class="tag-filter-mobile-category-manager">
-                        <div class="tag-category-editor-row tag-category-editor-row-main">
-                            <input type="text" x-model="categoryManagerDraftName" placeholder="新增分类名称" class="form-input"
-                                style="font-size: 0.82rem; padding: 0.42rem 0.6rem;">
-                            <input type="color" x-model="categoryManagerDraftColor" class="tag-category-color-input" title="分类颜色">
-                            <div class="tag-opacity-control" title="分类透明度（0-100）">
-                                <span class="tag-opacity-label">透明度</span>
-                                <input type="range" min="0" max="100" step="1" x-model.number="categoryManagerDraftOpacity"
-                                    class="tag-opacity-slider">
-                                <input type="number" min="0" max="100" step="1" x-model.number="categoryManagerDraftOpacity"
-                                    class="tag-opacity-number">
-                            </div>
-                            <button type="button" @click="addCategoryFromManager()"
-                                class="text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-white font-bold shadow-md">
-                                新增/更新
-                            </button>
-                        </div>
-                        <div class="tag-category-manager-list custom-scrollbar">
-                            <template x-for="item in categoryManagerItems" :key="'mobile-mgr-' + item.name">
-                                <div class="tag-category-manager-item">
-                                    <div class="tag-category-manager-main">
-                                        <span class="tag-category-manager-dot" :style="`background:${item.color};`"></span>
-                                        <span class="tag-category-manager-name" x-text="item.name"></span>
-                                        <span class="tag-category-manager-opacity-pill" x-text="item.opacity + '%'" title="当前透明度"></span>
-                                        <span x-show="item.isDefault" class="tag-category-manager-default">默认</span>
-                                        <span class="tag-category-manager-count" x-text="item.count + ' 个标签'"></span>
-                                    </div>
-                                    <div class="tag-category-manager-actions">
-                                        <input type="color" :value="item.color" class="tag-category-manager-color"
-                                            @change="setCategoryColor(item.name, $event.target.value)" title="修改分类颜色">
-                                        <div class="tag-category-manager-opacity-wrap" title="修改分类不透明度（0-100）">
-                                            <input type="range" min="0" max="100" step="1" :value="getCategoryOpacity(item.name)"
-                                                @change="setCategoryOpacity(item.name, $event.target.value)"
-                                                class="tag-category-manager-opacity-slider">
-                                            <span class="tag-category-manager-opacity-text" x-text="getCategoryOpacity(item.name)"></span>
-                                        </div>
-                                        <button type="button" class="tag-category-manager-btn" @click="setDefaultCategory(item.name)"
-                                            :disabled="item.isDefault"
-                                            :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''">设为默认</button>
-                                        <button type="button" class="tag-category-manager-btn" @click="moveCategory(item.name, -1)"
-                                            :disabled="item.index===0"
-                                            :style="item.index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''">上移</button>
-                                        <button type="button" class="tag-category-manager-btn" @click="moveCategory(item.name, 1)"
-                                            :disabled="item.index===categoryManagerItems.length-1"
-                                            :style="item.index===categoryManagerItems.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''">下移</button>
-                                        <button type="button" class="tag-category-manager-btn" @click="renameCategory(item.name)">重命名</button>
-                                        <button type="button" class="tag-category-manager-btn danger" @click="deleteCategory(item.name)"
-                                            :disabled="item.isDefault"
-                                            :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''">删除</button>
-                                    </div>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
-                </div>
+                  :style="`--tag-cat-color:${getCategoryColor(name)};`"
+                  @click="toggleCategoryFilter(name, $event)"
+                >
+                  <span class="tag-category-filter-dot"></span>
+                  <span x-text="name"></span>
+                </button>
+              </template>
             </div>
-            <div class="tag-filter-mobile-main custom-scrollbar">
-                <div x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'sort'">
-                    <template x-if="isSortMode">
-                        <div>
-                            <template x-for="tag in sortModeTagsPool" :key="'m-sort-' + tag">
-                                <div class="tag-filter-mobile-sort-row">
-                                    <span class="tag-chip-drag-handle">☰</span>
-                                    <span x-text="tag" style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                                    <button type="button" @click="moveSortTagUp(tag)">上移</button>
-                                    <button type="button" @click="moveSortTagDown(tag)">下移</button>
-                                </div>
-                            </template>
-                        </div>
-                    </template>
+          </div>
+          <div
+            x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'delete'"
+            class="tag-filter-mobile-panel tag-filter-mobile-panel--delete"
+          >
+            <div class="text-xs" style="color: var(--text-dim)">
+              已选择
+              <span
+                class="text-accent font-bold"
+                x-text="selectedTagsForDeletion.length"
+              ></span>
+              个待删除标签
+            </div>
+          </div>
+          <div
+            x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'sort'"
+            class="tag-filter-mobile-panel tag-filter-mobile-panel--sort"
+          >
+            <div class="text-xs" style="color: var(--text-dim)">
+              使用上下按钮调整顺序，保存后将同步到全局标签库。
+            </div>
+          </div>
+          <div
+            x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'category'"
+            class="tag-filter-mobile-panel tag-filter-mobile-panel--category"
+          >
+            <div class="tag-category-editor-row">
+              <span class="text-xs" style="color: var(--text-dim)"
+                >已选择
+                <span
+                  class="text-accent font-bold"
+                  x-text="categorySelectionCount"
+                ></span>
+                个标签</span
+              >
+              <button
+                type="button"
+                @click="selectedCategoryTags=[]"
+                class="tag-category-clear"
+              >
+                清空选择
+              </button>
+            </div>
+            <div class="text-xs" style="color: var(--text-dim)">
+              可点击标签增减选择，也可用下方分隔符输入批量选中。
+            </div>
+            <div class="tag-category-editor-row tag-category-editor-row-main">
+              <input
+                type="text"
+                x-model="categorySelectionInput"
+                @keydown.enter.prevent="applyCategorySelectionInput()"
+                placeholder="输入标签名，使用 |、逗号或换行批量选中当前可见标签"
+                class="form-input"
+                style="font-size: 0.82rem; padding: 0.45rem 0.6rem"
+              />
+              <button
+                type="button"
+                @click="applyCategorySelectionInput()"
+                class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-white font-bold shadow-md"
+              >
+                批量选中
+              </button>
+            </div>
+            <div class="tag-category-editor-row tag-category-editor-row-main">
+              <input
+                type="text"
+                x-model="categoryDraftName"
+                placeholder="分类名称（例如：角色 / 题材）"
+                class="form-input"
+                style="font-size: 0.82rem; padding: 0.45rem 0.6rem"
+              />
+              <input
+                type="color"
+                x-model="categoryDraftColor"
+                class="tag-category-color-input"
+                title="分类颜色"
+              />
+              <div class="tag-opacity-control" title="分类透明度（0-100）">
+                <span class="tag-opacity-label">透明度</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  x-model.number="categoryDraftOpacity"
+                  class="tag-opacity-slider"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  x-model.number="categoryDraftOpacity"
+                  class="tag-opacity-number"
+                />
+              </div>
+              <button
+                type="button"
+                @click="saveCategoryBatch()"
+                :disabled="!canSaveCategoryBatch"
+                class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                :style="canSaveCategoryBatch ? '' : 'opacity: 0.55; cursor: not-allowed;'"
+              >
+                保存分类
+              </button>
+            </div>
+            <div class="tag-category-quick-list">
+              <template
+                x-for="name in availableCategoryNames"
+                :key="'mobile-cat-opt-' + name"
+              >
+                <button
+                  type="button"
+                  class="tag-category-quick-btn"
+                  @click="setCategoryDraft(name)"
+                  :class="categoryDraftName === name ? 'active' : ''"
+                  :style="`--tag-cat-color:${getCategoryColor(name)};`"
+                >
+                  <span class="tag-category-quick-dot"></span>
+                  <span x-text="name"></span>
+                  <span
+                    class="tag-category-quick-opacity"
+                    x-text="getCategoryOpacity(name) + '%'"
+                    title="当前透明度"
+                  ></span>
+                </button>
+              </template>
+            </div>
+            <button
+              type="button"
+              @click="toggleCategoryManager()"
+              class="text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-white font-bold shadow-md"
+              x-text="showCategoryManager ? '收起分类管理' : '分类管理'"
+            ></button>
+            <div
+              x-show="$store.global.deviceType === 'mobile' && showCategoryManager && mobileActiveTab === 'category'"
+              class="tag-filter-mobile-category-manager"
+            >
+              <div class="tag-category-editor-row tag-category-editor-row-main">
+                <input
+                  type="text"
+                  x-model="categoryManagerDraftName"
+                  placeholder="新增分类名称"
+                  class="form-input"
+                  style="font-size: 0.82rem; padding: 0.42rem 0.6rem"
+                />
+                <input
+                  type="color"
+                  x-model="categoryManagerDraftColor"
+                  class="tag-category-color-input"
+                  title="分类颜色"
+                />
+                <div class="tag-opacity-control" title="分类透明度（0-100）">
+                  <span class="tag-opacity-label">透明度</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    x-model.number="categoryManagerDraftOpacity"
+                    class="tag-opacity-slider"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    x-model.number="categoryManagerDraftOpacity"
+                    class="tag-opacity-number"
+                  />
                 </div>
-                <div x-show="$store.global.deviceType === 'mobile' && mobileActiveTab !== 'sort'" class="tag-cloud-container custom-scrollbar">
-                    <template x-if="!isSortMode">
-                        <div class="tag-cloud-mode-wrap">
-                            <template x-if="mixedCategoryView">
-                                <template x-for="tag in filteredMixedTagsPool" :key="'mobile-mixed-' + tag">
-                                    <button
-                                        @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : toggleFilterTag(tag, $event))"
-                                        class="tag-chip-btn flex items-center" :class="{
+                <button
+                  type="button"
+                  @click="addCategoryFromManager()"
+                  class="text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                >
+                  新增/更新
+                </button>
+              </div>
+              <div class="tag-category-manager-list custom-scrollbar">
+                <template
+                  x-for="item in categoryManagerItems"
+                  :key="'mobile-mgr-' + item.name"
+                >
+                  <div class="tag-category-manager-item">
+                    <div class="tag-category-manager-main">
+                      <span
+                        class="tag-category-manager-dot"
+                        :style="`background:${item.color};`"
+                      ></span>
+                      <span
+                        class="tag-category-manager-name"
+                        x-text="item.name"
+                      ></span>
+                      <span
+                        class="tag-category-manager-opacity-pill"
+                        x-text="item.opacity + '%'"
+                        title="当前透明度"
+                      ></span>
+                      <span
+                        x-show="item.isDefault"
+                        class="tag-category-manager-default"
+                        >默认</span
+                      >
+                      <span
+                        class="tag-category-manager-count"
+                        x-text="item.count + ' 个标签'"
+                      ></span>
+                    </div>
+                    <div class="tag-category-manager-actions">
+                      <input
+                        type="color"
+                        :value="item.color"
+                        class="tag-category-manager-color"
+                        @change="setCategoryColor(item.name, $event.target.value)"
+                        title="修改分类颜色"
+                      />
+                      <div
+                        class="tag-category-manager-opacity-wrap"
+                        title="修改分类不透明度（0-100）"
+                      >
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          :value="getCategoryOpacity(item.name)"
+                          @change="setCategoryOpacity(item.name, $event.target.value)"
+                          class="tag-category-manager-opacity-slider"
+                        />
+                        <span
+                          class="tag-category-manager-opacity-text"
+                          x-text="getCategoryOpacity(item.name)"
+                        ></span>
+                      </div>
+                      <button
+                        type="button"
+                        class="tag-category-manager-btn"
+                        @click="setDefaultCategory(item.name)"
+                        :disabled="item.isDefault"
+                        :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                      >
+                        设为默认
+                      </button>
+                      <button
+                        type="button"
+                        class="tag-category-manager-btn"
+                        @click="moveCategory(item.name, -1)"
+                        :disabled="item.index===0"
+                        :style="item.index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                      >
+                        上移
+                      </button>
+                      <button
+                        type="button"
+                        class="tag-category-manager-btn"
+                        @click="moveCategory(item.name, 1)"
+                        :disabled="item.index===categoryManagerItems.length-1"
+                        :style="item.index===categoryManagerItems.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                      >
+                        下移
+                      </button>
+                      <button
+                        type="button"
+                        class="tag-category-manager-btn"
+                        @click="renameCategory(item.name)"
+                      >
+                        重命名
+                      </button>
+                      <button
+                        type="button"
+                        class="tag-category-manager-btn danger"
+                        @click="deleteCategory(item.name)"
+                        :disabled="item.isDefault"
+                        :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tag-filter-mobile-main custom-scrollbar">
+          <div
+            x-show="$store.global.deviceType === 'mobile' && mobileActiveTab === 'sort'"
+          >
+            <template x-if="isSortMode">
+              <div>
+                <template
+                  x-for="tag in sortModeTagsPool"
+                  :key="'m-sort-' + tag"
+                >
+                  <div class="tag-filter-mobile-sort-row">
+                    <span class="tag-chip-drag-handle">☰</span>
+                    <span
+                      x-text="tag"
+                      style="
+                        flex: 1;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                      "
+                    ></span>
+                    <button type="button" @click="moveSortTagUp(tag)">
+                      上移
+                    </button>
+                    <button type="button" @click="moveSortTagDown(tag)">
+                      下移
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+          <div
+            x-show="$store.global.deviceType === 'mobile' && mobileActiveTab !== 'sort'"
+            class="tag-cloud-container custom-scrollbar"
+          >
+            <template x-if="!isSortMode">
+              <div class="tag-cloud-mode-wrap">
+                <template x-if="mixedCategoryView">
+                  <template
+                    x-for="tag in filteredMixedTagsPool"
+                    :key="'mobile-mixed-' + tag"
+                  >
+                    <button
+                      @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : toggleFilterTag(tag, $event))"
+                      class="tag-chip-btn flex items-center"
+                      :class="{
                                                 'tag-chip-selected': !isDeleteMode && !showCategoryMode && filterTags.includes(tag),
                                                 'tag-chip-excluded': !isDeleteMode && !showCategoryMode && $store.global.viewState.excludedTags.includes(tag),
                                                 'tag-chip-unselected tag-chip-categorized': !isDeleteMode && !showCategoryMode && !filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag),
@@ -185,27 +456,60 @@
                                                 'tag-chip-category-selected': showCategoryMode && selectedCategoryTags.includes(tag),
                                                 'tag-chip-category-unselected tag-chip-categorized': showCategoryMode && !selectedCategoryTags.includes(tag)
                                             }"
-                                        :style="(!isDeleteMode && (($store.global.viewState.filterTags || []).indexOf(tag) === -1) && (($store.global.viewState.excludedTags || []).indexOf(tag) === -1)) ? getTagChipStyle(tag) : ''"
-                                        :title="!isDeleteMode && !showCategoryMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : '')">
-                                        <span x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)" class="mr-1 font-bold">✓</span>
-                                        <span x-show="showCategoryMode && selectedCategoryTags.includes(tag)" class="mr-1 font-bold">✓</span>
-                                        <span class="tag-chip-label" x-text="tag" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                                    </button>
-                                </template>
-                            </template>
-                            <template x-if="!mixedCategoryView">
-                                <template x-for="group in filteredTagGroups" :key="'mobile-group-' + group.category">
-                                    <div class="tag-group-block">
-                                        <div class="tag-group-head">
-                                            <span class="tag-group-dot" :style="`background:${group.color};`"></span>
-                                            <span class="tag-group-title" x-text="group.category"></span>
-                                            <span class="tag-group-count" x-text="group.tags.length + ' 个'"></span>
-                                        </div>
-                                        <div class="tag-group-cloud">
-                                            <template x-for="tag in group.tags" :key="'mobile-tag-' + tag">
-                                                <button
-                                                    @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : toggleFilterTag(tag, $event))"
-                                                    class="tag-chip-btn flex items-center" :class="{
+                      :style="(!isDeleteMode && (($store.global.viewState.filterTags || []).indexOf(tag) === -1) && (($store.global.viewState.excludedTags || []).indexOf(tag) === -1)) ? getTagChipStyle(tag) : ''"
+                      :title="!isDeleteMode && !showCategoryMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : '')"
+                    >
+                      <span
+                        x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)"
+                        class="mr-1 font-bold"
+                        >✓</span
+                      >
+                      <span
+                        x-show="showCategoryMode && selectedCategoryTags.includes(tag)"
+                        class="mr-1 font-bold"
+                        >✓</span
+                      >
+                      <span
+                        class="tag-chip-label"
+                        x-text="tag"
+                        style="
+                          overflow: hidden;
+                          text-overflow: ellipsis;
+                          white-space: nowrap;
+                        "
+                      ></span>
+                    </button>
+                  </template>
+                </template>
+                <template x-if="!mixedCategoryView">
+                  <template
+                    x-for="group in filteredTagGroups"
+                    :key="'mobile-group-' + group.category"
+                  >
+                    <div class="tag-group-block">
+                      <div class="tag-group-head">
+                        <span
+                          class="tag-group-dot"
+                          :style="`background:${group.color};`"
+                        ></span>
+                        <span
+                          class="tag-group-title"
+                          x-text="group.category"
+                        ></span>
+                        <span
+                          class="tag-group-count"
+                          x-text="group.tags.length + ' 个'"
+                        ></span>
+                      </div>
+                      <div class="tag-group-cloud">
+                        <template
+                          x-for="tag in group.tags"
+                          :key="'mobile-tag-' + tag"
+                        >
+                          <button
+                            @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : (isBlacklistMode ? toggleTagSelectionForBlacklist(tag) : toggleFilterTag(tag, $event)))"
+                            class="tag-chip-btn flex items-center"
+                            :class="{
                                                             'tag-chip-selected': !isDeleteMode && !showCategoryMode && filterTags.includes(tag),
                                                             'tag-chip-excluded': !isDeleteMode && !showCategoryMode && $store.global.viewState.excludedTags.includes(tag),
                                                             'tag-chip-unselected tag-chip-categorized': !isDeleteMode && !showCategoryMode && !filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag),
@@ -214,693 +518,1809 @@
                                                             'tag-chip-category-selected': showCategoryMode && selectedCategoryTags.includes(tag),
                                                             'tag-chip-category-unselected tag-chip-categorized': showCategoryMode && !selectedCategoryTags.includes(tag)
                                                         }"
-                                                    :style="(!isDeleteMode && (($store.global.viewState.filterTags || []).indexOf(tag) === -1) && (($store.global.viewState.excludedTags || []).indexOf(tag) === -1)) ? getTagChipStyle(tag) : ''"
-                                                    :title="!isDeleteMode && !showCategoryMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : '')">
-                                                    <span x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)" class="mr-1 font-bold">✓</span>
-                                                    <span x-show="showCategoryMode && selectedCategoryTags.includes(tag)" class="mr-1 font-bold">✓</span>
-                                                    <span class="tag-chip-label" x-text="tag" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                                                </button>
-                                            </template>
-                                        </div>
-                                    </div>
-                                </template>
-                            </template>
-                        </div>
-                    </template>
-                    <div x-show="!isSortMode && filteredVisibleTagCount === 0"
-                        style="width: 100%; text-align: center; color: var(--text-dim); margin-top: 2rem;">无匹配标签</div>
-                </div>
-            </div>
-            <div class="tag-filter-mobile-bottombar">
-                <span x-show="mobileActiveTab === 'filter'">筛选面板</span>
-                <span x-show="mobileActiveTab === 'sort'">排序面板</span>
-                <span x-show="mobileActiveTab === 'delete'">删除面板</span>
-                <span x-show="mobileActiveTab === 'category'">分类面板</span>
-                <button type="button" x-show="mobileActiveTab === 'sort' && isSortMode" @click="saveSortMode()">
-                    保存排序
-                </button>
-            </div>
-        </div>
-        </template>
-        <template x-if="$store.global.deviceType !== 'mobile'">
-        <div x-show="$store.global.deviceType !== 'mobile'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? 'tag-filter-desktop-shell--fullscreen' : ''">
-            <div class="tag-filter-workspace-topbar">
-                <div class="tag-filter-desktop-toolbar">
-                    <div class="tag-filter-workspace-topbar-main">
-                        <div style="flex-shrink: 0;">
-                            <div class="text-xs" style="color: var(--text-dim);">桌面端标签工作台</div>
-                            <h3 style="font-size: 1.25rem; font-weight: bold;">
-                                <span x-show="desktopWorkspaceMode === 'filter'">标签库筛选</span>
-                                <span x-show="showCategoryMode && !isDeleteMode" class="text-amber-300">批量分类标签</span>
-                                <span x-show="desktopWorkspaceMode === 'sort'" class="text-blue-300">标签排序</span>
-                                <span x-show="isDeleteMode" class="text-red-400">永久删除标签</span>
-                                <span x-show="desktopWorkspaceMode === 'category-manager' && !isDeleteMode" class="text-sky-300">分类管理中心</span>
-                            </h3>
-                        </div>
-                        <div class="tag-filter-workspace-topbar-search">
-                            <input type="text" x-model="tagSearchQuery" placeholder="搜索标签..." class="form-input" :disabled="isSortMode"
-                                :style="isSortMode ? 'padding: 0.75rem; font-size: 1rem; opacity: 0.6; cursor: not-allowed;' : 'padding: 0.75rem; font-size: 1rem;'">
-                        </div>
-                        <div class="tag-filter-workspace-topbar-status">
-                            <div class="tag-filter-workspace-selection-summary">
-                                <span class="text-sm" style="color: var(--text-dim);">已选 <span x-text="filterTags.length + $store.global.viewState.excludedTags.length"
-                                        class="text-accent font-bold"></span> 个标签</span>
-                                <span class="text-sm" style="color: var(--text-dim);">可见 <span x-text="filteredVisibleTagCount"
-                                        class="text-accent font-bold"></span> 个标签</span>
-                            </div>
-                            <span x-show="!isDeleteMode" class="text-xs px-2 py-1 rounded-full"
-                                :style="customOrderEnabled ? 'background: color-mix(in srgb, var(--accent-main), transparent 82%); color: var(--accent-light); border: 1px solid color-mix(in srgb, var(--accent-main), transparent 50%);' : 'background: var(--bg-sub); color: var(--text-dim); border: 1px solid var(--border-light);'"
-                                x-text="customOrderEnabled ? '当前：自定义排序' : '当前：字符排序'"></span>
-                        </div>
-                    </div>
-                    <div class="tag-filter-workspace-topbar-actions">
-                        <button type="button" x-show="customOrderEnabled" class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility" @click="clearCustomOrder()">
-                            恢复字符排序
-                        </button>
-                        <button type="button" class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
-                            :class="isWorkspaceHelpOpen ? 'is-active' : ''" @click="toggleWorkspaceHelp()">帮助</button>
-                        <button type="button" class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility tag-filter-governance-drawer-toggle" @click="toggleGovernanceDrawer()">治理设置</button>
-                        <template x-if="isGovernanceDrawerOpen">
-                            <div class="tag-filter-governance-drawer">
-                                <div class="tag-filter-governance-drawer-body">
-                                    <div class="text-xs" style="color: var(--text-dim);">按需展开的次级治理面板，避免长期占用当前模式工具区。</div>
-                                    <label class="text-xs" style="display:flex; align-items:center; gap:0.5rem; color: var(--text-dim); margin-top: 0.25rem;">
-                                        <input type="checkbox" x-model="rememberLastTagView" @change="saveDesktopWorkbenchPrefs()">
-                                        记住上次标签视图
-                                    </label>
-                                    <label class="text-xs" style="display:flex; align-items:center; gap:0.5rem; color: var(--text-dim); margin-top: 0.5rem;">
-                                        <input type="checkbox" x-model="lockTagLibrary" @change="saveTagManagementPrefsState()">
-                                        锁定标签库治理
-                                    </label>
-                                    <div class="text-xs" style="margin-top: 0.5rem; color: var(--text-dim);">标签黑名单</div>
-                                    <textarea x-model="tagBlacklistInput" @change="saveTagManagementPrefsState()" @blur="saveTagManagementPrefsState()"
-                                        class="form-input" rows="4" placeholder="输入黑名单标签，使用逗号或换行分隔"
-                                        style="margin-top: 0.25rem; min-height: 7rem; resize: vertical;"></textarea>
-                                </div>
-                            </div>
+                            :style="(!isDeleteMode && (($store.global.viewState.filterTags || []).indexOf(tag) === -1) && (($store.global.viewState.excludedTags || []).indexOf(tag) === -1)) ? getTagChipStyle(tag) : ''"
+                            :title="!isDeleteMode && !showCategoryMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : '')"
+                          >
+                            <span
+                              x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)"
+                              class="mr-1 font-bold"
+                              >✓</span
+                            >
+                            <span
+                              x-show="showCategoryMode && selectedCategoryTags.includes(tag)"
+                              class="mr-1 font-bold"
+                              >✓</span
+                            >
+                            <span
+                              class="tag-chip-label"
+                              x-text="tag"
+                              style="
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                              "
+                            ></span>
+                          </button>
                         </template>
-                        <button type="button" @click="toggleDesktopWorkspaceFullscreen()" class="tag-filter-workspace-fullscreen-btn"
-                            :class="isDesktopWorkspaceFullscreen ? 'is-active' : ''"
-                            x-text="isDesktopWorkspaceFullscreen ? '退出全屏' : '全屏工作台'"></button>
-                        <button @click="requestCloseModal()"
-                            style="color: var(--text-dim); font-size: 1.5rem; background: none; border: none; cursor: pointer;">✕</button>
+                      </div>
                     </div>
-                </div>
+                  </template>
+                </template>
+              </div>
+            </template>
+            <div
+              x-show="!isSortMode && filteredVisibleTagCount === 0"
+              style="
+                width: 100%;
+                text-align: center;
+                color: var(--text-dim);
+                margin-top: 2rem;
+              "
+            >
+              无匹配标签
             </div>
-            <div class="tag-filter-workspace-top-tabs">
-                <div class="tag-filter-workspace-top-tabs-nav">
-                    <button type="button" class="tag-filter-workspace-top-tab" :class="desktopWorkspaceMode === 'filter' ? 'is-active' : ''" @click="setDesktopWorkspaceMode('filter')">筛选</button>
-                    <button type="button" class="tag-filter-workspace-top-tab" :class="desktopWorkspaceMode === 'batch-category' ? 'is-active' : ''" @click="desktopWorkspaceMode === 'batch-category' ? setDesktopWorkspaceMode('filter') : setDesktopWorkspaceMode('batch-category')">批量分类</button>
-                    <button type="button" class="tag-filter-workspace-top-tab" :class="desktopWorkspaceMode === 'sort' ? 'is-active' : ''" @click="desktopWorkspaceMode === 'sort' ? setDesktopWorkspaceMode('filter') : setDesktopWorkspaceMode('sort')">排序</button>
-                    <button type="button" class="tag-filter-workspace-top-tab" :class="desktopWorkspaceMode === 'delete' ? 'is-active' : ''" @click="desktopWorkspaceMode === 'delete' ? setDesktopWorkspaceMode('filter') : setDesktopWorkspaceMode('delete')">删除</button>
-                    <button type="button" class="tag-filter-workspace-top-tab" :class="desktopWorkspaceMode === 'category-manager' ? 'is-active' : ''" @click="desktopWorkspaceMode === 'category-manager' ? setDesktopWorkspaceMode('filter') : setDesktopWorkspaceMode('category-manager')">分类管理</button>
+          </div>
+        </div>
+        <div class="tag-filter-mobile-bottombar">
+          <span x-show="mobileActiveTab === 'filter'">筛选面板</span>
+          <span x-show="mobileActiveTab === 'sort'">排序面板</span>
+          <span x-show="mobileActiveTab === 'delete'">删除面板</span>
+          <span x-show="mobileActiveTab === 'category'">分类面板</span>
+          <button
+            type="button"
+            x-show="mobileActiveTab === 'sort' && isSortMode"
+            @click="saveSortMode()"
+          >
+            保存排序
+          </button>
+        </div>
+      </div>
+    </template>
+    <template x-if="$store.global.deviceType !== 'mobile'">
+      <div
+        x-show="$store.global.deviceType !== 'mobile'"
+        class="tag-filter-desktop-shell"
+        :class="isDesktopWorkspaceFullscreen ? 'tag-filter-desktop-shell--fullscreen' : ''"
+      >
+        <div class="tag-filter-workspace-topbar">
+          <div class="tag-filter-desktop-toolbar">
+            <div class="tag-filter-workspace-topbar-main">
+              <div style="flex-shrink: 0">
+                <div class="text-xs" style="color: var(--text-dim)">
+                  桌面端标签工作台
                 </div>
+                <h3 style="font-size: 1.25rem; font-weight: bold">
+                  <span x-show="desktopWorkspaceMode === 'filter'"
+                    >标签库筛选</span
+                  >
+                  <span
+                    x-show="showCategoryMode && !isDeleteMode"
+                    class="text-amber-300"
+                    >批量分类标签</span
+                  >
+                  <span
+                    x-show="desktopWorkspaceMode === 'sort'"
+                    class="text-blue-300"
+                    >标签排序</span
+                  >
+                  <span
+                    x-show="desktopWorkspaceMode === 'blacklist' && !isDeleteMode"
+                    class="text-rose-300"
+                    >黑名单治理</span
+                  >
+                  <span x-show="isDeleteMode" class="text-red-400"
+                    >永久删除标签</span
+                  >
+                  <span
+                    x-show="desktopWorkspaceMode === 'category-manager' && !isDeleteMode"
+                    class="text-sky-300"
+                    >分类管理中心</span
+                  >
+                </h3>
+              </div>
+              <div class="tag-filter-workspace-topbar-search">
+                <input
+                  type="text"
+                  x-model="tagSearchQuery"
+                  placeholder="搜索标签..."
+                  class="form-input"
+                  :disabled="isSortMode"
+                  :style="isSortMode ? 'padding: 0.75rem; font-size: 1rem; opacity: 0.6; cursor: not-allowed;' : 'padding: 0.75rem; font-size: 1rem;'"
+                />
+              </div>
+              <div class="tag-filter-workspace-topbar-status">
+                <div class="tag-filter-workspace-selection-summary">
+                  <span class="text-sm" style="color: var(--text-dim)"
+                    >已选
+                    <span
+                      x-text="filterTags.length + $store.global.viewState.excludedTags.length"
+                      class="text-accent font-bold"
+                    ></span>
+                    个标签</span
+                  >
+                  <span class="text-sm" style="color: var(--text-dim)"
+                    >可见
+                    <span
+                      x-text="filteredVisibleTagCount"
+                      class="text-accent font-bold"
+                    ></span>
+                    个标签</span
+                  >
+                </div>
+                <span
+                  x-show="!isDeleteMode"
+                  class="text-xs px-2 py-1 rounded-full"
+                  :style="customOrderEnabled ? 'background: color-mix(in srgb, var(--accent-main), transparent 82%); color: var(--accent-light); border: 1px solid color-mix(in srgb, var(--accent-main), transparent 50%);' : 'background: var(--bg-sub); color: var(--text-dim); border: 1px solid var(--border-light);'"
+                  x-text="customOrderEnabled ? '当前：自定义排序' : '当前：字符排序'"
+                ></span>
+              </div>
             </div>
-            <div class="tag-filter-desktop-workbench">
-                <div class="tag-filter-workspace-center">
-                    <div class="tag-filter-desktop-main">
-                        <div x-show="$store.global.deviceType !== 'mobile' && isSortMode" class="text-xs mb-2" style="color: var(--text-dim);">
-                            排序模式仅针对完整标签库生效，侧栏分类标签池将自动继承此全局顺序。
-                        </div>
-                        <div x-show="$store.global.deviceType !== 'mobile' && customOrderEnabled && !isSortMode" class="text-xs mb-2" style="color: var(--text-dim);">
-                            当前使用自定义排序，可点击“恢复字符排序”回退到原始字母序。
-                        </div>
-                        <div x-show="$store.global.deviceType !== 'mobile' && !isSortMode" class="tag-category-filter-row tag-category-filter-row--workspace">
-                            <button type="button" class="tag-category-filter-pill tag-category-filter-pill--workspace tag-category-filter-pill--all"
-                                :class="isCategoryFilterAllMixed ? 'active-mixed' : ''"
-                                @click="showAllCategoriesMixed()"
-                                title="显示全部分类（混合显示）">
-                                全部（混合）
-                            </button>
-                            <template x-for="name in filterCategoryNames" :key="'fcat-' + name">
-                                <button type="button" class="tag-category-filter-pill tag-category-filter-pill--workspace"
-                                    :class="{
+            <div class="tag-filter-workspace-topbar-actions">
+              <button
+                type="button"
+                x-show="customOrderEnabled"
+                class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
+                @click="clearCustomOrder()"
+              >
+                恢复字符排序
+              </button>
+              <button
+                type="button"
+                class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
+                :class="isWorkspaceHelpOpen ? 'is-active' : ''"
+                @click="toggleWorkspaceHelp()"
+              >
+                帮助
+              </button>
+              <button
+                type="button"
+                class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility tag-filter-governance-drawer-toggle"
+                @click="toggleGovernanceDrawer()"
+              >
+                治理设置
+              </button>
+              <template x-if="isGovernanceDrawerOpen">
+                <div class="tag-filter-governance-drawer">
+                <div class="tag-filter-governance-drawer-body">
+                  <div class="text-xs" style="color: var(--text-dim)">
+                      这里用于管理标签视图记忆，以及自动来源的标签准入规则。
+                  </div>
+                    <label
+                      class="text-xs"
+                      style="
+                        display: flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        color: var(--text-dim);
+                        margin-top: 0.25rem;
+                      "
+                    >
+                      <input
+                        type="checkbox"
+                        x-model="rememberLastTagView"
+                        @change="saveDesktopWorkbenchPrefs()"
+                      />
+                      记住上次标签视图
+                    </label>
+                    <label
+                      class="text-xs"
+                      style="
+                        display: flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        color: var(--text-dim);
+                        margin-top: 0.5rem;
+                      "
+                    >
+                      <input
+                        type="checkbox"
+                        x-model="lockTagLibrary"
+                        @change="saveTagManagementPrefsState()"
+                      />
+                      拒绝新增未知标签（自动/批量来源）
+                    </label>
+                    <div class="text-xs" style="margin-top: 0.15rem; color: var(--text-dim)">
+                      开启后，仅已存在于标签库中的标签允许被自动流程或批量流程写入；手动单个添加不受影响。
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <button
+                type="button"
+                @click="toggleDesktopWorkspaceFullscreen()"
+                class="tag-filter-workspace-fullscreen-btn"
+                :class="isDesktopWorkspaceFullscreen ? 'is-active' : ''"
+                x-text="isDesktopWorkspaceFullscreen ? '退出全屏' : '全屏工作台'"
+              ></button>
+              <button
+                @click="requestCloseModal()"
+                style="
+                  color: var(--text-dim);
+                  font-size: 1.5rem;
+                  background: none;
+                  border: none;
+                  cursor: pointer;
+                "
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="tag-filter-workspace-top-tabs">
+          <div class="tag-filter-workspace-top-tabs-nav">
+            <button
+              type="button"
+              class="tag-filter-workspace-top-tab"
+              :class="desktopWorkspaceMode === 'filter' ? 'is-active' : ''"
+              @click="setDesktopWorkspaceMode('filter')"
+            >
+              筛选
+            </button>
+            <button
+              type="button"
+              class="tag-filter-workspace-top-tab"
+              :class="desktopWorkspaceMode === 'batch-category' ? 'is-active' : ''"
+              @click="desktopWorkspaceMode === 'batch-category' ? setDesktopWorkspaceMode('filter') : setDesktopWorkspaceMode('batch-category')"
+            >
+              批量分类
+            </button>
+            <button
+              type="button"
+              class="tag-filter-workspace-top-tab"
+              :class="desktopWorkspaceMode === 'sort' ? 'is-active' : ''"
+              @click="desktopWorkspaceMode === 'sort' ? setDesktopWorkspaceMode('filter') : setDesktopWorkspaceMode('sort')"
+            >
+              排序
+            </button>
+            <button
+              type="button"
+              class="tag-filter-workspace-top-tab"
+              :class="desktopWorkspaceMode === 'delete' ? 'is-active' : ''"
+              @click="desktopWorkspaceMode === 'delete' ? setDesktopWorkspaceMode('filter') : setDesktopWorkspaceMode('delete')"
+            >
+              删除
+            </button>
+            <button
+              type="button"
+              class="tag-filter-workspace-top-tab"
+              :class="desktopWorkspaceMode === 'blacklist' ? 'is-active' : ''"
+              @click="desktopWorkspaceMode === 'blacklist' ? setDesktopWorkspaceMode('filter') : setDesktopWorkspaceMode('blacklist')"
+            >
+              黑名单
+            </button>
+            <button
+              type="button"
+              class="tag-filter-workspace-top-tab"
+              :class="desktopWorkspaceMode === 'category-manager' ? 'is-active' : ''"
+              @click="desktopWorkspaceMode === 'category-manager' ? setDesktopWorkspaceMode('filter') : setDesktopWorkspaceMode('category-manager')"
+            >
+              分类管理
+            </button>
+          </div>
+        </div>
+        <div class="tag-filter-desktop-workbench">
+          <div class="tag-filter-workspace-center">
+            <div class="tag-filter-desktop-main">
+              <div
+                x-show="$store.global.deviceType !== 'mobile' && isSortMode"
+                class="text-xs mb-2"
+                style="color: var(--text-dim)"
+              >
+                排序模式仅针对完整标签库生效，侧栏分类标签池将自动继承此全局顺序。
+              </div>
+              <div
+                x-show="$store.global.deviceType !== 'mobile' && customOrderEnabled && !isSortMode"
+                class="text-xs mb-2"
+                style="color: var(--text-dim)"
+              >
+                当前使用自定义排序，可点击“恢复字符排序”回退到原始字母序。
+              </div>
+              <div
+                x-show="$store.global.deviceType !== 'mobile' && !isSortMode"
+                class="tag-category-filter-row tag-category-filter-row--workspace"
+              >
+                <button
+                  type="button"
+                  class="tag-category-filter-pill tag-category-filter-pill--workspace tag-category-filter-pill--all"
+                  :class="isCategoryFilterAllMixed ? 'active-mixed' : ''"
+                  @click="showAllCategoriesMixed()"
+                  title="显示全部分类（混合显示）"
+                >
+                  全部（混合）
+                </button>
+                <template
+                  x-for="name in filterCategoryNames"
+                  :key="'fcat-' + name"
+                >
+                  <button
+                    type="button"
+                    class="tag-category-filter-pill tag-category-filter-pill--workspace"
+                    :class="{
                                         'active-included': getCategoryFilterState(name) === 'included',
                                         'active-excluded': getCategoryFilterState(name) === 'excluded'
                                     }"
-                                    :style="`--tag-cat-color:${getCategoryColor(name)};`"
-                                    @click="toggleCategoryFilter(name, $event)"
-                                    :title="getCategoryFilterState(name) === 'included' ? `分类：${name}（已包含，点击改为排除）` : (getCategoryFilterState(name) === 'excluded' ? `分类：${name}（已排除，点击取消）` : `分类：${name}（点击包含，Shift+点击直接排除）`)">
-                                    <span class="tag-category-filter-dot tag-category-filter-dot--workspace"></span>
-                                    <span x-text="name"></span>
+                    :style="`--tag-cat-color:${getCategoryColor(name)};`"
+                    @click="toggleCategoryFilter(name, $event)"
+                    :title="getCategoryFilterState(name) === 'included' ? `分类：${name}（已包含，点击改为排除）` : (getCategoryFilterState(name) === 'excluded' ? `分类：${name}（已排除，点击取消）` : `分类：${name}（点击包含，Shift+点击直接排除）`)"
+                  >
+                    <span
+                      class="tag-category-filter-dot tag-category-filter-dot--workspace"
+                    ></span>
+                    <span x-text="name"></span>
+                  </button>
+                </template>
+              </div>
+              <div
+                class="tag-filter-selected-basket tag-filter-selected-basket--workspace"
+              >
+                <div
+                  class="tag-filter-selected-basket-header tag-filter-selected-basket-header--calm"
+                >
+                  <span>已选标签区</span>
+                  <button
+                    @click="filterTags=[]; $store.global.viewState.excludedTags=[]"
+                    x-show="!isSortMode && !showCategoryMode"
+                    style="
+                      color: #f87171;
+                      background: none;
+                      border: none;
+                      cursor: pointer;
+                      font-size: 0.75rem;
+                    "
+                  >
+                    清空
+                  </button>
+                </div>
+                <div
+                  class="tag-filter-selected-basket-list custom-scrollbar tag-filter-selected-basket-list--workspace"
+                >
+                  <template
+                    x-for="tag in filterTags"
+                    :key="'basket-include-' + tag"
+                  >
+                    <button
+                      type="button"
+                      class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--included tag-filter-selected-basket-chip--workspace"
+                      @click="filterTags = filterTags.filter(item => item !== tag)"
+                    >
+                      <span
+                        class="tag-filter-selected-basket-chip-label"
+                        x-text="tag"
+                      ></span>
+                      <span aria-hidden="true">✕</span>
+                    </button>
+                  </template>
+                  <template
+                    x-for="tag in $store.global.viewState.excludedTags"
+                    :key="'basket-exclude-' + tag"
+                  >
+                    <button
+                      type="button"
+                      class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--excluded tag-filter-selected-basket-chip--workspace"
+                      @click="$store.global.viewState.excludedTags = $store.global.viewState.excludedTags.filter(item => item !== tag)"
+                    >
+                      <span
+                        class="tag-filter-selected-basket-chip-label"
+                        x-text="tag"
+                      ></span>
+                      <span aria-hidden="true">✕</span>
+                    </button>
+                  </template>
+                  <div
+                    x-show="filterTags.length === 0 && $store.global.viewState.excludedTags.length === 0"
+                    class="tag-filter-selected-basket-empty"
+                    style="color: var(--text-dim)"
+                  >
+                    暂无标签。
+                  </div>
+                </div>
+              </div>
+              <div
+                class="tag-filter-current-mode-tool-area"
+                x-show="!isWorkspaceHelpOpen"
+              >
+                <template
+                  x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'filter' && !isSortMode && !isDeleteMode && !showCategoryMode && !showCategoryManager"
+                >
+                  <div
+                    class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--filter"
+                  >
+                    <div class="tag-filter-current-mode-tool-header">
+                      <div>
+                        <div class="text-xs" style="color: var(--text-dim)">
+                          筛选摘要
+                        </div>
+                        <div
+                          class="text-sm"
+                          style="color: var(--text-main); font-weight: 700"
+                        >
+                          当前筛选工具
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        class="tag-category-clear"
+                        @click="filterTags=[]; $store.global.viewState.excludedTags=[]"
+                        :disabled="filterTags.length === 0 && $store.global.viewState.excludedTags.length === 0"
+                        :style="filterTags.length === 0 && $store.global.viewState.excludedTags.length === 0 ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                      >
+                        清空筛选
+                      </button>
+                    </div>
+                    <div class="tag-filter-current-mode-tool-summary-grid">
+                      <div class="tag-filter-current-mode-tool-summary-card">
+                        <span class="tag-filter-current-mode-tool-summary-label"
+                          >已包含</span
+                        >
+                        <span
+                          class="tag-filter-current-mode-tool-summary-value"
+                          x-text="filterTags.length"
+                        ></span>
+                      </div>
+                      <div class="tag-filter-current-mode-tool-summary-card">
+                        <span class="tag-filter-current-mode-tool-summary-label"
+                          >已排除</span
+                        >
+                        <span
+                          class="tag-filter-current-mode-tool-summary-value"
+                          x-text="$store.global.viewState.excludedTags.length"
+                        ></span>
+                      </div>
+                      <div class="tag-filter-current-mode-tool-summary-card">
+                        <span class="tag-filter-current-mode-tool-summary-label"
+                          >可见标签</span
+                        >
+                        <span
+                          class="tag-filter-current-mode-tool-summary-value"
+                          x-text="filteredVisibleTagCount"
+                        ></span>
+                      </div>
+                    </div>
+                    <div class="tag-filter-current-mode-tool-section">
+                      <div
+                        class="text-xs"
+                        style="color: var(--text-dim); margin-bottom: 0.45rem"
+                      >
+                        标签视图
+                      </div>
+                      <div class="tag-filter-current-mode-tool-view-modes">
+                        <button
+                          type="button"
+                          class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
+                          :class="mixedCategoryView ? 'is-active' : ''"
+                          @click="showAllCategoriesMixed()"
+                        >
+                          混合视图
+                        </button>
+                        <button
+                          type="button"
+                          class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
+                          :class="!mixedCategoryView ? 'is-active' : ''"
+                          @click="mixedCategoryView = false; saveDesktopWorkbenchPrefs()"
+                        >
+                          分组视图
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <template
+                  x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'sort' && isSortMode"
+                >
+                  <div
+                    class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--sort tag-category-manager-panel"
+                  >
+                    <div class="tag-filter-current-mode-tool-header">
+                      <div>
+                        <div class="text-xs" style="color: var(--text-dim)">
+                          排序工具
+                        </div>
+                        <div
+                          class="text-sm"
+                          style="color: var(--text-main); font-weight: 700"
+                        >
+                          当前排序与分类内排序
+                        </div>
+                      </div>
+                      <div class="tag-filter-current-mode-tool-actions">
+                        <button
+                          type="button"
+                          class="tag-category-manager-btn"
+                          @click="clearCustomOrder()"
+                          x-show="customOrderEnabled && !isSortDirty"
+                        >
+                          恢复字符排序
+                        </button>
+                        <button
+                          type="button"
+                          class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                          @click="saveSortMode()"
+                          x-show="isSortMode"
+                        >
+                          保存排序
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      class="tag-category-editor-row"
+                      style="
+                        align-items: flex-start;
+                        justify-content: space-between;
+                        gap: 1rem;
+                        margin-bottom: 0.75rem;
+                      "
+                    >
+                      <div style="flex: 0 0 16rem; max-width: 16rem">
+                        <div
+                          class="text-xs"
+                          style="color: var(--text-dim); margin-bottom: 0.35rem"
+                        >
+                          当前排序
+                        </div>
+                        <div
+                          class="text-xs"
+                          style="
+                            color: var(--text-main);
+                            margin-bottom: 0.65rem;
+                          "
+                        >
+                          <span
+                            x-text="customOrderEnabled ? '自定义排序' : '字符排序'"
+                          ></span>
+                        </div>
+                        <div
+                          class="text-xs"
+                          style="color: var(--text-dim); margin-bottom: 0.35rem"
+                        >
+                          分类内排序
+                        </div>
+                        <select
+                          x-model="selectedCategorySortName"
+                          @change="saveDesktopWorkbenchPrefs()"
+                          class="form-input"
+                          style="padding: 0.5rem 0.65rem"
+                        >
+                          <option value="">选择一个分类</option>
+                          <template
+                            x-for="name in availableCategoryNames"
+                            :key="'sort-context-cat-' + name"
+                          >
+                            <option :value="name" x-text="name"></option>
+                          </template>
+                        </select>
+                      </div>
+                      <div style="flex: 1; min-width: 0">
+                        <div
+                          class="tag-category-editor-row"
+                          style="
+                            justify-content: space-between;
+                            margin-bottom: 0.35rem;
+                          "
+                        >
+                          <span class="text-xs" style="color: var(--text-dim)"
+                            >检查当前全局排序对分类内部顺序的影响，并按需微调。</span
+                          >
+                          <button
+                            type="button"
+                            class="tag-category-manager-btn"
+                            @click="resetSelectedCategoryTagOrder()"
+                            :disabled="!selectedCategorySortName"
+                            :style="!selectedCategorySortName ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                          >
+                            恢复全局顺序
+                          </button>
+                        </div>
+                        <div
+                          class="tag-category-manager-list custom-scrollbar"
+                          style="max-height: 10rem"
+                        >
+                          <template x-if="!selectedCategorySortName">
+                            <div
+                              class="text-xs"
+                              style="color: var(--text-dim); padding: 0.5rem 0"
+                            >
+                              选择分类后可在此查看并调整内部标签顺序。
+                            </div>
+                          </template>
+                          <template
+                            x-if="selectedCategorySortName && selectedCategorySortTags.length === 0"
+                          >
+                            <div
+                              class="text-xs"
+                              style="color: var(--text-dim); padding: 0.5rem 0"
+                            >
+                              当前分类暂无可排序标签。
+                            </div>
+                          </template>
+                          <template
+                            x-for="(tag, index) in selectedCategorySortTags"
+                            :key="'sort-context-tag-' + selectedCategorySortName + '-' + tag"
+                          >
+                            <div class="tag-category-manager-item">
+                              <div class="tag-category-manager-main">
+                                <span
+                                  class="tag-category-manager-name"
+                                  x-text="tag"
+                                ></span>
+                              </div>
+                              <div class="tag-category-manager-actions">
+                                <button
+                                  type="button"
+                                  class="tag-category-manager-btn"
+                                  @click="moveSelectedCategoryTagUp(tag)"
+                                  :disabled="index===0"
+                                  :style="index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                                >
+                                  上移
                                 </button>
-                            </template>
-                        </div>
-                        <div class="tag-filter-selected-basket tag-filter-selected-basket--workspace">
-                            <div class="tag-filter-selected-basket-header tag-filter-selected-basket-header--calm">
-                                <span>已选标签区</span>
-                                <button @click="filterTags=[]; $store.global.viewState.excludedTags=[]" x-show="!isSortMode && !showCategoryMode"
-                                    style="color: #f87171; background: none; border: none; cursor: pointer; font-size: 0.75rem;">清空</button>
+                                <button
+                                  type="button"
+                                  class="tag-category-manager-btn"
+                                  @click="moveSelectedCategoryTagDown(tag)"
+                                  :disabled="index===selectedCategorySortTags.length-1"
+                                  :style="index===selectedCategorySortTags.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                                >
+                                  下移
+                                </button>
+                              </div>
                             </div>
-                            <div class="tag-filter-selected-basket-list custom-scrollbar tag-filter-selected-basket-list--workspace">
-                                <template x-for="tag in filterTags" :key="'basket-include-' + tag">
-                                    <button type="button" class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--included tag-filter-selected-basket-chip--workspace" @click="toggleFilterTag(tag)">
-                                        <span class="tag-filter-selected-basket-chip-label" x-text="tag"></span>
-                                        <span aria-hidden="true">✕</span>
-                                    </button>
-                                </template>
-                                <template x-for="tag in $store.global.viewState.excludedTags" :key="'basket-exclude-' + tag">
-                                    <button type="button" class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--excluded tag-filter-selected-basket-chip--workspace" @click="$store.global.viewState.excludedTags = $store.global.viewState.excludedTags.filter(item => item !== tag)">
-                                        <span class="tag-filter-selected-basket-chip-label" x-text="tag"></span>
-                                        <span aria-hidden="true">✕</span>
-                                    </button>
-                                </template>
-                                <div x-show="filterTags.length === 0 && $store.global.viewState.excludedTags.length === 0"
-                                    class="tag-filter-selected-basket-empty" style="color: var(--text-dim);">
-                                    暂无标签。
-                                </div>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <template
+                  x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'delete' && isDeleteMode"
+                >
+                  <div
+                    class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--delete tag-category-manager-panel"
+                  >
+                    <div class="tag-filter-delete-stack">
+                      <div
+                        class="tag-filter-delete-stack-item tag-filter-delete-stack-item--summary"
+                      >
+                        <div
+                          class="tag-category-editor-row"
+                          style="
+                            justify-content: space-between;
+                            align-items: center;
+                            margin-bottom: 0.5rem;
+                          "
+                        >
+                          <span class="text-xs" style="color: var(--text-dim)"
+                            >待删除标签</span
+                          >
+                          <span class="text-xs" style="color: var(--text-dim)"
+                            >已选
+                            <span
+                              class="text-accent font-bold"
+                              x-text="selectedTagsForDeletion.length"
+                            ></span>
+                            个</span
+                          >
+                        </div>
+                      </div>
+                      <div
+                        class="tag-filter-delete-stack-item tag-filter-delete-stack-item--list tag-filter-delete-stack-item--pending"
+                      >
+                        <div
+                          class="tag-filter-delete-pending-list custom-scrollbar"
+                          style="max-height: 12rem; margin-bottom: 0.75rem"
+                        >
+                          <template x-if="selectedTagsForDeletion.length === 0">
+                            <div
+                              class="text-xs"
+                              style="color: var(--text-dim); padding: 0.5rem 0"
+                            >
+                              在中间标签池中点击标签即可加入待删除列表。
                             </div>
-                        </div>
-                        <div class="tag-filter-current-mode-tool-area" x-show="!isWorkspaceHelpOpen">
-                            <template x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'filter' && !isSortMode && !isDeleteMode && !showCategoryMode && !showCategoryManager">
-                                <div class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--filter">
-                                    <div class="tag-filter-current-mode-tool-header">
-                                        <div>
-                                            <div class="text-xs" style="color: var(--text-dim);">筛选摘要</div>
-                                            <div class="text-sm" style="color: var(--text-main); font-weight: 700;">当前筛选工具</div>
-                                        </div>
-                                        <button type="button" class="tag-category-clear"
-                                            @click="filterTags=[]; $store.global.viewState.excludedTags=[]"
-                                            :disabled="filterTags.length === 0 && $store.global.viewState.excludedTags.length === 0"
-                                            :style="filterTags.length === 0 && $store.global.viewState.excludedTags.length === 0 ? 'opacity:0.45; cursor:not-allowed;' : ''">
-                                            清空筛选
-                                        </button>
-                                    </div>
-                                    <div class="tag-filter-current-mode-tool-summary-grid">
-                                        <div class="tag-filter-current-mode-tool-summary-card">
-                                            <span class="tag-filter-current-mode-tool-summary-label">已包含</span>
-                                            <span class="tag-filter-current-mode-tool-summary-value" x-text="filterTags.length"></span>
-                                        </div>
-                                        <div class="tag-filter-current-mode-tool-summary-card">
-                                            <span class="tag-filter-current-mode-tool-summary-label">已排除</span>
-                                            <span class="tag-filter-current-mode-tool-summary-value" x-text="$store.global.viewState.excludedTags.length"></span>
-                                        </div>
-                                        <div class="tag-filter-current-mode-tool-summary-card">
-                                            <span class="tag-filter-current-mode-tool-summary-label">可见标签</span>
-                                            <span class="tag-filter-current-mode-tool-summary-value" x-text="filteredVisibleTagCount"></span>
-                                        </div>
-                                    </div>
-                                    <div class="tag-filter-current-mode-tool-section">
-                                        <div class="text-xs" style="color: var(--text-dim); margin-bottom: 0.45rem;">标签视图</div>
-                                        <div class="tag-filter-current-mode-tool-view-modes">
-                                            <button type="button" class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
-                                                :class="mixedCategoryView ? 'is-active' : ''"
-                                                @click="showAllCategoriesMixed()">
-                                                混合视图
-                                            </button>
-                                            <button type="button" class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
-                                                :class="!mixedCategoryView ? 'is-active' : ''"
-                                                @click="mixedCategoryView = false; saveDesktopWorkbenchPrefs()">
-                                                分组视图
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </template>
-                            <template x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'sort' && isSortMode">
-                                <div class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--sort tag-category-manager-panel">
-                                    <div class="tag-filter-current-mode-tool-header">
-                                        <div>
-                                            <div class="text-xs" style="color: var(--text-dim);">排序工具</div>
-                                            <div class="text-sm" style="color: var(--text-main); font-weight: 700;">当前排序与分类内排序</div>
-                                        </div>
-                                        <div class="tag-filter-current-mode-tool-actions">
-                                            <button type="button" class="tag-category-manager-btn" @click="clearCustomOrder()"
-                                                x-show="customOrderEnabled && !isSortDirty">
-                                                恢复字符排序
-                                            </button>
-                                            <button type="button" class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md"
-                                                @click="saveSortMode()" x-show="isSortMode">
-                                                保存排序
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="tag-category-editor-row" style="align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem;">
-                                        <div style="flex: 0 0 16rem; max-width: 16rem;">
-                                            <div class="text-xs" style="color: var(--text-dim); margin-bottom: 0.35rem;">当前排序</div>
-                                            <div class="text-xs" style="color: var(--text-main); margin-bottom: 0.65rem;">
-                                                <span x-text="customOrderEnabled ? '自定义排序' : '字符排序'"></span>
-                                            </div>
-                                            <div class="text-xs" style="color: var(--text-dim); margin-bottom: 0.35rem;">分类内排序</div>
-                                            <select x-model="selectedCategorySortName" @change="saveDesktopWorkbenchPrefs()" class="form-input" style="padding: 0.5rem 0.65rem;">
-                                                <option value="">选择一个分类</option>
-                                                <template x-for="name in availableCategoryNames" :key="'sort-context-cat-' + name">
-                                                    <option :value="name" x-text="name"></option>
-                                                </template>
-                                            </select>
-                                        </div>
-                                        <div style="flex: 1; min-width: 0;">
-                                            <div class="tag-category-editor-row" style="justify-content: space-between; margin-bottom: 0.35rem;">
-                                                <span class="text-xs" style="color: var(--text-dim);">检查当前全局排序对分类内部顺序的影响，并按需微调。</span>
-                                                <button type="button" class="tag-category-manager-btn" @click="resetSelectedCategoryTagOrder()"
-                                                    :disabled="!selectedCategorySortName"
-                                                    :style="!selectedCategorySortName ? 'opacity:0.45; cursor:not-allowed;' : ''">恢复全局顺序</button>
-                                            </div>
-                                            <div class="tag-category-manager-list custom-scrollbar" style="max-height: 10rem;">
-                                                <template x-if="!selectedCategorySortName">
-                                                    <div class="text-xs" style="color: var(--text-dim); padding: 0.5rem 0;">选择分类后可在此查看并调整内部标签顺序。</div>
-                                                </template>
-                                                <template x-if="selectedCategorySortName && selectedCategorySortTags.length === 0">
-                                                    <div class="text-xs" style="color: var(--text-dim); padding: 0.5rem 0;">当前分类暂无可排序标签。</div>
-                                                </template>
-                                                <template x-for="(tag, index) in selectedCategorySortTags" :key="'sort-context-tag-' + selectedCategorySortName + '-' + tag">
-                                                    <div class="tag-category-manager-item">
-                                                        <div class="tag-category-manager-main">
-                                                            <span class="tag-category-manager-name" x-text="tag"></span>
-                                                        </div>
-                                                        <div class="tag-category-manager-actions">
-                                                            <button type="button" class="tag-category-manager-btn" @click="moveSelectedCategoryTagUp(tag)"
-                                                                :disabled="index===0"
-                                                                :style="index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''">上移</button>
-                                                            <button type="button" class="tag-category-manager-btn" @click="moveSelectedCategoryTagDown(tag)"
-                                                                :disabled="index===selectedCategorySortTags.length-1"
-                                                                :style="index===selectedCategorySortTags.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''">下移</button>
-                                                        </div>
-                                                    </div>
-                                                </template>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </template>
-                            <template x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'delete' && isDeleteMode">
-                                <div class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--delete tag-category-manager-panel">
-                                    <div class="tag-filter-delete-stack">
-                                        <div class="tag-filter-delete-stack-item tag-filter-delete-stack-item--summary">
-                                            <div class="tag-category-editor-row" style="justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                                <span class="text-xs" style="color: var(--text-dim);">待删除标签</span>
-                                                <span class="text-xs" style="color: var(--text-dim);">已选 <span class="text-accent font-bold" x-text="selectedTagsForDeletion.length"></span> 个</span>
-                                            </div>
-                                        </div>
-                                        <div class="tag-filter-delete-stack-item tag-filter-delete-stack-item--list tag-filter-delete-stack-item--pending">
-                                            <div class="tag-filter-delete-pending-list custom-scrollbar" style="max-height: 12rem; margin-bottom: 0.75rem;">
-                                                <template x-if="selectedTagsForDeletion.length === 0">
-                                                    <div class="text-xs" style="color: var(--text-dim); padding: 0.5rem 0;">在中间标签池中点击标签即可加入待删除列表。</div>
-                                                </template>
-                                                <template x-for="tag in selectedTagsForDeletion" :key="'delete-pending-' + tag">
-                                                    <button type="button" class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--excluded" @click="toggleTagSelectionForDeletion(tag)">
-                                                        <span class="tag-filter-selected-basket-chip-label" x-text="tag"></span>
-                                                        <span aria-hidden="true">✕</span>
-                                                    </button>
-                                                </template>
-                                            </div>
-                                        </div>
-                                        <div class="tag-filter-delete-stack-item tag-filter-delete-stack-item--actions tag-filter-delete-stack-item--danger">
-                                            <div class="text-xs" style="color: #fca5a5; margin-bottom: 0.5rem;">删除操作不可撤销，请确认待删除标签列表后再执行。</div>
-                                            <button type="button" @click="deleteSelectedTags()" x-show="isDeleteMode && selectedTagsForDeletion.length > 0"
-                                                class="text-xs bg-red-700 hover:bg-red-600 px-3 py-1 rounded text-white font-bold shadow-md">
-                                                永久删除选中标签
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </template>
-                            <template x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'batch-category' && showCategoryMode && !isSortMode">
-                                <div class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--batch-category tag-category-editor">
-                                    <div class="tag-filter-current-mode-tool-header">
-                                        <div>
-                                            <div class="text-xs" style="color: var(--text-dim);">批量分类工具</div>
-                                            <div class="text-sm" style="color: var(--text-main); font-weight: 700;">目标分类与批量操作</div>
-                                        </div>
-                                    </div>
-                                    <div class="tag-category-editor-row">
-                                        <span class="text-xs" style="color: var(--text-dim);">已选择 <span class="text-accent font-bold"
-                                                x-text="categorySelectionCount"></span> 个标签，点击标签可增减选择。</span>
-                                        <button type="button" @click="selectedCategoryTags=[]" class="tag-category-clear">清空选择</button>
-                                    </div>
-                                    <div class="text-xs" style="color: var(--text-dim);">目标分类</div>
-                                    <div class="tag-category-editor-row tag-category-editor-row-main">
-                                        <input type="text" x-model="categoryDraftName" placeholder="分类名称（例如：角色 / 题材）" class="form-input"
-                                            style="font-size: 0.82rem; padding: 0.45rem 0.6rem;">
-                                        <input type="color" x-model="categoryDraftColor" class="tag-category-color-input" title="分类颜色">
-                                        <div class="tag-opacity-control" title="分类透明度（0-100）">
-                                            <span class="tag-opacity-label">透明度</span>
-                                            <input type="range" min="0" max="100" step="1" x-model.number="categoryDraftOpacity"
-                                                class="tag-opacity-slider">
-                                            <input type="number" min="0" max="100" step="1" x-model.number="categoryDraftOpacity"
-                                                class="tag-opacity-number">
-                                        </div>
-                                        <button type="button" @click="saveCategoryBatch()" :disabled="!canSaveCategoryBatch"
-                                            class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md"
-                                            :style="canSaveCategoryBatch ? '' : 'opacity: 0.55; cursor: not-allowed;'">
-                                            保存分类
-                                        </button>
-                                    </div>
-                                    <div class="tag-category-quick-list">
-                                        <template x-for="name in availableCategoryNames" :key="'cat-opt-' + name">
-                                            <button type="button" class="tag-category-quick-btn" @click="setCategoryDraft(name)"
-                                                :class="categoryDraftName === name ? 'active' : ''"
-                                                :style="`--tag-cat-color:${getCategoryColor(name)};`">
-                                                <span class="tag-category-quick-dot"></span>
-                                                <span x-text="name"></span>
-                                                <span class="tag-category-quick-opacity" x-text="getCategoryOpacity(name) + '%'" title="当前透明度"></span>
-                                            </button>
-                                        </template>
-                                    </div>
-                                </div>
-                            </template>
-                            <template x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'category-manager' && showCategoryManager && !isSortMode">
-                                <div class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--category-manager tag-category-manager-panel">
-                                    <div class="tag-filter-category-manager-stack">
-                                        <div class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--draft">
-                                            <div class="tag-filter-category-manager-draft-area">
-                                            <div class="tag-category-editor-row tag-category-editor-row-main">
-                                                <input type="text" x-model="categoryManagerDraftName" placeholder="新增分类名称" class="form-input"
-                                                    style="font-size: 0.82rem; padding: 0.42rem 0.6rem;">
-                                                <input type="color" x-model="categoryManagerDraftColor" class="tag-category-color-input" title="分类颜色">
-                                                <div class="tag-opacity-control" title="分类透明度（0-100）">
-                                                    <span class="tag-opacity-label">透明度</span>
-                                                    <input type="range" min="0" max="100" step="1" x-model.number="categoryManagerDraftOpacity"
-                                                        class="tag-opacity-slider">
-                                                    <input type="number" min="0" max="100" step="1" x-model.number="categoryManagerDraftOpacity"
-                                                        class="tag-opacity-number">
-                                                </div>
-                                                <button type="button" @click="addCategoryFromManager()"
-                                                    class="text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-white font-bold shadow-md">
-                                                    新增/更新
-                                                </button>
-                                            </div>
-                                            </div>
-                                        </div>
-                                        <div class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--sorting">
-                                            <div class="tag-filter-category-manager-sorting-area">
-                                            <div class="tag-category-editor-row tag-filter-category-manager-sorting-stack" style="align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem;">
-                                                <div style="min-width: 0;">
-                                                    <div class="text-xs" style="color: var(--text-dim); margin-bottom: 0.35rem;">分类内排序</div>
-                                                    <select x-model="selectedCategorySortName" @change="saveDesktopWorkbenchPrefs()" class="form-input" style="padding: 0.5rem 0.65rem;">
-                                                        <option value="">选择一个分类</option>
-                                                        <template x-for="name in availableCategoryNames" :key="'sort-cat-' + name">
-                                                            <option :value="name" x-text="name"></option>
-                                                        </template>
-                                                    </select>
-                                                </div>
-                                                <div style="flex: 1; min-width: 0;">
-                                                    <div class="tag-category-editor-row" style="justify-content: space-between; margin-bottom: 0.35rem;">
-                                                        <span class="text-xs" style="color: var(--text-dim);">仅对当前选中分类生效，保存后覆盖该分类的内部顺序。</span>
-                                                        <button type="button" class="tag-category-manager-btn" @click="resetSelectedCategoryTagOrder()"
-                                                            :disabled="!selectedCategorySortName"
-                                                            :style="!selectedCategorySortName ? 'opacity:0.45; cursor:not-allowed;' : ''">恢复全局顺序</button>
-                                                    </div>
-                                                    <div class="tag-filter-category-manager-sorting-list custom-scrollbar" style="max-height: 10rem;">
-                                                        <template x-if="!selectedCategorySortName">
-                                                            <div class="text-xs" style="color: var(--text-dim); padding: 0.5rem 0;">选择分类后可在此调整内部标签顺序。</div>
-                                                        </template>
-                                                        <template x-if="selectedCategorySortName && selectedCategorySortTags.length === 0">
-                                                            <div class="text-xs" style="color: var(--text-dim); padding: 0.5rem 0;">当前分类暂无可排序标签。</div>
-                                                        </template>
-                                                        <template x-for="(tag, index) in selectedCategorySortTags" :key="'sort-tag-' + selectedCategorySortName + '-' + tag">
-                                                            <div class="tag-category-manager-item">
-                                                                <div class="tag-category-manager-main">
-                                                                    <span class="tag-category-manager-name" x-text="tag"></span>
-                                                                </div>
-                                                                <div class="tag-category-manager-actions">
-                                                                    <button type="button" class="tag-category-manager-btn" @click="moveSelectedCategoryTagUp(tag)"
-                                                                        :disabled="index===0"
-                                                                        :style="index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''">上移</button>
-                                                                    <button type="button" class="tag-category-manager-btn" @click="moveSelectedCategoryTagDown(tag)"
-                                                                        :disabled="index===selectedCategorySortTags.length-1"
-                                                                        :style="index===selectedCategorySortTags.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''">下移</button>
-                                                                </div>
-                                                            </div>
-                                                        </template>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            </div>
-                                        </div>
-                                        <div class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--registry">
-                                            <div class="tag-filter-category-manager-registry-area">
-                                            <div class="tag-filter-category-manager-registry-list custom-scrollbar">
-                                                <template x-for="item in categoryManagerItems" :key="'mgr-' + item.name">
-                                                    <div class="tag-category-manager-item">
-                                                        <div class="tag-category-manager-main">
-                                                            <span class="tag-category-manager-dot" :style="`background:${item.color};`"></span>
-                                                            <span class="tag-category-manager-name" x-text="item.name"></span>
-                                                            <span class="tag-category-manager-opacity-pill" x-text="item.opacity + '%'" title="当前透明度"></span>
-                                                            <span x-show="item.isDefault" class="tag-category-manager-default">默认</span>
-                                                            <span class="tag-category-manager-count" x-text="item.count + ' 个标签'"></span>
-                                                        </div>
-                                                        <div class="tag-category-manager-actions">
-                                                            <input type="color" :value="item.color" class="tag-category-manager-color"
-                                                                @change="setCategoryColor(item.name, $event.target.value)" title="修改分类颜色">
-                                                            <div class="tag-category-manager-opacity-wrap" title="修改分类不透明度（0-100）">
-                                                                <input type="range" min="0" max="100" step="1" :value="getCategoryOpacity(item.name)"
-                                                                    @change="setCategoryOpacity(item.name, $event.target.value)"
-                                                                    class="tag-category-manager-opacity-slider">
-                                                                <span class="tag-category-manager-opacity-text" x-text="getCategoryOpacity(item.name)"></span>
-                                                            </div>
-                                                            <button type="button" class="tag-category-manager-btn" @click="setDefaultCategory(item.name)"
-                                                                :disabled="item.isDefault"
-                                                                :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''">设为默认</button>
-                                                            <button type="button" class="tag-category-manager-btn" @click="moveCategory(item.name, -1)"
-                                                                :disabled="item.index===0"
-                                                                :style="item.index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''">上移</button>
-                                                            <button type="button" class="tag-category-manager-btn" @click="moveCategory(item.name, 1)"
-                                                                :disabled="item.index===categoryManagerItems.length-1"
-                                                                :style="item.index===categoryManagerItems.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''">下移</button>
-                                                            <button type="button" class="tag-category-manager-btn" @click="renameCategory(item.name)">重命名</button>
-                                                            <button type="button" class="tag-category-manager-btn danger" @click="deleteCategory(item.name)"
-                                                                :disabled="item.isDefault"
-                                                                :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''">删除</button>
-                                                        </div>
-                                                    </div>
-                                                </template>
-                                            </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </template>
-                        </div>
-                        <div class="tag-filter-workspace-tag-pool" x-show="!isWorkspaceHelpOpen">
-                            <div x-show="$store.global.deviceType !== 'mobile'" class="tag-cloud-container custom-scrollbar">
-            <template x-if="!isSortMode">
-                <div class="tag-cloud-mode-wrap">
-                    <template x-if="mixedCategoryView">
-                        <template x-for="tag in filteredMixedTagsPool" :key="'mixed-' + tag">
+                          </template>
+                          <template
+                            x-for="tag in selectedTagsForDeletion"
+                            :key="'delete-pending-' + tag"
+                          >
                             <button
-                                @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : toggleFilterTag(tag, $event))"
-                                class="tag-chip-btn flex items-center" :class="{
-                                        'tag-chip-selected': !isDeleteMode && !showCategoryMode && filterTags.includes(tag),
-                                        'tag-chip-excluded': !isDeleteMode && !showCategoryMode && $store.global.viewState.excludedTags.includes(tag),
-                                        'tag-chip-unselected tag-chip-categorized': !isDeleteMode && !showCategoryMode && !filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag),
+                              type="button"
+                              class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--excluded"
+                              @click="toggleTagSelectionForDeletion(tag)"
+                            >
+                              <span
+                                class="tag-filter-selected-basket-chip-label"
+                                x-text="tag"
+                              ></span>
+                              <span aria-hidden="true">✕</span>
+                            </button>
+                          </template>
+                        </div>
+                      </div>
+                      <div
+                        class="tag-filter-delete-stack-item tag-filter-delete-stack-item--actions tag-filter-delete-stack-item--danger"
+                      >
+                        <div
+                          class="text-xs"
+                          style="color: #fca5a5; margin-bottom: 0.5rem"
+                        >
+                          删除操作不可撤销，请确认待删除标签列表后再执行。
+                        </div>
+                        <button
+                          type="button"
+                          @click="deleteSelectedTags()"
+                          x-show="isDeleteMode && selectedTagsForDeletion.length > 0"
+                          class="text-xs bg-red-700 hover:bg-red-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                        >
+                          永久删除选中标签
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <template
+                  x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'batch-category' && showCategoryMode && !isSortMode"
+                >
+                  <div
+                    class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--batch-category tag-category-editor"
+                  >
+                    <div class="tag-filter-current-mode-tool-header">
+                      <div>
+                        <div class="text-xs" style="color: var(--text-dim)">
+                          批量分类工具
+                        </div>
+                        <div
+                          class="text-sm"
+                          style="color: var(--text-main); font-weight: 700"
+                        >
+                          目标分类与批量操作
+                        </div>
+                      </div>
+                    </div>
+                    <div class="tag-category-editor-row">
+                      <span class="text-xs" style="color: var(--text-dim)"
+                        >已选择
+                        <span
+                          class="text-accent font-bold"
+                          x-text="categorySelectionCount"
+                        ></span>
+                        个标签；可点击标签增减选择，也可用下方分隔符输入批量选中。</span
+                      >
+                      <button
+                        type="button"
+                        @click="selectedCategoryTags=[]"
+                        class="tag-category-clear"
+                      >
+                        清空选择
+                      </button>
+                    </div>
+                    <div class="text-xs" style="color: var(--text-dim)">
+                      目标分类
+                    </div>
+                    <div class="tag-category-editor-row tag-category-editor-row-main">
+                      <input
+                        type="text"
+                        x-model="categorySelectionInput"
+                        @keydown.enter.prevent="applyCategorySelectionInput()"
+                        placeholder="输入标签名，使用 |、逗号或换行批量选中当前可见标签"
+                        class="form-input"
+                        style="font-size: 0.82rem; padding: 0.45rem 0.6rem"
+                      />
+                      <button
+                        type="button"
+                        @click="applyCategorySelectionInput()"
+                        class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                      >
+                        批量选中
+                      </button>
+                    </div>
+                    <div
+                      class="tag-category-editor-row tag-category-editor-row-main"
+                    >
+                      <input
+                        type="text"
+                        x-model="categoryDraftName"
+                        placeholder="分类名称（例如：角色 / 题材）"
+                        class="form-input"
+                        style="font-size: 0.82rem; padding: 0.45rem 0.6rem"
+                      />
+                      <input
+                        type="color"
+                        x-model="categoryDraftColor"
+                        class="tag-category-color-input"
+                        title="分类颜色"
+                      />
+                      <div
+                        class="tag-opacity-control"
+                        title="分类透明度（0-100）"
+                      >
+                        <span class="tag-opacity-label">透明度</span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          x-model.number="categoryDraftOpacity"
+                          class="tag-opacity-slider"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          x-model.number="categoryDraftOpacity"
+                          class="tag-opacity-number"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        @click="saveCategoryBatch()"
+                        :disabled="!canSaveCategoryBatch"
+                        class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                        :style="canSaveCategoryBatch ? '' : 'opacity: 0.55; cursor: not-allowed;'"
+                      >
+                        保存分类
+                      </button>
+                    </div>
+                    <div class="tag-category-quick-list">
+                      <template
+                        x-for="name in availableCategoryNames"
+                        :key="'cat-opt-' + name"
+                      >
+                        <button
+                          type="button"
+                          class="tag-category-quick-btn"
+                          @click="setCategoryDraft(name)"
+                          :class="categoryDraftName === name ? 'active' : ''"
+                          :style="`--tag-cat-color:${getCategoryColor(name)};`"
+                        >
+                          <span class="tag-category-quick-dot"></span>
+                          <span x-text="name"></span>
+                          <span
+                            class="tag-category-quick-opacity"
+                            x-text="getCategoryOpacity(name) + '%'"
+                            title="当前透明度"
+                          ></span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <template
+                  x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'blacklist' && !isDeleteMode && !isSortMode"
+                >
+                  <div
+                    class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--blacklist tag-category-editor"
+                  >
+                    <div class="tag-filter-current-mode-tool-header">
+                      <div>
+                        <div class="text-xs" style="color: var(--text-dim)">
+                          黑名单工具
+                        </div>
+                        <div
+                          class="text-sm"
+                          style="color: var(--text-main); font-weight: 700"
+                        >
+                          添加和维护黑名单标签
+                        </div>
+                      </div>
+                    </div>
+                    <div class="tag-category-editor-row">
+                      <span class="text-xs" style="color: var(--text-dim)"
+                        >已选择
+                        <span
+                          class="text-accent font-bold"
+                          x-text="selectedBlacklistTags.length"
+                        ></span>
+                        个标签；可点击标签增减选择，也可用下方分隔符输入批量加入。</span
+                      >
+                      <button
+                        type="button"
+                        @click="selectedBlacklistTags=[]"
+                        class="tag-category-clear"
+                      >
+                        清空选择
+                      </button>
+                    </div>
+                    <div class="tag-category-editor-row tag-category-editor-row-main">
+                      <input
+                        type="text"
+                        x-model="blacklistSelectionInput"
+                        @keydown.enter.prevent="applyBlacklistSelectionInput()"
+                        placeholder="输入标签名，使用 |、逗号或换行批量加入黑名单选择"
+                        class="form-input"
+                        style="font-size: 0.82rem; padding: 0.45rem 0.6rem"
+                      />
+                      <button
+                        type="button"
+                        @click="applyBlacklistSelectionInput()"
+                        class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                      >
+                        批量加入选择
+                      </button>
+                      <button
+                        type="button"
+                        @click="saveBlacklistSelection()"
+                        :disabled="!canSaveBlacklistSelection"
+                        class="text-xs bg-rose-700 hover:bg-rose-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                        :style="canSaveBlacklistSelection ? '' : 'opacity: 0.55; cursor: not-allowed;'"
+                      >
+                        加入黑名单
+                      </button>
+                    </div>
+                    <div class="text-xs" style="color: var(--text-dim)">
+                      开启治理开关后，自动流程和批量流程会跳过这些黑名单标签。
+                    </div>
+                    <div class="tag-filter-delete-pending-list custom-scrollbar" style="max-height: 10rem; margin-top: 0.6rem">
+                      <template x-if="tagBlacklistTags.length === 0">
+                        <div
+                          class="text-xs"
+                          style="color: var(--text-dim); padding: 0.5rem 0"
+                        >
+                          当前没有黑名单标签。
+                        </div>
+                      </template>
+                      <template
+                        x-for="tag in tagBlacklistTags"
+                        :key="'blacklist-' + tag"
+                      >
+                        <button
+                          type="button"
+                          class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--excluded"
+                          @click="removeBlacklistedTag(tag)"
+                        >
+                          <span
+                            class="tag-filter-selected-basket-chip-label"
+                            x-text="tag"
+                          ></span>
+                          <span aria-hidden="true">移除</span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <template
+                  x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'category-manager' && showCategoryManager && !isSortMode"
+                >
+                  <div
+                    class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--category-manager tag-category-manager-panel"
+                  >
+                    <div class="tag-filter-category-manager-stack">
+                      <div
+                        class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--draft"
+                      >
+                        <div class="tag-filter-category-manager-draft-area">
+                          <div
+                            class="tag-category-editor-row tag-category-editor-row-main"
+                          >
+                            <input
+                              type="text"
+                              x-model="categoryManagerDraftName"
+                              placeholder="新增分类名称"
+                              class="form-input"
+                              style="
+                                font-size: 0.82rem;
+                                padding: 0.42rem 0.6rem;
+                              "
+                            />
+                            <input
+                              type="color"
+                              x-model="categoryManagerDraftColor"
+                              class="tag-category-color-input"
+                              title="分类颜色"
+                            />
+                            <div
+                              class="tag-opacity-control"
+                              title="分类透明度（0-100）"
+                            >
+                              <span class="tag-opacity-label">透明度</span>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                x-model.number="categoryManagerDraftOpacity"
+                                class="tag-opacity-slider"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="1"
+                                x-model.number="categoryManagerDraftOpacity"
+                                class="tag-opacity-number"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              @click="addCategoryFromManager()"
+                              class="text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                            >
+                              新增/更新
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--sorting"
+                      >
+                        <div class="tag-filter-category-manager-sorting-area">
+                          <div
+                            class="tag-category-editor-row tag-filter-category-manager-sorting-stack"
+                            style="
+                              align-items: flex-start;
+                              justify-content: space-between;
+                              gap: 1rem;
+                              margin-bottom: 0.75rem;
+                            "
+                          >
+                            <div style="min-width: 0">
+                              <div
+                                class="text-xs"
+                                style="
+                                  color: var(--text-dim);
+                                  margin-bottom: 0.35rem;
+                                "
+                              >
+                                分类内排序
+                              </div>
+                              <select
+                                x-model="selectedCategorySortName"
+                                @change="saveDesktopWorkbenchPrefs()"
+                                class="form-input"
+                                style="padding: 0.5rem 0.65rem"
+                              >
+                                <option value="">选择一个分类</option>
+                                <template
+                                  x-for="name in availableCategoryNames"
+                                  :key="'sort-cat-' + name"
+                                >
+                                  <option :value="name" x-text="name"></option>
+                                </template>
+                              </select>
+                            </div>
+                            <div style="flex: 1; min-width: 0">
+                              <div
+                                class="tag-category-editor-row"
+                                style="
+                                  justify-content: space-between;
+                                  margin-bottom: 0.35rem;
+                                "
+                              >
+                                <span
+                                  class="text-xs"
+                                  style="color: var(--text-dim)"
+                                  >仅对当前选中分类生效，保存后覆盖该分类的内部顺序。</span
+                                >
+                                <button
+                                  type="button"
+                                  class="tag-category-manager-btn"
+                                  @click="resetSelectedCategoryTagOrder()"
+                                  :disabled="!selectedCategorySortName"
+                                  :style="!selectedCategorySortName ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                                >
+                                  恢复全局顺序
+                                </button>
+                              </div>
+                              <div
+                                class="tag-filter-category-manager-sorting-list custom-scrollbar"
+                                style="max-height: 10rem"
+                              >
+                                <template x-if="!selectedCategorySortName">
+                                  <div
+                                    class="text-xs"
+                                    style="
+                                      color: var(--text-dim);
+                                      padding: 0.5rem 0;
+                                    "
+                                  >
+                                    选择分类后可在此调整内部标签顺序。
+                                  </div>
+                                </template>
+                                <template
+                                  x-if="selectedCategorySortName && selectedCategorySortTags.length === 0"
+                                >
+                                  <div
+                                    class="text-xs"
+                                    style="
+                                      color: var(--text-dim);
+                                      padding: 0.5rem 0;
+                                    "
+                                  >
+                                    当前分类暂无可排序标签。
+                                  </div>
+                                </template>
+                                <template
+                                  x-for="(tag, index) in selectedCategorySortTags"
+                                  :key="'sort-tag-' + selectedCategorySortName + '-' + tag"
+                                >
+                                  <div class="tag-category-manager-item">
+                                    <div class="tag-category-manager-main">
+                                      <span
+                                        class="tag-category-manager-name"
+                                        x-text="tag"
+                                      ></span>
+                                    </div>
+                                    <div class="tag-category-manager-actions">
+                                      <button
+                                        type="button"
+                                        class="tag-category-manager-btn"
+                                        @click="moveSelectedCategoryTagUp(tag)"
+                                        :disabled="index===0"
+                                        :style="index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                                      >
+                                        上移
+                                      </button>
+                                      <button
+                                        type="button"
+                                        class="tag-category-manager-btn"
+                                        @click="moveSelectedCategoryTagDown(tag)"
+                                        :disabled="index===selectedCategorySortTags.length-1"
+                                        :style="index===selectedCategorySortTags.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                                      >
+                                        下移
+                                      </button>
+                                    </div>
+                                  </div>
+                                </template>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--registry"
+                      >
+                        <div class="tag-filter-category-manager-registry-area">
+                          <div
+                            class="tag-filter-category-manager-registry-list custom-scrollbar"
+                          >
+                            <template
+                              x-for="item in categoryManagerItems"
+                              :key="'mgr-' + item.name"
+                            >
+                              <div class="tag-category-manager-item">
+                                <div class="tag-category-manager-main">
+                                  <span
+                                    class="tag-category-manager-dot"
+                                    :style="`background:${item.color};`"
+                                  ></span>
+                                  <span
+                                    class="tag-category-manager-name"
+                                    x-text="item.name"
+                                  ></span>
+                                  <span
+                                    class="tag-category-manager-opacity-pill"
+                                    x-text="item.opacity + '%'"
+                                    title="当前透明度"
+                                  ></span>
+                                  <span
+                                    x-show="item.isDefault"
+                                    class="tag-category-manager-default"
+                                    >默认</span
+                                  >
+                                  <span
+                                    class="tag-category-manager-count"
+                                    x-text="item.count + ' 个标签'"
+                                  ></span>
+                                </div>
+                                <div class="tag-category-manager-actions">
+                                  <input
+                                    type="color"
+                                    :value="item.color"
+                                    class="tag-category-manager-color"
+                                    @change="setCategoryColor(item.name, $event.target.value)"
+                                    title="修改分类颜色"
+                                  />
+                                  <div
+                                    class="tag-category-manager-opacity-wrap"
+                                    title="修改分类不透明度（0-100）"
+                                  >
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="100"
+                                      step="1"
+                                      :value="getCategoryOpacity(item.name)"
+                                      @change="setCategoryOpacity(item.name, $event.target.value)"
+                                      class="tag-category-manager-opacity-slider"
+                                    />
+                                    <span
+                                      class="tag-category-manager-opacity-text"
+                                      x-text="getCategoryOpacity(item.name)"
+                                    ></span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    class="tag-category-manager-btn"
+                                    @click="setDefaultCategory(item.name)"
+                                    :disabled="item.isDefault"
+                                    :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                                  >
+                                    设为默认
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="tag-category-manager-btn"
+                                    @click="moveCategory(item.name, -1)"
+                                    :disabled="item.index===0"
+                                    :style="item.index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                                  >
+                                    上移
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="tag-category-manager-btn"
+                                    @click="moveCategory(item.name, 1)"
+                                    :disabled="item.index===categoryManagerItems.length-1"
+                                    :style="item.index===categoryManagerItems.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                                  >
+                                    下移
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="tag-category-manager-btn"
+                                    @click="renameCategory(item.name)"
+                                  >
+                                    重命名
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="tag-category-manager-btn danger"
+                                    @click="deleteCategory(item.name)"
+                                    :disabled="item.isDefault"
+                                    :style="item.isDefault ? 'opacity:0.45; cursor:not-allowed;' : ''"
+                                  >
+                                    删除
+                                  </button>
+                                </div>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <div
+                class="tag-filter-workspace-tag-pool"
+                x-show="!isWorkspaceHelpOpen"
+              >
+                <div
+                  x-show="$store.global.deviceType !== 'mobile'"
+                  class="tag-cloud-container custom-scrollbar"
+                >
+                  <template x-if="!isSortMode">
+                    <div class="tag-cloud-mode-wrap">
+                      <template x-if="mixedCategoryView">
+                        <template
+                          x-for="tag in filteredMixedTagsPool"
+                          :key="'mixed-' + tag"
+                        >
+                          <button
+                            @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : (isBlacklistMode ? toggleTagSelectionForBlacklist(tag) : toggleFilterTag(tag, $event)))"
+                            class="tag-chip-btn flex items-center"
+                            :class="{
+                                        'tag-chip-selected': !isDeleteMode && !showCategoryMode && !isBlacklistMode && filterTags.includes(tag),
+                                        'tag-chip-excluded': !isDeleteMode && !showCategoryMode && !isBlacklistMode && $store.global.viewState.excludedTags.includes(tag),
+                                        'tag-chip-unselected tag-chip-categorized': !isDeleteMode && !showCategoryMode && !isBlacklistMode && !filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag),
                                         'tag-chip-delete-selected': isDeleteMode && selectedTagsForDeletion.includes(tag),
                                         'tag-chip-delete-unselected': isDeleteMode && !selectedTagsForDeletion.includes(tag),
-                                        'tag-chip-category-selected': showCategoryMode && selectedCategoryTags.includes(tag),
-                                        'tag-chip-category-unselected tag-chip-categorized': showCategoryMode && !selectedCategoryTags.includes(tag)
+                                        'tag-chip-category-selected': (showCategoryMode && selectedCategoryTags.includes(tag)) || (isBlacklistMode && selectedBlacklistTags.includes(tag)),
+                                        'tag-chip-category-unselected tag-chip-categorized': (showCategoryMode && !selectedCategoryTags.includes(tag)) || (isBlacklistMode && !selectedBlacklistTags.includes(tag))
                                     }"
-                                :style="(!isDeleteMode && (($store.global.viewState.filterTags || []).indexOf(tag) === -1) && (($store.global.viewState.excludedTags || []).indexOf(tag) === -1)) ? getTagChipStyle(tag) : ''"
-                                :title="!isDeleteMode && !showCategoryMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : '')">
-                                <span x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)" class="mr-1 font-bold">✓</span>
-                                <span x-show="showCategoryMode && selectedCategoryTags.includes(tag)" class="mr-1 font-bold">✓</span>
-                                <span class="tag-chip-label" x-text="tag" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                            </button>
+                            :style="!isDeleteMode ? getTagChipStyle(tag) : ''"
+                            :title="!isDeleteMode && !showCategoryMode && !isBlacklistMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : (isBlacklistMode ? `标签：${tag}（${isTagBlacklisted(tag) ? '已在黑名单中，点击可移出' : '点击加入黑名单选择'}）` : ''))"
+                          >
+                            <span
+                              x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)"
+                              class="mr-1 font-bold"
+                              >✓</span
+                            >
+                            <span
+                              x-show="showCategoryMode && selectedCategoryTags.includes(tag)"
+                              class="mr-1 font-bold"
+                              >✓</span
+                            >
+                            <span
+                              x-show="isBlacklistMode && selectedBlacklistTags.includes(tag)"
+                              class="mr-1 font-bold"
+                              >✓</span
+                            >
+                            <span
+                              class="tag-chip-label"
+                              x-text="tag"
+                              style="
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                              "
+                            ></span>
+                          </button>
                         </template>
-                    </template>
-                    <template x-if="!mixedCategoryView">
-                        <template x-for="group in filteredTagGroups" :key="'group-' + group.category">
-                            <div class="tag-group-block">
-                                <div class="tag-group-head">
-                                    <span class="tag-group-dot" :style="`background:${group.color};`"></span>
-                                    <span class="tag-group-title" x-text="group.category"></span>
-                                    <span class="tag-group-count" x-text="group.tags.length + ' 个'"></span>
-                                </div>
-                                <div class="tag-group-cloud">
-                                    <template x-for="tag in group.tags" :key="tag">
-                                        <button
-                                            @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : toggleFilterTag(tag, $event))"
-                                            class="tag-chip-btn flex items-center" :class="{
-                                                    'tag-chip-selected': !isDeleteMode && !showCategoryMode && filterTags.includes(tag),
-                                                    'tag-chip-excluded': !isDeleteMode && !showCategoryMode && $store.global.viewState.excludedTags.includes(tag),
-                                                    'tag-chip-unselected tag-chip-categorized': !isDeleteMode && !showCategoryMode && !filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag),
+                      </template>
+                      <template x-if="!mixedCategoryView">
+                        <template
+                          x-for="group in filteredTagGroups"
+                          :key="'group-' + group.category"
+                        >
+                          <div class="tag-group-block">
+                            <div class="tag-group-head">
+                              <span
+                                class="tag-group-dot"
+                                :style="`background:${group.color};`"
+                              ></span>
+                              <span
+                                class="tag-group-title"
+                                x-text="group.category"
+                              ></span>
+                              <span
+                                class="tag-group-count"
+                                x-text="group.tags.length + ' 个'"
+                              ></span>
+                            </div>
+                            <div class="tag-group-cloud">
+                              <template x-for="tag in group.tags" :key="tag">
+                                <button
+                                  @click="isDeleteMode ? toggleTagSelectionForDeletion(tag) : (showCategoryMode ? toggleTagSelectionForCategory(tag) : (isBlacklistMode ? toggleTagSelectionForBlacklist(tag) : toggleFilterTag(tag, $event)))"
+                                  class="tag-chip-btn flex items-center"
+                                  :class="{
+                                                    'tag-chip-selected': !isDeleteMode && !showCategoryMode && !isBlacklistMode && filterTags.includes(tag),
+                                                    'tag-chip-excluded': !isDeleteMode && !showCategoryMode && !isBlacklistMode && $store.global.viewState.excludedTags.includes(tag),
+                                                    'tag-chip-unselected tag-chip-categorized': !isDeleteMode && !showCategoryMode && !isBlacklistMode && !filterTags.includes(tag) && !$store.global.viewState.excludedTags.includes(tag),
                                                     'tag-chip-delete-selected': isDeleteMode && selectedTagsForDeletion.includes(tag),
                                                     'tag-chip-delete-unselected': isDeleteMode && !selectedTagsForDeletion.includes(tag),
-                                                    'tag-chip-category-selected': showCategoryMode && selectedCategoryTags.includes(tag),
-                                                    'tag-chip-category-unselected tag-chip-categorized': showCategoryMode && !selectedCategoryTags.includes(tag)
+                                                    'tag-chip-category-selected': (showCategoryMode && selectedCategoryTags.includes(tag)) || (isBlacklistMode && selectedBlacklistTags.includes(tag)),
+                                                    'tag-chip-category-unselected tag-chip-categorized': (showCategoryMode && !selectedCategoryTags.includes(tag)) || (isBlacklistMode && !selectedBlacklistTags.includes(tag))
                                                 }"
-                                            :style="(!isDeleteMode && (($store.global.viewState.filterTags || []).indexOf(tag) === -1) && (($store.global.viewState.excludedTags || []).indexOf(tag) === -1)) ? getTagChipStyle(tag) : ''"
-                                            :title="!isDeleteMode && !showCategoryMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : '')">
-                                            <span x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)" class="mr-1 font-bold">✓</span>
-                                            <span x-show="showCategoryMode && selectedCategoryTags.includes(tag)" class="mr-1 font-bold">✓</span>
-                                            <span class="tag-chip-label" x-text="tag" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                                        </button>
-                                    </template>
-                                </div>
+                                  :style="!isDeleteMode ? getTagChipStyle(tag) : ''"
+                                  :title="!isDeleteMode && !showCategoryMode && !isBlacklistMode ? (filterTags.includes(tag) ? `标签：${tag}（已包含，点击改为排除）` : ($store.global.viewState.excludedTags.includes(tag) ? `标签：${tag}（已排除，点击取消筛选）` : `标签：${tag}（分类：${getTagCategory(tag)}，点击加入筛选，Shift+点击可直接排除）`)) : (showCategoryMode ? `标签：${tag}（当前分类：${getTagCategory(tag)}）` : (isBlacklistMode ? `标签：${tag}（${isTagBlacklisted(tag) ? '已在黑名单中，点击可移出' : '点击加入黑名单选择'}）` : ''))"
+                                >
+                                  <span
+                                    x-show="isDeleteMode && selectedTagsForDeletion.includes(tag)"
+                                    class="mr-1 font-bold"
+                                    >✓</span
+                                  >
+                                  <span
+                                    x-show="showCategoryMode && selectedCategoryTags.includes(tag)"
+                                    class="mr-1 font-bold"
+                                    >✓</span
+                                  >
+                                  <span
+                                    x-show="isBlacklistMode && selectedBlacklistTags.includes(tag)"
+                                    class="mr-1 font-bold"
+                                    >✓</span
+                                  >
+                                  <span
+                                    class="tag-chip-label"
+                                    x-text="tag"
+                                    style="
+                                      overflow: hidden;
+                                      text-overflow: ellipsis;
+                                      white-space: nowrap;
+                                    "
+                                  ></span>
+                                </button>
+                              </template>
                             </div>
+                          </div>
                         </template>
-                    </template>
-                </div>
-            </template>
+                      </template>
+                    </div>
+                  </template>
 
-            <template x-if="$store.global.deviceType !== 'mobile' && isSortMode">
-                <template x-for="tag in sortModeTagsPool" :key="tag">
-                    <button
+                  <template
+                    x-if="$store.global.deviceType !== 'mobile' && isSortMode"
+                  >
+                    <template x-for="tag in sortModeTagsPool" :key="tag">
+                      <button
                         class="tag-chip-btn flex items-center tag-chip-sortable"
-                        :class="dragOverTag === tag ? 'tag-chip-sort-over' : 'tag-chip-unselected'"
+                        :class="dragOverTag === tag ? 'tag-chip-sort-over tag-chip-categorized' : 'tag-chip-unselected tag-chip-categorized'"
+                        :style="getTagChipStyle(tag)"
                         draggable="true"
                         @dragstart="onSortDragStart($event, tag)"
                         @dragover="onSortDragOver($event, tag)"
                         @drop="onSortDrop($event, tag)"
-                        @dragend="onSortDragEnd()">
+                        @dragend="onSortDragEnd()"
+                      >
                         <span class="tag-chip-drag-handle">☰</span>
-                        <span x-text="tag" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                    </button>
-                </template>
-            </template>
-            <div x-show="!isSortMode && filteredVisibleTagCount === 0"
-                style="width: 100%; text-align: center; color: var(--text-dim); margin-top: 2rem;">无匹配标签</div>
-            <div x-show="isSortMode && sortModeTagsPool.length === 0"
-                style="width: 100%; text-align: center; color: var(--text-dim); margin-top: 2rem;">暂无可排序标签</div>
-                            </div>
-                        </div>
-                        <div class="tag-filter-workspace-footer" x-show="!isWorkspaceHelpOpen"
-                            style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-light); padding-top: 1rem;">
-                            <div class="flex items-center gap-4">
-                                <button @click="deleteFilterTags()" x-show="(filterTags.length > 0 || $store.global.viewState.excludedTags.length > 0) && !isDeleteMode && !isSortMode && !showCategoryMode"
-                                    class="text-xs bg-red-600 hover:bg-red-500 px-2 py-1 rounded text-white">
-                                    从当前视图移除选中标签
-                                </button>
-                            </div>
-                            <div class="flex gap-2">
-                                <button @click="saveSortMode()" x-show="isSortMode"
-                                    class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md">
-                                    保存排序
-                                </button>
-                                <button @click="deleteSelectedTags()" x-show="isDeleteMode && selectedTagsForDeletion.length > 0"
-                                    class="text-xs bg-red-700 hover:bg-red-600 px-3 py-1 rounded text-white font-bold shadow-md">
-                                    永久删除选中标签
-                                </button>
-                            </div>
-                        </div>
-                        <div class="tag-filter-workspace-help" x-show="isWorkspaceHelpOpen">
-                            <div class="tag-filter-workspace-help-hero">
-                                <div>
-                                    <div class="tag-filter-workspace-help-eyebrow">标签工作台帮助页</div>
-                                    <h4>如何高效使用标签工作台</h4>
-                                    <p>
-                                        这个工作台把标签筛选、批量分类、排序、删除和分类治理放进同一个桌面空间。
-                                        帮助页按真实操作顺序说明每个模式适合做什么、会影响哪些数据，以及常见误区。
-                                    </p>
-                                </div>
-                                <div class="tag-filter-workspace-help-hero-actions">
-                                    <button type="button" class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility" @click="closeWorkspaceHelp()">返回工作区</button>
-                                    <button type="button" class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility" @click="toggleGovernanceDrawer()">打开治理设置</button>
-                                </div>
-                            </div>
-                            <div class="tag-filter-workspace-help-layout">
-                                <aside class="tag-filter-workspace-help-nav">
-                                    <div class="tag-filter-workspace-help-nav-title">目录</div>
-                                    <div class="tag-filter-workspace-help-nav-list custom-scrollbar">
-                                        <template x-for="section in workspaceHelpSections" :key="'help-nav-' + section.id">
-                                            <button type="button" class="tag-filter-workspace-help-nav-item"
-                                                :class="activeWorkspaceHelpSection === section.id ? 'is-active' : ''"
-                                                @click="jumpToWorkspaceHelpSection(section.id)" x-text="section.label"></button>
-                                        </template>
-                                    </div>
-                                </aside>
-                                <div class="tag-filter-workspace-help-grid custom-scrollbar">
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="overview">
-                                    <div class="tag-filter-workspace-help-card-title">工作台总览</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>顶部栏负责搜索、状态汇总、帮助、治理设置和全屏入口。</li>
-                                        <li>顶部标签页负责在筛选、批量分类、排序、删除、分类管理五个主模式之间切换。</li>
-                                        <li>已选标签区始终用于复核当前“已包含”和“已排除”的筛选结果。</li>
-                                        <li>中间标签池是主要操作区域，右侧工具区只显示当前模式相关工具。</li>
-                                    </ul>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="search-view">
-                                    <div class="tag-filter-workspace-help-card-title">搜索与视图</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>搜索框支持多个关键词并集匹配，适合先缩小范围再操作。</li>
-                                        <li><code>|</code> 一直可以分隔多个关键词；<code>/</code> 是否分隔取决于自动化相关设置。</li>
-                                        <li>混合视图适合快速点选标签；分组视图适合按分类核对标签分布。</li>
-                                        <li>分类条支持包含、排除和恢复三态，Shift+点击可直接进入排除。</li>
-                                    </ul>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="separator-rules">
-                                    <div class="tag-filter-workspace-help-card-title">分隔符规则</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>搜索框中的分隔符是“并集搜索”语义，不会把内容写入标签库，只用于匹配候选标签。</li>
-                                        <li><code>|</code> 在搜索场景中始终表示“多个关键词并集匹配”，例如 <code>猫|犬</code> 会匹配包含“猫”或“犬”的标签。</li>
-                                        <li><code>/</code> 在搜索场景中是否也作为分隔符，取决于 <code>automation_slash_is_tag_separator</code> 设置。</li>
-                                        <li>手动输入类场景中的分隔符是“拆成多个字面标签”语义，例如批量添加、详情弹窗手动加标签、治理黑名单输入。</li>
-                                        <li>在手动输入场景中，<code>|</code> 与可选的 <code>/</code> 都用于拆分多个标签 token，而不是做模糊搜索。</li>
-                                        <li>筛选模式、分组视图、分类条这些都是“选现有标签”，不解析你点击时的分隔符文本。</li>
-                                    </ul>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="filter-mode">
-                                    <div class="tag-filter-workspace-help-card-title">筛选模式</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>点击标签会在包含、排除、取消之间循环切换。</li>
-                                        <li>筛选模式不会修改标签库结构，只影响当前标签过滤结果。</li>
-                                        <li>如果已选标签过多，建议先用分类条缩小范围再微调单个标签。</li>
-                                    </ul>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="batch-category-mode">
-                                    <div class="tag-filter-workspace-help-card-title">批量分类模式</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>先在标签池中选中多个标签，再在右侧设置目标分类、颜色和透明度。</li>
-                                        <li>保存后会批量写入分类；若分类不存在，会自动创建。</li>
-                                        <li>适合第一次建立分类体系，或把零散标签快速归类。</li>
-                                    </ul>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="sort-mode">
-                                    <div class="tag-filter-workspace-help-card-title">排序模式</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>排序模式用于调整完整标签库的全局顺序。</li>
-                                        <li>你也可以在右侧选择某个分类，单独微调这个分类内部的标签顺序。</li>
-                                        <li>恢复字符排序会清除全局自定义顺序并回到默认排序。</li>
-                                    </ul>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="delete-mode">
-                                    <div class="tag-filter-workspace-help-card-title">删除模式</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>删除模式用于永久删除标签，请先在中间标签池中把目标标签加入待删除列表。</li>
-                                        <li>删除不可撤销，只建议在确认标签无用时使用。</li>
-                                        <li>如果只是想暂时不看某些标签，请使用筛选模式而不是删除模式。</li>
-                                    </ul>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="category-manager-mode">
-                                    <div class="tag-filter-workspace-help-card-title">分类管理模式</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>分类管理用于维护分类定义本身：新增、重命名、设为默认、删除、颜色和透明度调整。</li>
-                                        <li>新增空分类后，也会立即出现在分类条和相关选择器中。</li>
-                                        <li>删除分类时，该分类下标签会迁移到默认分类，而不是直接丢失映射。</li>
-                                    </ul>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="governance">
-                                    <div class="tag-filter-workspace-help-card-title">治理设置说明</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>记住上次标签视图会保存视图模式和分类筛选状态，方便下次继续。</li>
-                                        <li>锁定标签库治理主要约束自动化来源和批量来源，减少意外污染标签库。</li>
-                                        <li>标签黑名单会阻止受治理约束的流程继续使用这些标签。</li>
-                                    </ul>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="workflow">
-                                    <div class="tag-filter-workspace-help-card-title">推荐工作流</div>
-                                    <ol class="tag-filter-workspace-help-steps">
-                                        <li>先在筛选模式用搜索和分类条摸清标签分布。</li>
-                                        <li>再切到批量分类，把明显散乱或未分类标签先归类。</li>
-                                        <li>然后进入分类管理，整理分类定义、默认分类与视觉配置。</li>
-                                        <li>最后用排序模式优化全局顺序和重点分类内部顺序。</li>
-                                        <li>只有确认标签确实无用时，再进入删除模式清理。</li>
-                                    </ol>
-                                </section>
-                                <section class="tag-filter-workspace-help-card" data-workspace-help-section="faq">
-                                    <div class="tag-filter-workspace-help-card-title">常见问题</div>
-                                    <ul class="tag-filter-workspace-help-list">
-                                        <li>分组视图里看不到某个分类：先检查分类条是否把它排除了，或该分类下当前没有匹配标签。</li>
-                                        <li>新增分类后没看到：确认保存成功；空分类现在也应立即显示。</li>
-                                        <li>排序退出不了：通常是因为存在未保存改动，系统会先要求确认。</li>
-                                    </ul>
-                                </section>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                        <span
+                          x-text="tag"
+                          style="
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            white-space: nowrap;
+                          "
+                        ></span>
+                      </button>
+                    </template>
+                  </template>
+                  <div
+                    x-show="!isSortMode && filteredVisibleTagCount === 0"
+                    style="
+                      width: 100%;
+                      text-align: center;
+                      color: var(--text-dim);
+                      margin-top: 2rem;
+                    "
+                  >
+                    无匹配标签
+                  </div>
+                  <div
+                    x-show="isSortMode && sortModeTagsPool.length === 0"
+                    style="
+                      width: 100%;
+                      text-align: center;
+                      color: var(--text-dim);
+                      margin-top: 2rem;
+                    "
+                  >
+                    暂无可排序标签
+                  </div>
                 </div>
+              </div>
+              <div
+                class="tag-filter-workspace-footer"
+                x-show="!isWorkspaceHelpOpen"
+                style="
+                  margin-top: 1rem;
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  border-top: 1px solid var(--border-light);
+                  padding-top: 1rem;
+                "
+              >
+                <div class="flex items-center gap-4">
+                  <div x-show="!isDeleteMode && !isSortMode" class="tag-category-filter-row tag-category-filter-row--workspace">
+                    <button
+                      type="button"
+                      class="tag-category-filter-pill tag-category-filter-pill--workspace tag-category-filter-pill--all"
+                      :class="isCategoryFilterAllMixed ? 'active-mixed' : ''"
+                      @click="showAllCategoriesMixed()"
+                      title="显示全部分类（混合显示）"
+                    >
+                      全部
+                    </button>
+                    <template x-for="name in footerCategoryIndexNames" :key="'footer-fcat-' + name">
+                      <button
+                        type="button"
+                        class="tag-category-filter-pill tag-category-filter-pill--workspace"
+                        :class="{
+                          'active-included': getCategoryFilterState(name) === 'included',
+                          'active-excluded': getCategoryFilterState(name) === 'excluded'
+                        }"
+                        :style="`--tag-cat-color:${getCategoryColor(name)};`"
+                        @click="applyFooterCategoryQuickFilter(name)"
+                        :title="`快速查看分类：${name}`"
+                      >
+                        <span class="tag-category-filter-dot tag-category-filter-dot--workspace"></span>
+                        <span x-text="name"></span>
+                      </button>
+                    </template>
+                  </div>
+                  <button
+                    @click="deleteFilterTags()"
+                    x-show="(filterTags.length > 0 || $store.global.viewState.excludedTags.length > 0) && !isDeleteMode && !isSortMode && !showCategoryMode"
+                    class="text-xs bg-red-600 hover:bg-red-500 px-2 py-1 rounded text-white"
+                  >
+                    从当前视图移除选中标签
+                  </button>
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    @click="saveSortMode()"
+                    x-show="isSortMode"
+                    class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                  >
+                    保存排序
+                  </button>
+                  <button
+                    @click="deleteSelectedTags()"
+                    x-show="isDeleteMode && selectedTagsForDeletion.length > 0"
+                    class="text-xs bg-red-700 hover:bg-red-600 px-3 py-1 rounded text-white font-bold shadow-md"
+                  >
+                    永久删除选中标签
+                  </button>
+                </div>
+              </div>
+              <div
+                class="tag-filter-workspace-help"
+                x-show="isWorkspaceHelpOpen"
+              >
+                <div class="tag-filter-workspace-help-hero">
+                  <div>
+                    <div class="tag-filter-workspace-help-eyebrow">
+                      标签工作台帮助页
+                    </div>
+                    <h4>如何高效使用标签工作台</h4>
+                  </div>
+                  <div class="tag-filter-workspace-help-hero-actions">
+                    <button
+                      type="button"
+                      class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
+                      @click="closeWorkspaceHelp()"
+                    >
+                      返回工作区
+                    </button>
+                    <button
+                      type="button"
+                      class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
+                      @click="toggleGovernanceDrawer()"
+                    >
+                      打开治理设置
+                    </button>
+                  </div>
+                </div>
+                <div class="tag-filter-workspace-help-layout">
+                  <aside class="tag-filter-workspace-help-nav">
+                    <div class="tag-filter-workspace-help-nav-title">目录</div>
+                    <div
+                      class="tag-filter-workspace-help-nav-list custom-scrollbar"
+                    >
+                      <template
+                        x-for="section in workspaceHelpSections"
+                        :key="'help-nav-' + section.id"
+                      >
+                        <button
+                          type="button"
+                          class="tag-filter-workspace-help-nav-item"
+                          :class="activeWorkspaceHelpSection === section.id ? 'is-active' : ''"
+                          @click="jumpToWorkspaceHelpSection(section.id)"
+                          x-text="section.label"
+                        ></button>
+                      </template>
+                    </div>
+                  </aside>
+                  <div class="tag-filter-workspace-help-grid custom-scrollbar">
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="overview"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        工作台总览
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>
+                          顶部栏负责搜索、状态汇总、帮助、治理设置和全屏入口。
+                        </li>
+                        <li>
+                          顶部标签页负责在筛选、批量分类、排序、删除、黑名单、分类管理六个主模式之间切换。
+                        </li>
+                        <li>
+                          已选标签区始终用于复核当前“已包含”和“已排除”的筛选结果。
+                        </li>
+                        <li>
+                          中间标签池是主要操作区域，右侧工具区只显示当前模式相关工具。
+                        </li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="search-view"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        搜索与视图
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>
+                          搜索框支持多个关键词并集匹配，适合先缩小范围再操作。
+                        </li>
+                        <li>
+                          <code>|</code> 一直可以分隔多个关键词；<code>/</code>
+                          是否分隔取决于自动化相关设置。
+                        </li>
+                        <li>
+                          混合视图适合快速点选标签；分组视图适合按分类核对标签分布。
+                        </li>
+                        <li>
+                          分类条支持包含、排除和恢复三态，Shift+点击可直接进入排除。
+                        </li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="separator-rules"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        分隔符规则
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>
+                          搜索框中的分隔符是“并集搜索”语义，不会把内容写入标签库，只用于匹配候选标签。
+                        </li>
+                        <li>
+                          <code>|</code>
+                          在搜索场景中始终表示“多个关键词并集匹配”，例如
+                          <code>猫|犬</code> 会匹配包含“猫”或“犬”的标签。
+                        </li>
+                        <li>
+                          <code>/</code> 在搜索场景中是否也作为分隔符，取决于
+                          <code>automation_slash_is_tag_separator</code> 设置。
+                        </li>
+                        <li>
+                          手动输入类场景中的分隔符是“拆成多个字面标签”语义，例如批量添加、详情弹窗手动加标签、治理黑名单输入。
+                        </li>
+                        <li>
+                          批量分类模式下的“批量选中”输入框也遵循这个规则：会把文本拆成多个标签名，并在当前可见标签池中做精确命中选择。
+                        </li>
+                        <li>
+                          在手动输入场景中，<code>|</code> 与可选的
+                          <code>/</code> 都用于拆分多个标签
+                          token，而不是做模糊搜索。
+                        </li>
+                        <li>
+                          筛选模式、分组视图、分类条这些都是“选现有标签”，不解析你点击时的分隔符文本。
+                        </li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="filter-mode"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        筛选模式
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>点击标签会在包含、排除、取消之间循环切换。</li>
+                        <li>
+                          筛选模式不会修改标签库结构，只影响当前标签过滤结果。
+                        </li>
+                        <li>
+                          如果已选标签过多，建议先用分类条缩小范围再微调单个标签。
+                        </li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="batch-category-mode"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        批量分类模式
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>
+                          先在标签池中选中多个标签，再在右侧设置目标分类、颜色和透明度。
+                        </li>
+                        <li>
+                          保存后会批量写入分类；若分类不存在，会自动创建。
+                        </li>
+                        <li>适合第一次建立分类体系，或把零散标签快速归类。</li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="sort-mode"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        排序模式
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>排序模式用于调整完整标签库的全局顺序。</li>
+                        <li>
+                          你也可以在右侧选择某个分类，单独微调这个分类内部的标签顺序。
+                        </li>
+                        <li>
+                          恢复字符排序会清除全局自定义顺序并回到默认排序。
+                        </li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="delete-mode"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        删除模式
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>
+                          删除模式用于永久删除标签，请先在中间标签池中把目标标签加入待删除列表。
+                        </li>
+                        <li>删除不可撤销，只建议在确认标签无用时使用。</li>
+                        <li>
+                          如果只是想暂时不看某些标签，请使用筛选模式而不是删除模式。
+                        </li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="blacklist-mode"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        黑名单模式
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>
+                          黑名单模式用于集中维护治理黑名单，可直接点击标签加入选择，也可用分隔符批量加入。
+                        </li>
+                        <li>
+                          保存后，这些标签会被自动流程和批量流程跳过；手动单个编辑不受影响。
+                        </li>
+                        <li>
+                          已在黑名单中的标签会显示在列表里，点击即可移出。
+                        </li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="category-manager-mode"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        分类管理模式
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>
+                          分类管理用于维护分类定义本身：新增、重命名、设为默认、删除、颜色和透明度调整。
+                        </li>
+                        <li>
+                          新增空分类后，也会立即出现在分类条和相关选择器中。
+                        </li>
+                        <li>
+                          删除分类时，该分类下标签会迁移到默认分类，而不是直接丢失映射。
+                        </li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="governance"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        治理设置说明
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>
+                          记住上次标签视图会保存视图模式和分类筛选状态，方便下次继续。
+                        </li>
+                        <li>
+                          锁定标签库治理主要约束自动化来源和批量来源，减少意外污染标签库。
+                        </li>
+                        <li>
+                          标签黑名单已独立为工作台模式，治理设置本身只保留准入开关和视图记忆。
+                        </li>
+                      </ul>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="workflow"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        推荐工作流
+                      </div>
+                      <ol class="tag-filter-workspace-help-steps">
+                        <li>先在筛选模式用搜索和分类条摸清标签分布。</li>
+                        <li>再切到批量分类，把明显散乱或未分类标签先归类。</li>
+                        <li>
+                          然后进入分类管理，整理分类定义、默认分类与视觉配置。
+                        </li>
+                        <li>最后用排序模式优化全局顺序和重点分类内部顺序。</li>
+                        <li>只有确认标签确实无用时，再进入删除模式清理。</li>
+                      </ol>
+                    </section>
+                    <section
+                      class="tag-filter-workspace-help-card"
+                      data-workspace-help-section="faq"
+                    >
+                      <div class="tag-filter-workspace-help-card-title">
+                        常见问题
+                      </div>
+                      <ul class="tag-filter-workspace-help-list">
+                        <li>
+                          分组视图里看不到某个分类：先检查分类条是否把它排除了，或该分类下当前没有匹配标签。
+                        </li>
+                        <li>
+                          新增分类后没看到：确认保存成功；空分类现在也应立即显示。
+                        </li>
+                        <li>
+                          排序退出不了：通常是因为存在未保存改动，系统会先要求确认。
+                        </li>
+                      </ul>
+                    </section>
+                  </div>
+                </div>
+              </div>
             </div>
+          </div>
         </div>
-        </template>
-    </div>
+      </div>
+    </template>
+  </div>
 </div>

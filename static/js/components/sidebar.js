@@ -133,6 +133,22 @@ export default function sidebar() {
         get selectedIds() { return this.$store.global.viewState.selectedIds; },
         set selectedIds(val) { this.$store.global.viewState.selectedIds = val; return true; },
 
+        get tagIndexCategoryNames() {
+            const groups = this.$store.global.groupTagsByTaxonomy(this.allTagsPool || []);
+            return groups.map(group => group.category).filter(Boolean);
+        },
+
+        get tagIndexVisibleTags() {
+            const activeCategory = this.$store.global.tagIndexActiveCategory || '';
+            const tags = this.allTagsPool || [];
+            if (!activeCategory) return tags;
+            return tags.filter(tag => this.$store.global.getTagCategory(tag) === activeCategory);
+        },
+
+        get tagIndexActiveCategory() {
+            return this.$store.global.tagIndexActiveCategory || '';
+        },
+
         // 计算属性：构建文件夹树 (依赖全局 Store 数据)
         get folderTree() {
             const list = this.$store.global.allFoldersList || [];
@@ -572,6 +588,10 @@ export default function sidebar() {
             this.$store.global.toggleFilterTag(tag, {
                 forceExclude: !!(event && event.shiftKey)
             });
+        },
+
+        setTagIndexCategory(category) {
+            this.$store.global.tagIndexActiveCategory = String(category || '').trim();
         },
 
         // === 世界书侧边栏逻辑 ===

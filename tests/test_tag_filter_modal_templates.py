@@ -13,6 +13,18 @@ def find_contract_index(source, contract, start=0):
 
     assert index != -1, f'Missing contract: {contract}'
     return index
+
+
+def slice_between(source, start_contract, end_contract):
+    start_index = find_contract_index(source, start_contract)
+    end_index = find_contract_index(source, end_contract, start_index)
+    return source[start_index:end_index]
+
+
+def compact_whitespace(value):
+    return ' '.join(value.split())
+
+
 def test_tag_filter_template_adds_mobile_shell_and_tabs():
     template_source = read_project_file('templates/modals/tag_filter.html')
 
@@ -85,15 +97,21 @@ def test_tag_filter_template_gates_legacy_control_surface_to_non_mobile_only():
 def test_tag_filter_template_desktop_topbar_has_sort_mode_context_label():
     template_source = read_project_file('templates/modals/tag_filter.html')
     desktop_topbar_section = template_source.split('<div class="tag-filter-workspace-topbar">', 1)[1].split('<div class="tag-filter-workspace-topbar-search">', 1)[0]
+    compact_section = compact_whitespace(desktop_topbar_section)
 
-    assert '<span x-show="desktopWorkspaceMode === \'sort\'" class="text-blue-300">标签排序</span>' in desktop_topbar_section
+    assert 'x-show="desktopWorkspaceMode === \'sort\'"' in desktop_topbar_section
+    assert 'class="text-blue-300"' in desktop_topbar_section
+    assert '>标签排序</span' in compact_section
 
 
 def test_tag_filter_template_desktop_topbar_has_category_manager_context_label():
     template_source = read_project_file('templates/modals/tag_filter.html')
     desktop_topbar_section = template_source.split('<div class="tag-filter-workspace-topbar">', 1)[1].split('<div class="tag-filter-workspace-topbar-search">', 1)[0]
+    compact_section = compact_whitespace(desktop_topbar_section)
 
-    assert '<span x-show="desktopWorkspaceMode === \'category-manager\' && !isDeleteMode" class="text-sky-300">分类管理中心</span>' in desktop_topbar_section
+    assert 'x-show="desktopWorkspaceMode === \'category-manager\' && !isDeleteMode"' in desktop_topbar_section
+    assert 'class="text-sky-300"' in desktop_topbar_section
+    assert '>分类管理中心</span' in compact_section
 
 
 def test_tag_filter_js_sync_mobile_tab_state_resets_mode_specific_mobile_state():
@@ -165,7 +183,11 @@ def test_tag_filter_template_mobile_sort_controls_live_under_mobile_sort_panel_c
 
 def test_tag_filter_template_mobile_sort_bottom_bar_exposes_save_action():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    mobile_shell_section = template_source.split('<div x-show="$store.global.deviceType === \'mobile\'" class="tag-filter-mobile-shell">', 1)[1].split('<div x-show="$store.global.deviceType !== \'mobile\'">', 1)[0]
+    mobile_shell_section = slice_between(
+        template_source,
+        'class="tag-filter-mobile-shell"',
+        '<template x-if="$store.global.deviceType !== \'mobile\'">',
+    )
 
     assert 'class="tag-filter-mobile-bottombar"' in mobile_shell_section
     assert '@click="saveSortMode()"' in mobile_shell_section
@@ -176,9 +198,9 @@ def test_tag_filter_template_mobile_sort_bottom_bar_exposes_save_action():
 def test_tag_filter_template_gates_shared_drag_sort_branch_to_desktop_only():
     template_source = read_project_file('templates/modals/tag_filter.html')
 
-    assert '<template x-if="$store.global.deviceType !== \'mobile\' && isSortMode">' in template_source
-    shared_sort_section = template_source.split('<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-cloud-container custom-scrollbar">', 1)[1]
-    assert '<template x-if="$store.global.deviceType !== \'mobile\' && isSortMode">' in shared_sort_section
+    assert 'x-if="$store.global.deviceType !== \'mobile\' && isSortMode"' in template_source
+    shared_sort_section = template_source.split('class="tag-cloud-container custom-scrollbar"', 1)[1]
+    assert 'x-if="$store.global.deviceType !== \'mobile\' && isSortMode"' in shared_sort_section
     assert '<template x-if="isSortMode">' not in shared_sort_section
     assert 'draggable="true"' in template_source
     assert '@dragstart="onSortDragStart($event, tag)"' in template_source
@@ -256,7 +278,11 @@ def test_tag_filter_mobile_css_includes_touch_target_and_sort_row_hooks():
 
 def test_tag_filter_template_mobile_shell_exposes_stable_layout_hooks():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    mobile_shell_section = template_source.split('<div x-show="$store.global.deviceType === \'mobile\'" class="tag-filter-mobile-shell">', 1)[1].split('<div x-show="$store.global.deviceType !== \'mobile\'">', 1)[0]
+    mobile_shell_section = slice_between(
+        template_source,
+        'class="tag-filter-mobile-shell"',
+        '<template x-if="$store.global.deviceType !== \'mobile\'">',
+    )
 
     assert 'class="tag-filter-mobile-utility"' in mobile_shell_section
     assert 'class="tag-filter-mobile-main custom-scrollbar"' in mobile_shell_section
@@ -266,8 +292,9 @@ def test_tag_filter_template_mobile_shell_exposes_stable_layout_hooks():
 
 def test_tag_filter_template_gates_legacy_shared_cloud_to_desktop_only_after_mobile_shell_split():
     template_source = read_project_file('templates/modals/tag_filter.html')
+    compact_template = compact_whitespace(template_source)
 
-    assert '<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-cloud-container custom-scrollbar">' in template_source
+    assert 'x-show="$store.global.deviceType !== \'mobile\'" class="tag-cloud-container custom-scrollbar"' in compact_template
     assert '<div class="tag-cloud-container custom-scrollbar">' not in template_source
 
 
@@ -282,9 +309,18 @@ def test_tag_filter_mobile_css_applies_touch_targets_to_utility_controls():
 
 def test_tag_filter_template_mobile_category_panel_restores_save_and_existing_category_controls():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    mobile_shell_section = template_source.split('<div x-show="$store.global.deviceType === \'mobile\'" class="tag-filter-mobile-shell">', 1)[1].split('<div x-show="$store.global.deviceType !== \'mobile\'">', 1)[0]
+    mobile_shell_section = slice_between(
+        template_source,
+        'class="tag-filter-mobile-shell"',
+        '<template x-if="$store.global.deviceType !== \'mobile\'">',
+    )
 
     assert "x-show=\"$store.global.deviceType === 'mobile' && mobileActiveTab === 'category'\"" in mobile_shell_section
+    assert 'x-model="categorySelectionInput"' in mobile_shell_section
+    assert '@keydown.enter.prevent="applyCategorySelectionInput()"' in mobile_shell_section
+    assert '@click="applyCategorySelectionInput()"' in mobile_shell_section
+    assert '输入标签名，使用 |、逗号或换行批量选中当前可见标签' in mobile_shell_section
+    assert '批量选中' in mobile_shell_section
     assert '@click="saveCategoryBatch()"' in mobile_shell_section
     assert ':disabled="!canSaveCategoryBatch"' in mobile_shell_section
     assert 'class="tag-category-quick-list"' in mobile_shell_section
@@ -294,7 +330,11 @@ def test_tag_filter_template_mobile_category_panel_restores_save_and_existing_ca
 
 def test_tag_filter_template_mobile_category_panel_restores_manager_entry_and_surface():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    mobile_shell_section = template_source.split('<div x-show="$store.global.deviceType === \'mobile\'" class="tag-filter-mobile-shell">', 1)[1].split('<div x-show="$store.global.deviceType !== \'mobile\'">', 1)[0]
+    mobile_shell_section = slice_between(
+        template_source,
+        'class="tag-filter-mobile-shell"',
+        '<template x-if="$store.global.deviceType !== \'mobile\'">',
+    )
 
     assert '@click="toggleCategoryManager()"' in mobile_shell_section
     assert "x-text=\"showCategoryManager ? '收起分类管理' : '分类管理'\"" in mobile_shell_section
@@ -308,8 +348,8 @@ def test_governance_drawer_template_moves_governance_controls_into_top_tab_drawe
     assert '@click="toggleGovernanceDrawer()"' in template_source
     assert '<template x-if="isGovernanceDrawerOpen">' in template_source
     assert '记住上次标签视图' in template_source
-    assert '锁定标签库治理' in template_source
-    assert '标签黑名单' in template_source
+    assert '拒绝新增未知标签（自动/批量来源）' in template_source
+    assert '黑名单模式' in template_source
 
 
 def test_governance_drawer_template_only_renders_drawer_shell_when_open():
@@ -320,11 +360,15 @@ def test_governance_drawer_template_only_renders_drawer_shell_when_open():
 
 def test_governance_drawer_template_keeps_current_mode_tool_area_free_of_governance_controls():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    tool_area_section = template_source.split('<div class="tag-filter-current-mode-tool-area"', 1)[1].split('<div class="tag-filter-workspace-tag-pool"', 1)[0]
+    tool_area_section = slice_between(
+        template_source,
+        'class="tag-filter-current-mode-tool-area"',
+        'class="tag-filter-workspace-tag-pool"',
+    )
 
     assert '记住上次标签视图' not in tool_area_section
     assert '锁定标签库治理' not in tool_area_section
-    assert '标签黑名单' not in tool_area_section
+    assert 'x-model="tagBlacklistInput"' not in tool_area_section
 
 
 def test_governance_drawer_template_marks_drawer_as_secondary_surface_contract():
@@ -332,7 +376,7 @@ def test_governance_drawer_template_marks_drawer_as_secondary_surface_contract()
 
     assert 'class="tag-filter-governance-drawer-body"' in template_source
     assert '治理设置' in template_source
-    assert '按需展开' in template_source
+    assert '这里用于管理标签视图记忆，以及自动来源的标签准入规则。' in template_source
 
 
 def test_governance_drawer_css_exposes_secondary_surface_hooks_contract():
@@ -346,6 +390,7 @@ def test_governance_drawer_css_exposes_secondary_surface_hooks_contract():
 
 def test_tag_filter_template_desktop_workbench_shell_contract():
     template_source = read_project_file('templates/modals/tag_filter.html')
+    compact_template = compact_whitespace(template_source)
 
     assert 'class="tag-filter-desktop-shell"' in template_source
     assert 'class="tag-filter-desktop-toolbar"' in template_source
@@ -354,12 +399,12 @@ def test_tag_filter_template_desktop_workbench_shell_contract():
     assert 'class="tag-filter-workspace-topbar"' in template_source
     assert 'class="tag-filter-workspace-top-tabs"' in template_source
     assert 'class="tag-filter-desktop-sidebar"' not in template_source
-    assert '<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'">' in template_source
+    assert 'x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'"' in compact_template
 
 
 def test_tag_filter_template_desktop_workbench_sections_keep_transition_modes_reachable():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    desktop_shell_section = template_source.split('<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'">', 1)[1].split('</div>\n        </template>', 1)[0]
+    desktop_shell_section = template_source.split('class="tag-filter-desktop-shell"', 1)[1]
 
     assert 'class="tag-filter-desktop-main"' in desktop_shell_section
     assert 'class="tag-filter-workspace-topbar"' in desktop_shell_section
@@ -369,27 +414,32 @@ def test_tag_filter_template_desktop_workbench_sections_keep_transition_modes_re
     assert '@click="desktopWorkspaceMode === \'batch-category\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'batch-category\')"' in desktop_shell_section
     assert '@click="desktopWorkspaceMode === \'sort\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'sort\')"' in desktop_shell_section
     assert '@click="desktopWorkspaceMode === \'delete\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'delete\')"' in desktop_shell_section
+    assert '@click="desktopWorkspaceMode === \'blacklist\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'blacklist\')"' in desktop_shell_section
     assert '@click="desktopWorkspaceMode === \'category-manager\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'category-manager\')"' in desktop_shell_section
     assert 'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'batch-category\' && showCategoryMode && !isSortMode"' in desktop_shell_section
+    assert 'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'blacklist\' && !isDeleteMode && !isSortMode"' in desktop_shell_section
     assert 'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'category-manager\' && showCategoryManager && !isSortMode"' in desktop_shell_section
 
 
 def test_tag_filter_template_desktop_workbench_exposes_governance_and_remember_view_controls_contract():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    desktop_shell_section = template_source.split('<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'">', 1)[1].split('</div>\n        </template>', 1)[0]
+    desktop_shell_section = slice_between(
+        template_source,
+        'class="tag-filter-desktop-shell"',
+        '</template>',
+    )
 
     assert 'x-model="rememberLastTagView"' in desktop_shell_section
     assert 'x-model="lockTagLibrary"' in desktop_shell_section
-    assert 'x-model="tagBlacklistInput"' in desktop_shell_section
     assert '@change="saveDesktopWorkbenchPrefs()"' in desktop_shell_section
     assert '@change="saveTagManagementPrefsState()"' in desktop_shell_section
-    assert '@blur="saveTagManagementPrefsState()"' in desktop_shell_section
 
 
 def test_tag_filter_template_category_sort_selector_persists_last_category_choice_contract():
     template_source = read_project_file('templates/modals/tag_filter.html')
+    compact_template = compact_whitespace(template_source)
 
-    assert '<select x-model="selectedCategorySortName" @change="saveDesktopWorkbenchPrefs()" class="form-input"' in template_source
+    assert '<select x-model="selectedCategorySortName" @change="saveDesktopWorkbenchPrefs()" class="form-input"' in compact_template
 
 
 def test_tag_filter_desktop_workbench_shell_css_contract():
@@ -431,21 +481,19 @@ def test_tag_filter_desktop_workbench_shell_css_widens_modal_container():
 
 def test_tag_filter_template_desktop_workbench_shell_uses_x_if_branch_isolation():
     template_source = read_project_file('templates/modals/tag_filter.html')
+    compact_template = compact_whitespace(template_source)
 
     assert '<template x-if="$store.global.deviceType === \'mobile\'">' in template_source
     assert '<template x-if="$store.global.deviceType !== \'mobile\'">' in template_source
-    assert '<div x-show="$store.global.deviceType === \'mobile\'" class="tag-filter-mobile-shell">' in template_source
-    assert '<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'">' in template_source
+    assert 'x-show="$store.global.deviceType === \'mobile\'" class="tag-filter-mobile-shell"' in compact_template
+    assert 'x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'"' in compact_template
     assert 'class="tag-filter-mobile-shell"' in template_source
     assert 'class="tag-filter-desktop-shell"' in template_source
 
 
 def test_desktop_top_tabs_not_left_rail_replace_primary_navigation_contract():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    desktop_shell_index = find_contract_index(
-        template_source,
-        '<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'">',
-    )
+    desktop_shell_index = find_contract_index(template_source, 'class="tag-filter-desktop-shell"')
     topbar_index = find_contract_index(template_source, 'class="tag-filter-workspace-topbar"', desktop_shell_index)
     center_index = find_contract_index(template_source, 'class="tag-filter-workspace-center"', desktop_shell_index)
     top_tabs_index = find_contract_index(template_source, 'class="tag-filter-workspace-top-tabs"', topbar_index)
@@ -457,6 +505,7 @@ def test_desktop_top_tabs_not_left_rail_replace_primary_navigation_contract():
     assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'batch-category\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'batch-category\')"', top_tabs_index) > top_tabs_index
     assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'sort\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'sort\')"', top_tabs_index) > top_tabs_index
     assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'delete\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'delete\')"', top_tabs_index) > top_tabs_index
+    assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'blacklist\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'blacklist\')"', top_tabs_index) > top_tabs_index
     assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'category-manager\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'category-manager\')"', top_tabs_index) > top_tabs_index
     assert find_contract_index(template_source, '@click="toggleDesktopWorkspaceFullscreen()"', topbar_index) > topbar_index
 
@@ -474,7 +523,7 @@ def test_workspace_topbar_exposes_fullscreen_toggle_state_contract():
 def test_tool_area_filter_mode_contract_exposes_summary_clear_and_view_controls():
     template_source = read_project_file('templates/modals/tag_filter.html')
     filter_panel_section = template_source.split(
-        '<template x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'filter\' && !isSortMode && !isDeleteMode && !showCategoryMode && !showCategoryManager">',
+        'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'filter\' && !isSortMode && !isDeleteMode && !showCategoryMode && !showCategoryManager"',
         1,
     )[1].split('</template>', 1)[0]
 
@@ -492,9 +541,16 @@ def test_tool_area_filter_mode_contract_exposes_summary_clear_and_view_controls(
 
 def test_tool_area_batch_and_sort_contracts_use_single_desktop_tool_area():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    tool_area_section = template_source.split('<div class="tag-filter-current-mode-tool-area"', 1)[1].split('<div class="tag-filter-workspace-tag-pool"', 1)[0]
+    tool_area_section = slice_between(
+        template_source,
+        'class="tag-filter-current-mode-tool-area"',
+        'class="tag-filter-workspace-tag-pool"',
+    )
 
     assert 'tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--batch-category' in template_source
+    assert 'x-model="categorySelectionInput"' in template_source
+    assert '@click="applyCategorySelectionInput()"' in template_source
+    assert '输入标签名，使用 |、逗号或换行批量选中当前可见标签' in template_source
     assert '目标分类' in template_source
     assert '@click="saveCategoryBatch()"' in template_source
     assert 'tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--sort' in template_source
@@ -517,7 +573,11 @@ def test_tool_area_css_supports_single_desktop_mode_panels_contract():
 
 def test_fullscreen_contract_stays_out_of_mobile_shell():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    mobile_shell_section = template_source.split('<div x-show="$store.global.deviceType === \'mobile\'" class="tag-filter-mobile-shell">', 1)[1].split('<template x-if="$store.global.deviceType !== \'mobile\'">', 1)[0]
+    mobile_shell_section = slice_between(
+        template_source,
+        'class="tag-filter-mobile-shell"',
+        '<template x-if="$store.global.deviceType !== \'mobile\'">',
+    )
 
     assert 'toggleDesktopWorkspaceFullscreen()' not in mobile_shell_section
     assert 'tag-filter-workspace-fullscreen-btn' not in mobile_shell_section
@@ -534,19 +594,20 @@ def test_desktop_top_tabs_not_left_rail_keep_mode_transitions_reachable():
     assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'batch-category\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'batch-category\')"', top_tabs_index) > top_tabs_index
     assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'sort\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'sort\')"', top_tabs_index) > top_tabs_index
     assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'delete\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'delete\')"', top_tabs_index) > top_tabs_index
+    assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'blacklist\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'blacklist\')"', top_tabs_index) > top_tabs_index
     assert find_contract_index(template_source, '@click="desktopWorkspaceMode === \'category-manager\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'category-manager\')"', top_tabs_index) > top_tabs_index
     assert 'x-show="false"' not in template_source
 
 
-def test_desktop_top_tabs_not_left_rail_expose_five_primary_entries_in_spec_order():
+def test_desktop_top_tabs_not_left_rail_expose_six_primary_entries_in_spec_order():
     template_source = read_project_file('templates/modals/tag_filter.html')
     top_tabs_section = template_source.split('class="tag-filter-workspace-top-tabs"', 1)[1].split('class="tag-filter-workspace-center"', 1)[0]
 
-    expected_labels = ['筛选', '批量分类', '排序', '删除', '分类管理']
+    expected_labels = ['筛选', '批量分类', '排序', '删除', '黑名单', '分类管理']
     label_positions = [find_contract_index(top_tabs_section, label) for label in expected_labels]
 
     assert label_positions == sorted(label_positions)
-    assert top_tabs_section.count('class="tag-filter-workspace-top-tab" :class=') == 5
+    assert top_tabs_section.count('class="tag-filter-workspace-top-tab"') == 6
 
 
 def test_desktop_governance_drawer_moves_governance_controls_out_of_persistent_context_panel():
@@ -557,14 +618,14 @@ def test_desktop_governance_drawer_moves_governance_controls_out_of_persistent_c
     assert 'class="tag-filter-workspace-context custom-scrollbar"' not in template_source
     assert find_contract_index(template_source, 'x-model="rememberLastTagView"', governance_drawer_index) > governance_drawer_index
     assert find_contract_index(template_source, 'x-model="lockTagLibrary"', governance_drawer_index) > governance_drawer_index
-    assert find_contract_index(template_source, 'x-model="tagBlacklistInput"', governance_drawer_index) > governance_drawer_index
+    assert template_source.find('x-model="tagBlacklistInput"', governance_drawer_index) == -1
     assert find_contract_index(template_source, '@click="toggleGovernanceDrawer()"', governance_toggle_index) >= governance_toggle_index
     assert find_contract_index(template_source, '<template x-if="isGovernanceDrawerOpen">', governance_toggle_index) > governance_toggle_index
 
 
 def test_desktop_governance_drawer_attaches_to_top_tabs_instead_of_consuming_shell_row():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    desktop_shell_section = template_source.split('<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'">', 1)[1].split('</div>\n        </template>', 1)[0]
+    desktop_shell_section = template_source.split('class="tag-filter-desktop-shell"', 1)[1]
     top_tabs_section = desktop_shell_section.split('<div class="tag-filter-workspace-top-tabs">', 1)[1].split('<div class="tag-filter-desktop-workbench">', 1)[0]
     topbar_actions_section = desktop_shell_section.split('<div class="tag-filter-workspace-topbar-actions">', 1)[1].split('</div>', 1)[0]
 
@@ -586,10 +647,7 @@ def test_desktop_governance_drawer_css_anchors_overlay_to_topbar_actions_region(
 
 def test_desktop_single_current_mode_tool_area_replaces_persistent_right_context_structure():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    desktop_shell_index = find_contract_index(
-        template_source,
-        '<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'">',
-    )
+    desktop_shell_index = find_contract_index(template_source, 'class="tag-filter-desktop-shell"')
     center_index = find_contract_index(template_source, 'class="tag-filter-workspace-center"', desktop_shell_index)
     tool_area_index = find_contract_index(template_source, 'class="tag-filter-current-mode-tool-area"', center_index)
 
@@ -638,13 +696,15 @@ def test_desktop_single_current_mode_tool_area_uses_one_active_panel_branch_at_a
     template_source = read_project_file('templates/modals/tag_filter.html')
     tool_area_section = template_source.split('class="tag-filter-current-mode-tool-area"', 1)[1].split('class="tag-filter-workspace-footer"', 1)[0]
 
-    assert '<template x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'sort\' && isSortMode">' in tool_area_section
-    assert '<template x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'delete\' && isDeleteMode">' in tool_area_section
-    assert '<template x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'batch-category\' && showCategoryMode && !isSortMode">' in tool_area_section
-    assert '<template x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'category-manager\' && showCategoryManager && !isSortMode">' in tool_area_section
+    assert 'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'sort\' && isSortMode"' in tool_area_section
+    assert 'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'delete\' && isDeleteMode"' in tool_area_section
+    assert 'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'batch-category\' && showCategoryMode && !isSortMode"' in tool_area_section
+    assert 'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'blacklist\' && !isDeleteMode && !isSortMode"' in tool_area_section
+    assert 'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'category-manager\' && showCategoryManager && !isSortMode"' in tool_area_section
     assert 'tag-filter-current-mode-tool-panel--sort' in tool_area_section
     assert 'tag-filter-current-mode-tool-panel--delete' in tool_area_section
     assert 'tag-filter-current-mode-tool-panel--batch-category' in tool_area_section
+    assert 'tag-filter-current-mode-tool-panel--blacklist' in tool_area_section
     assert 'tag-filter-current-mode-tool-panel--category-manager' in tool_area_section
     assert 'tag-filter-context-mode-panel' not in tool_area_section
 
@@ -777,10 +837,7 @@ def test_desktop_single_current_mode_tool_area_exposes_delete_pending_list_and_c
 
 def test_integrates_tag_pool_and_footer():
     template_source = read_project_file('templates/modals/tag_filter.html')
-    desktop_shell_index = find_contract_index(
-        template_source,
-        '<div x-show="$store.global.deviceType !== \'mobile\'" class="tag-filter-desktop-shell" :class="isDesktopWorkspaceFullscreen ? \'tag-filter-desktop-shell--fullscreen\' : \'\'">',
-    )
+    desktop_shell_index = find_contract_index(template_source, 'class="tag-filter-desktop-shell"')
     center_index = find_contract_index(template_source, 'class="tag-filter-workspace-center"', desktop_shell_index)
     tag_pool_index = find_contract_index(template_source, 'class="tag-filter-workspace-tag-pool"', center_index)
     footer_index = find_contract_index(template_source, 'class="tag-filter-workspace-footer"', tag_pool_index)
@@ -882,9 +939,10 @@ def test_desktop_workspace_fullscreen_css_contract():
 
 def test_desktop_template_routes_fullscreen_state_to_parent_modal_container():
     template_source = read_project_file('templates/modals/tag_filter.html')
+    compact_template = compact_whitespace(template_source)
 
-    assert '<div class="tag-modal-container" :class="[isDesktopWorkspaceFullscreen && $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-fullscreen\' : \'\', $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-workspace\' : \'\']" @click.away="requestCloseModal()">' in template_source
-    assert 'class="modal-overlay" :class="isDesktopWorkspaceFullscreen && $store.global.deviceType !== \'mobile\' ? \'modal-overlay--desktop-workspace-fullscreen\' : \'\'"' in template_source
+    assert 'class="tag-modal-container" :class="[isDesktopWorkspaceFullscreen && $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-fullscreen\' : \'\', $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-workspace\' : \'\']" @click.away="requestCloseModal()"' in compact_template
+    assert 'class="modal-overlay" :class="isDesktopWorkspaceFullscreen && $store.global.deviceType !== \'mobile\' ? \'modal-overlay--desktop-workspace-fullscreen\' : \'\'"' in compact_template
 
 
 def test_desktop_topbar_owns_search_and_selection_summary_contract():
@@ -895,12 +953,15 @@ def test_desktop_topbar_owns_search_and_selection_summary_contract():
 
     search_index = find_contract_index(template_source, 'x-model="tagSearchQuery"', topbar_index)
     summary_index = find_contract_index(template_source, 'class="tag-filter-workspace-selection-summary"', topbar_index)
+    summary_section = template_source[summary_index:center_index]
 
     assert topbar_index < search_index < center_index
     assert topbar_index < summary_index < center_index
     assert 'class="tag-filter-workspace-topbar-search"' in template_source
-    assert find_contract_index(template_source, '已选 <span x-text="filterTags.length + $store.global.viewState.excludedTags.length"', summary_index) > summary_index
-    assert find_contract_index(template_source, '可见 <span x-text="filteredVisibleTagCount"', summary_index) > summary_index
+    assert '已选' in summary_section
+    assert 'x-text="filterTags.length + $store.global.viewState.excludedTags.length"' in summary_section
+    assert '可见' in summary_section
+    assert 'x-text="filteredVisibleTagCount"' in summary_section
     assert template_source.find('x-model="tagSearchQuery"', center_index, footer_index) == -1
 
 
@@ -919,7 +980,7 @@ def test_desktop_center_keeps_persistent_selected_tag_basket_contract():
     assert 'class="tag-filter-selected-basket-list custom-scrollbar tag-filter-selected-basket-list--workspace"' in template_source
     assert 'class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--included tag-filter-selected-basket-chip--workspace"' in template_source
     assert 'class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--excluded tag-filter-selected-basket-chip--workspace"' in template_source
-    assert '@click="toggleFilterTag(tag)"' in template_source
+    assert '@click="filterTags = filterTags.filter(item => item !== tag)"' in template_source
     assert '@click="$store.global.viewState.excludedTags = $store.global.viewState.excludedTags.filter(item => item !== tag)"' in template_source
 
 
@@ -987,7 +1048,7 @@ def test_desktop_top_tabs_not_left_rail_use_tab_navigation_hooks():
     top_tabs_section = template_source.split('<div class="tag-filter-workspace-top-tabs">', 1)[1].split('<div class="tag-filter-desktop-workbench">', 1)[0]
 
     assert 'class="tag-filter-workspace-top-tabs-nav"' in top_tabs_section
-    assert top_tabs_section.count('class="tag-filter-workspace-top-tab" :class=') == 5
+    assert top_tabs_section.count('class="tag-filter-workspace-top-tab"') == 6
     assert '恢复字符排序' not in top_tabs_section
     assert '治理设置' not in top_tabs_section
 
@@ -1079,9 +1140,12 @@ def test_top_tabs_css_polish():
 def test_workspace_help_surface_contract():
     template_source = read_project_file('templates/modals/tag_filter.html')
     source = read_project_file('static/css/modules/modal-tools.css')
+    compact_template = compact_whitespace(template_source)
 
-    assert '@click="toggleWorkspaceHelp()">帮助</button>' in template_source
-    assert 'class="tag-filter-workspace-help" x-show="isWorkspaceHelpOpen"' in template_source
+    assert '@click="toggleWorkspaceHelp()"' in template_source
+    assert '> 帮助 </button>' in compact_template or '>帮助</button>' in compact_template
+    assert 'class="tag-filter-workspace-help"' in template_source
+    assert 'x-show="isWorkspaceHelpOpen"' in template_source
     assert 'class="tag-filter-workspace-help-layout"' in template_source
     assert 'class="tag-filter-workspace-help-nav"' in template_source
     assert 'class="tag-filter-workspace-help-nav-list custom-scrollbar"' in template_source
@@ -1094,6 +1158,7 @@ def test_workspace_help_surface_contract():
     assert '工作台总览' in template_source
     assert '搜索与视图' in template_source
     assert '分隔符规则' in template_source
+    assert '批量分类模式下的“批量选中”输入框也遵循这个规则' in template_source
     assert '筛选模式' in template_source
     assert '批量分类模式' in template_source
     assert '排序模式' in template_source
@@ -1103,6 +1168,15 @@ def test_workspace_help_surface_contract():
     assert '推荐工作流' in template_source
     assert '常见问题' in template_source
     assert 'overflow-y: auto;' in source.split('.tag-filter-workspace-help-nav-list {', 1)[1].split('.tag-filter-workspace-help-nav-item {', 1)[0]
+
+
+def test_workspace_footer_exposes_category_quick_index_contract():
+    template_source = read_project_file('templates/modals/tag_filter.html')
+    footer_section = template_source.split('<div\n                class="tag-filter-workspace-footer"', 1)[1].split('<div\n                class="tag-filter-workspace-help"', 1)[0]
+
+    assert 'x-for="name in footerCategoryIndexNames"' in footer_section
+    assert '@click="applyFooterCategoryQuickFilter(name)"' in footer_section
+    assert '快速查看分类' in footer_section
 
 
 def test_selected_basket_css_polish():

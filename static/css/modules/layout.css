@@ -282,6 +282,47 @@
   padding: 0.5rem;
 }
 
+.sidebar-tag-category-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.5rem 0.5rem 0;
+}
+
+.sidebar-tag-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-height: 1.8rem;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-sub);
+  color: var(--text-sub);
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.sidebar-tag-category-pill:hover {
+  border-color: color-mix(in srgb, var(--tag-cat-color, var(--text-sub)), transparent 38%);
+  color: color-mix(in srgb, var(--tag-cat-color, var(--text-main)), #ffffff 10%);
+}
+
+.sidebar-tag-category-pill.active {
+  background: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 82%);
+  border-color: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 42%);
+  color: color-mix(in srgb, var(--tag-cat-color, #ffffff), #ffffff 18%);
+}
+
+.sidebar-tag-category-dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--tag-cat-color, var(--accent-main));
+  flex-shrink: 0;
+}
+
 .sidebar-tag-chip {
   font-size: 0.7rem;
   padding: 0.15rem 0.5rem;

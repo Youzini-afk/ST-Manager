@@ -90,7 +90,44 @@ def test_tag_filter_modal_desktop_workbench_loads_and_saves_governance_prefs_via
     assert 'loadTagManagementPrefs() {' in source
     assert 'saveTagManagementPrefsState() {' in source
     assert "this.lockTagLibrary = prefs.lock_tag_library === true;" in source
-    assert 'this.tagBlacklistInput = (prefs.tag_blacklist || []).join(' in source
+    assert 'this.tagBlacklistTags = blacklist;' in source
+    assert "this.tagBlacklistInput = blacklist.join(', ');" in source
+
+
+def test_tag_filter_modal_batch_category_supports_splitter_based_bulk_selection_contract():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+    template = read_project_file('templates/modals/tag_filter.html')
+    apply_section = extract_js_function_block(source, 'applyCategorySelectionInput() {')
+
+    assert "categorySelectionInput: ''" in source
+    assert 'applyCategorySelectionInput() {' in source
+    assert 'this.splitManualTagInput(this.categorySelectionInput)' in apply_section
+    assert "this.appendTokensToSelection(tokens, 'selectedCategoryTags')" in apply_section
+    assert template.count('x-model="categorySelectionInput"') >= 2
+    assert template.count('@click="applyCategorySelectionInput()"') >= 2
+
+
+def test_tag_filter_modal_batch_category_save_allows_style_only_category_updates_contract():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+    save_section = extract_js_function_block(source, 'saveCategoryBatch() {')
+
+    assert "alert('请先填写分类名');" in save_section
+    assert "alert('请先选择要设置分类的标签');" not in save_section
+    assert "const successMsg = tags.length > 0" in save_section
+
+
+def test_tag_filter_modal_footer_category_index_and_draft_style_sync_contract():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+    footer_section = extract_js_function_block(source, 'get footerCategoryIndexNames() {')
+    quick_filter_section = extract_js_function_block(source, 'applyFooterCategoryQuickFilter(category) {')
+    save_taxonomy_section = extract_js_function_block(source, 'saveTaxonomy(taxonomy, successMsg = \'\') {')
+
+    assert 'get footerCategoryIndexNames() {' in source
+    assert 'this.availableCategoryNames' in footer_section
+    assert 'applyFooterCategoryQuickFilter(category) {' in source
+    assert 'this.categoryFilterInclude = [String(category || \'\').trim()].filter(Boolean);' in quick_filter_section
+    assert 'this.categoryDraftColor = this.getCategoryColor(draftName);' in save_taxonomy_section
+    assert 'this.categoryDraftOpacity = this.getCategoryOpacity(draftName);' in save_taxonomy_section
 
 
 def test_tag_filter_modal_desktop_workbench_remember_last_tag_view_uses_store_helpers_contract():
@@ -117,11 +154,32 @@ def test_state_tag_view_prefs_contract_includes_category_filter_and_last_categor
 
 def test_tag_filter_modal_governance_blacklist_uses_shared_splitter_with_optional_slash_separator():
     source = read_project_file('static/js/components/tagFilterModal.js')
-    save_section = extract_js_function_block(source, 'saveTagManagementPrefsState() {')
+    split_section = extract_js_function_block(source, 'splitManualTagInput(rawValue) {')
+    apply_section = extract_js_function_block(source, 'applyBlacklistSelectionInput() {')
 
     assert 'splitTagTokens(' in source
-    assert 'const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);' in save_section
-    assert 'splitTagTokens(this.tagBlacklistInput, { slashIsSeparator })' in save_section
+    assert 'const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);' in split_section
+    assert 'splitTagTokens(rawValue, { slashIsSeparator })' in split_section
+    assert 'this.splitManualTagInput(this.blacklistSelectionInput)' in apply_section
+
+
+def test_tag_filter_modal_blacklist_mode_supports_click_and_splitter_selection_contract():
+    source = read_project_file('static/js/components/tagFilterModal.js')
+    template = read_project_file('templates/modals/tag_filter.html')
+    toggle_section = extract_js_function_block(source, 'toggleTagSelectionForBlacklist(tag) {')
+    save_section = extract_js_function_block(source, 'saveBlacklistSelection() {')
+
+    assert "selectedBlacklistTags: []" in source
+    assert "blacklistSelectionInput: ''" in source
+    assert "get isBlacklistMode() {" in source
+    assert 'toggleTagSelectionForBlacklist(tag) {' in source
+    assert 'this.selectedBlacklistTags.push(name);' in toggle_section
+    assert 'saveBlacklistSelection() {' in source
+    assert 'this.tagBlacklistTags = nextBlacklist;' in save_section
+    assert '@click="desktopWorkspaceMode === \'blacklist\' ? setDesktopWorkspaceMode(\'filter\') : setDesktopWorkspaceMode(\'blacklist\')"' in template
+    assert 'x-model="blacklistSelectionInput"' in template
+    assert '@click="applyBlacklistSelectionInput()"' in template
+    assert '@click="saveBlacklistSelection()"' in template
 
 
 def test_governance_drawer_js_defines_desktop_state_and_toggle_hooks():
@@ -175,7 +233,7 @@ def test_explicit_mode_state_contract():
     assert "desktopWorkspaceMode: 'filter'" in source
     assert 'setDesktopWorkspaceMode(mode) {' in source
     assert 'syncDesktopWorkspaceMode(mode) {' in source
-    assert "['filter', 'batch-category', 'sort', 'delete', 'category-manager'].includes(mode)" in source
+    assert "['filter', 'batch-category', 'sort', 'delete', 'blacklist', 'category-manager'].includes(mode)" in source
     assert 'const changed = this.syncDesktopWorkspaceMode(mode);' in source
     assert 'if (changed === false) return false;' in source
     assert 'this.desktopWorkspaceMode = mode;' in source
@@ -187,6 +245,7 @@ def test_desktop_workspace_separates_batch_category_and_category_manager_modes_c
     source = read_project_file('static/js/components/tagFilterModal.js')
 
     assert "if (mode === 'batch-category') {" in source
+    assert "if (mode === 'blacklist') {" in source
     assert "if (mode === 'category-manager') {" in source
     assert "this.showCategoryMode = true;" in source
     assert "this.showCategoryManager = true;" in source

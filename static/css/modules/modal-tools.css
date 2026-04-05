@@ -1177,7 +1177,25 @@
 }
 
 .tag-filter-desktop-main .tag-chip-categorized {
+  background: var(--tag-cat-bg, color-mix(in srgb, var(--bg-panel), var(--bg-sub) 30%));
   border-color: color-mix(in srgb, var(--tag-cat-border, var(--border-light)), transparent 8%);
+  color: var(--tag-cat-text, color-mix(in srgb, var(--text-sub), #ffffff 8%));
+}
+
+.tag-filter-desktop-main .tag-chip-selected.tag-chip-categorized,
+.tag-filter-desktop-main .tag-chip-unselected.tag-chip-categorized,
+.tag-filter-desktop-main .tag-chip-sortable.tag-chip-categorized {
+  background: var(--tag-cat-bg, color-mix(in srgb, var(--bg-panel), var(--bg-sub) 30%));
+  border-color: color-mix(in srgb, var(--tag-cat-border, var(--border-light)), transparent 8%);
+  color: var(--tag-cat-text, color-mix(in srgb, var(--text-sub), #ffffff 8%));
+}
+
+.tag-filter-desktop-main .tag-chip-selected.tag-chip-categorized:hover,
+.tag-filter-desktop-main .tag-chip-unselected.tag-chip-categorized:hover,
+.tag-filter-desktop-main .tag-chip-sortable.tag-chip-categorized:hover {
+  background: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 74%);
+  border-color: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 40%);
+  color: color-mix(in srgb, var(--tag-cat-color, #ffffff), #ffffff 28%);
 }
 
 .tag-filter-desktop-main .tag-chip-category-selected {

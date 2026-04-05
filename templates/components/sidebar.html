@@ -132,8 +132,28 @@
                     class="text-xs text-accent cursor-pointer hover:underline" title="查看全部">📚 完整库</button>
             </div>
             <div x-show="tagsSectionExpanded" class="sidebar-content custom-scrollbar card-sidebar-tags-body" x-transition>
+                <div x-show="tagIndexCategoryNames.length > 0" class="sidebar-tag-category-strip">
+                    <button
+                        @click="setTagIndexCategory('')"
+                        class="sidebar-tag-category-pill"
+                        :class="tagIndexActiveCategory === '' ? 'active' : ''"
+                    >
+                        全部
+                    </button>
+                    <template x-for="category in tagIndexCategoryNames" :key="'sidebar-tag-category-' + category">
+                        <button
+                            @click="setTagIndexCategory(category)"
+                            class="sidebar-tag-category-pill"
+                            :class="tagIndexActiveCategory === category ? 'active' : ''"
+                            :style="`--tag-cat-color:${$store.global.getCategoryColor(category)};`"
+                        >
+                            <span class="sidebar-tag-category-dot"></span>
+                            <span x-text="category"></span>
+                        </button>
+                    </template>
+                </div>
                 <div x-show="allTagsPool.length > 0" class="sidebar-tag-cloud">
-                    <template x-for="tag in allTagsPool.slice(0, 30)" :key="tag">
+                    <template x-for="tag in tagIndexVisibleTags.slice(0, 30)" :key="tag">
                         <button @click="toggleFilterTag(tag, $event)" class="sidebar-tag-chip" :class="{
                                 'active': filterTags.includes(tag),
                                 'excluded': $store.global.viewState.excludedTags.includes(tag)
@@ -143,9 +163,9 @@
                             <span x-text="tag"></span>
                         </button>
                     </template>
-                    <button x-show="allTagsPool.length > 30" @click="showTagFilterModal=true" class="sidebar-tag-chip"
+                    <button x-show="tagIndexVisibleTags.length > 30" @click="showTagFilterModal=true" class="sidebar-tag-chip"
                         style="border-style: dashed; opacity: 0.7;">
-                        + <span x-text="allTagsPool.length - 30"></span> 更多...
+                        + <span x-text="tagIndexVisibleTags.length - 30"></span> 更多...
                     </button>
                 </div>
             </div>

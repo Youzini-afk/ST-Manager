@@ -28,6 +28,7 @@ export default function tagFilterModal() {
         rememberLastTagView: false,
         lockTagLibrary: false,
         tagBlacklistInput: '',
+        tagBlacklistTags: [],
 
         // 排序模式（仅全量标签库）
         isSortMode: false,
@@ -41,6 +42,7 @@ export default function tagFilterModal() {
         selectedTagsForDeletion: [],
         showCategoryMode: false,
         selectedCategoryTags: [],
+        categorySelectionInput: '',
         categoryDraftName: '',
         categoryDraftColor: '#64748b',
         categoryDraftOpacity: 16,
@@ -48,6 +50,8 @@ export default function tagFilterModal() {
         categoryManagerDraftName: '',
         categoryManagerDraftColor: '#64748b',
         categoryManagerDraftOpacity: 16,
+        selectedBlacklistTags: [],
+        blacklistSelectionInput: '',
         selectedCategorySortName: '',
         categoryFilterInclude: [],
         categoryFilterExclude: [],
@@ -60,6 +64,7 @@ export default function tagFilterModal() {
             { id: 'batch-category-mode', label: '批量分类' },
             { id: 'sort-mode', label: '排序模式' },
             { id: 'delete-mode', label: '删除模式' },
+            { id: 'blacklist-mode', label: '黑名单模式' },
             { id: 'category-manager-mode', label: '分类管理' },
             { id: 'governance', label: '治理设置' },
             { id: 'workflow', label: '推荐工作流' },
@@ -163,12 +168,23 @@ export default function tagFilterModal() {
 
         get canSaveCategoryBatch() {
             return this.showCategoryMode
-                && this.selectedCategoryTags.length > 0
                 && String(this.categoryDraftName || '').trim().length > 0;
+        },
+
+        get isBlacklistMode() {
+            return this.desktopWorkspaceMode === 'blacklist';
+        },
+
+        get canSaveBlacklistSelection() {
+            return this.selectedBlacklistTags.length > 0;
         },
 
         get categorySelectionCount() {
             return this.selectedCategoryTags.length;
+        },
+
+        get footerCategoryIndexNames() {
+            return this.availableCategoryNames;
         },
 
         get categoryManagerItems() {
@@ -231,7 +247,7 @@ export default function tagFilterModal() {
         },
 
         syncDesktopWorkspaceMode(mode) {
-            if (!['filter', 'batch-category', 'sort', 'delete', 'category-manager'].includes(mode)) {
+            if (!['filter', 'batch-category', 'sort', 'delete', 'blacklist', 'category-manager'].includes(mode)) {
                 return false;
             }
 
@@ -252,8 +268,14 @@ export default function tagFilterModal() {
                 this.isDeleteMode = false;
             }
 
+            if (previousMode === 'blacklist' && mode !== 'blacklist') {
+                this.selectedBlacklistTags = [];
+                this.blacklistSelectionInput = '';
+            }
+
             if (previousWasCategoryWorkspace && !nextIsCategoryWorkspace) {
                 this.selectedCategoryTags = [];
+                this.categorySelectionInput = '';
                 this.categoryDraftName = '';
                 this.categoryDraftColor = '#64748b';
                 this.categoryDraftOpacity = 16;
@@ -273,6 +295,14 @@ export default function tagFilterModal() {
                 this.showCategoryMode = false;
                 this.showCategoryManager = false;
                 this.isDeleteMode = true;
+                return true;
+            }
+
+            if (mode === 'blacklist') {
+                this.isDeleteMode = false;
+                this.showCategoryMode = false;
+                this.showCategoryManager = false;
+                this.tagSearchQuery = '';
                 return true;
             }
 
@@ -379,6 +409,7 @@ export default function tagFilterModal() {
 
             if (previousTab === 'category' && tab !== 'category') {
                 this.selectedCategoryTags = [];
+                this.categorySelectionInput = '';
                 this.categoryDraftName = '';
                 this.categoryDraftColor = '#64748b';
                 this.categoryDraftOpacity = 16;
@@ -477,6 +508,7 @@ export default function tagFilterModal() {
             this.selectedTagsForDeletion = [];
             this.showCategoryMode = false;
             this.selectedCategoryTags = [];
+            this.categorySelectionInput = '';
             this.categoryDraftName = '';
             this.categoryDraftColor = '#64748b';
             this.categoryDraftOpacity = 16;
@@ -484,6 +516,8 @@ export default function tagFilterModal() {
             this.categoryManagerDraftName = '';
             this.categoryManagerDraftColor = '#64748b';
             this.categoryManagerDraftOpacity = 16;
+            this.selectedBlacklistTags = [];
+            this.blacklistSelectionInput = '';
             this.selectedCategorySortName = '';
             this.categoryFilterInclude = [];
             this.categoryFilterExclude = [];
@@ -534,16 +568,17 @@ export default function tagFilterModal() {
                     const prefs = res && res.tag_management_prefs && typeof res.tag_management_prefs === 'object'
                         ? res.tag_management_prefs
                         : {};
+                    const blacklist = this.normalizeTagList(prefs.tag_blacklist || []);
                     this.lockTagLibrary = prefs.lock_tag_library === true;
-                    this.tagBlacklistInput = (prefs.tag_blacklist || []).join(', ');
+                    this.tagBlacklistTags = blacklist;
+                    this.tagBlacklistInput = blacklist.join(', ');
                     return prefs;
                 })
                 .catch(() => ({}));
         },
 
         saveTagManagementPrefsState() {
-            const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
-            const blacklist = splitTagTokens(this.tagBlacklistInput, { slashIsSeparator });
+            const blacklist = this.normalizeTagList(this.tagBlacklistTags || []);
 
             return saveTagManagementPrefs({
                 tag_management_prefs: {
@@ -558,8 +593,10 @@ export default function tagFilterModal() {
                             lock_tag_library: this.lockTagLibrary,
                             tag_blacklist: blacklist,
                         };
+                    const normalizedBlacklist = this.normalizeTagList(prefs.tag_blacklist || blacklist);
                     this.lockTagLibrary = prefs.lock_tag_library === true;
-                    this.tagBlacklistInput = (prefs.tag_blacklist || []).join(', ');
+                    this.tagBlacklistTags = normalizedBlacklist;
+                    this.tagBlacklistInput = normalizedBlacklist.join(', ');
                     return prefs;
                 })
                 .catch(() => null);
@@ -607,6 +644,40 @@ export default function tagFilterModal() {
 
         getCategoryOpacity(category) {
             return this.$store.global.getCategoryOpacity(category);
+        },
+
+        splitManualTagInput(rawValue) {
+            const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);
+            return splitTagTokens(rawValue, { slashIsSeparator });
+        },
+
+        normalizeTagList(values) {
+            const seen = new Set();
+            const list = [];
+
+            (Array.isArray(values) ? values : []).forEach((rawValue) => {
+                const value = String(rawValue || '').trim();
+                if (!value || seen.has(value)) return;
+                seen.add(value);
+                list.push(value);
+            });
+
+            return list;
+        },
+
+        appendTokensToSelection(tokens, targetKey) {
+            const selected = new Set(this.normalizeTagList(this[targetKey] || []));
+            let addedCount = 0;
+
+            (tokens || []).forEach((rawToken) => {
+                const token = String(rawToken || '').trim();
+                if (!token || selected.has(token)) return;
+                selected.add(token);
+                addedCount += 1;
+            });
+
+            this[targetKey] = [...selected];
+            return addedCount;
         },
 
         normalizeOpacity(value, fallback = 16) {
@@ -657,6 +728,20 @@ export default function tagFilterModal() {
             this.categoryFilterExclude = [];
             this.mixedCategoryView = true;
             this.saveDesktopWorkbenchPrefs();
+        },
+
+        applyFooterCategoryQuickFilter(category) {
+            if (this.isSortMode) return;
+            this.mixedCategoryView = false;
+            this.categoryFilterInclude = [String(category || '').trim()].filter(Boolean);
+            this.categoryFilterExclude = [];
+            this.saveDesktopWorkbenchPrefs();
+        },
+
+        isTagBlacklisted(tag) {
+            const name = String(tag || '').trim();
+            if (!name) return false;
+            return this.tagBlacklistTags.includes(name);
         },
 
         sanitizeCategoryFilterState() {
@@ -715,6 +800,13 @@ export default function tagFilterModal() {
 
                     this.$store.global.setTagTaxonomy(res.taxonomy || taxonomy);
                     this.sanitizeCategoryFilterState();
+                    if (this.showCategoryMode) {
+                        const draftName = String(this.categoryDraftName || '').trim();
+                        if (draftName && this.availableCategoryNames.includes(draftName)) {
+                            this.categoryDraftColor = this.getCategoryColor(draftName);
+                            this.categoryDraftOpacity = this.getCategoryOpacity(draftName);
+                        }
+                    }
                     if (successMsg) {
                         this.$store.global.showToast(successMsg, 1800);
                     }
@@ -850,6 +942,10 @@ export default function tagFilterModal() {
                 color: String(color || '').trim() || '#64748b',
             };
 
+            if (String(this.categoryDraftName || '').trim() === name) {
+                this.categoryDraftColor = taxonomy.categories[name].color;
+            }
+
             this.saveTaxonomy(taxonomy);
         },
 
@@ -864,6 +960,10 @@ export default function tagFilterModal() {
                 ...taxonomy.categories[name],
                 opacity: this.normalizeOpacity(opacity, 16),
             };
+
+            if (String(this.categoryDraftName || '').trim() === name) {
+                this.categoryDraftOpacity = taxonomy.categories[name].opacity;
+            }
 
             this.saveTaxonomy(taxonomy);
         },
@@ -959,6 +1059,48 @@ export default function tagFilterModal() {
             this.selectedCategoryTags.push(tag);
         },
 
+        toggleTagSelectionForBlacklist(tag) {
+            const name = String(tag || '').trim();
+            if (!name) return;
+
+            const index = this.selectedBlacklistTags.indexOf(name);
+            if (index > -1) {
+                this.selectedBlacklistTags.splice(index, 1);
+                return;
+            }
+            this.selectedBlacklistTags.push(name);
+        },
+
+        applyCategorySelectionInput() {
+            const tokens = this.splitManualTagInput(this.categorySelectionInput);
+            if (!tokens.length) return;
+
+            const addedCount = this.appendTokensToSelection(tokens, 'selectedCategoryTags');
+            this.categorySelectionInput = '';
+
+            if (addedCount > 0) {
+                this.$store.global.showToast(`已向分类选择中加入 ${addedCount} 个标签`, 2200);
+                return;
+            }
+
+            this.$store.global.showToast('这些标签都已经在当前分类选择中', 2200);
+        },
+
+        applyBlacklistSelectionInput() {
+            const tokens = this.splitManualTagInput(this.blacklistSelectionInput);
+            if (!tokens.length) return;
+
+            const addedCount = this.appendTokensToSelection(tokens, 'selectedBlacklistTags');
+            this.blacklistSelectionInput = '';
+
+            if (addedCount > 0) {
+                this.$store.global.showToast(`已向黑名单选择中加入 ${addedCount} 个标签`, 2200);
+                return;
+            }
+
+            this.$store.global.showToast('这些标签都已经在当前黑名单选择中', 2200);
+        },
+
         setCategoryDraft(categoryName) {
             const name = String(categoryName || '').trim();
             if (!name) return;
@@ -968,19 +1110,15 @@ export default function tagFilterModal() {
         },
 
         saveCategoryBatch() {
-            if (!this.canSaveCategoryBatch) {
-                alert('请先选择标签并填写分类名');
+            const categoryName = String(this.categoryDraftName || '').trim();
+            if (!categoryName) {
+                alert('请先填写分类名');
                 return;
             }
 
-            const categoryName = String(this.categoryDraftName || '').trim();
             const categoryColor = String(this.categoryDraftColor || '').trim() || '#64748b';
             const categoryOpacity = this.normalizeOpacity(this.categoryDraftOpacity, 16);
             const tags = [...new Set((this.selectedCategoryTags || []).map(t => String(t || '').trim()).filter(Boolean))];
-            if (tags.length === 0) {
-                alert('请先选择要设置分类的标签');
-                return;
-            }
 
             const taxonomy = this.buildTaxonomyPayload();
 
@@ -1005,10 +1143,71 @@ export default function tagFilterModal() {
                 taxonomy.tag_to_category[tag] = categoryName;
             });
 
-            this.saveTaxonomy(taxonomy, `✅ 已为 ${tags.length} 个标签设置分类`)
+            const successMsg = tags.length > 0
+                ? `✅ 已为 ${tags.length} 个标签设置分类`
+                : `✅ 已更新分类「${categoryName}」样式`;
+
+            this.saveTaxonomy(taxonomy, successMsg)
                 .then((saved) => {
                     if (!saved) return;
+                    this.categoryDraftColor = this.getCategoryColor(categoryName);
+                    this.categoryDraftOpacity = this.getCategoryOpacity(categoryName);
                     this.selectedCategoryTags = [];
+                });
+        },
+
+        saveBlacklistSelection() {
+            const selected = this.normalizeTagList(this.selectedBlacklistTags || []);
+            if (!selected.length) {
+                alert('请先选择要加入黑名单的标签');
+                return;
+            }
+
+            const nextBlacklist = [...this.normalizeTagList(this.tagBlacklistTags || [])];
+            const existing = new Set(nextBlacklist);
+            let addedCount = 0;
+
+            selected.forEach((tag) => {
+                if (existing.has(tag)) return;
+                existing.add(tag);
+                nextBlacklist.push(tag);
+                addedCount += 1;
+            });
+
+            this.tagBlacklistTags = nextBlacklist;
+            this.tagBlacklistInput = nextBlacklist.join(', ');
+
+            if (addedCount === 0) {
+                this.selectedBlacklistTags = [];
+                this.blacklistSelectionInput = '';
+                this.$store.global.showToast('所选标签已在黑名单中', 1800);
+                return;
+            }
+
+            this.saveTagManagementPrefsState()
+                .then((prefs) => {
+                    if (!prefs) return;
+                    this.selectedBlacklistTags = [];
+                    this.blacklistSelectionInput = '';
+                    this.$store.global.showToast(`✅ 已加入 ${addedCount} 个黑名单标签`, 1800);
+                });
+        },
+
+        removeBlacklistedTag(tag) {
+            const name = String(tag || '').trim();
+            if (!name) return;
+
+            const nextBlacklist = this.normalizeTagList(this.tagBlacklistTags.filter(item => item !== name));
+            if (nextBlacklist.length === this.tagBlacklistTags.length) return;
+
+            this.tagBlacklistTags = nextBlacklist;
+            this.tagBlacklistInput = nextBlacklist.join(', ');
+            this.selectedBlacklistTags = this.selectedBlacklistTags.filter(item => item !== name);
+
+            this.saveTagManagementPrefsState()
+                .then((prefs) => {
+                    if (!prefs) return;
+                    this.$store.global.showToast(`✅ 已将「${name}」移出黑名单`, 1800);
                 });
         },
 
