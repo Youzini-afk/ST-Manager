@@ -34,8 +34,15 @@ export default function tagFilterModal() {
         isSortMode: false,
         sortWorkingTags: [],
         sortOriginalTags: [],
+        sortWorkingCategoryOrder: [],
+        sortOriginalCategoryOrder: [],
+        sortWorkingCategoryTagOrder: {},
+        sortOriginalCategoryTagOrder: {},
         dragTag: null,
+        dragTagCategory: '',
         dragOverTag: null,
+        dragCategory: null,
+        dragOverCategory: null,
         
         // 删除模式状态
         isDeleteMode: false,
@@ -52,7 +59,6 @@ export default function tagFilterModal() {
         categoryManagerDraftOpacity: 16,
         selectedBlacklistTags: [],
         blacklistSelectionInput: '',
-        selectedCategorySortName: '',
         categoryFilterInclude: [],
         categoryFilterExclude: [],
         mixedCategoryView: true,
@@ -125,7 +131,7 @@ export default function tagFilterModal() {
         },
 
         get filteredVisibleTagCount() {
-            if (this.isSortMode) return this.sortModeTagsPool.length;
+            if (this.isSortMode) return this.sortModeVisibleTagCount;
             if (this.mixedCategoryView) return this.filteredMixedTagsPool.length;
             return this.filteredTagGroups.reduce((acc, group) => acc + (group.tags || []).length, 0);
         },
@@ -207,17 +213,21 @@ export default function tagFilterModal() {
             }));
         },
 
-        get selectedCategorySortTags() {
-            const category = String(this.selectedCategorySortName || '').trim();
-            if (!category) return [];
-
-            const groups = this.$store.global.groupTagsByTaxonomy(this.globalTagsPool || []);
-            const targetGroup = groups.find(group => group.category === category);
-            return targetGroup && Array.isArray(targetGroup.tags) ? targetGroup.tags : [];
-        },
-
         get sortModeTagsPool() {
             return this.sortWorkingTags || [];
+        },
+
+        get sortModeMixedTagsPool() {
+            return this.filterTagsByCurrentCategoryFilters(this.sortModeTagsPool || []);
+        },
+
+        get sortModeTagGroups() {
+            return this.buildTagGroups(this.sortModeTagsPool || [], this.sortWorkingCategoryOrder || []);
+        },
+
+        get sortModeVisibleTagCount() {
+            if (this.mixedCategoryView) return this.sortModeMixedTagsPool.length;
+            return this.sortModeTagGroups.reduce((acc, group) => acc + (group.tags || []).length, 0);
         },
 
         get isSortDirty() {
@@ -228,6 +238,27 @@ export default function tagFilterModal() {
                 if (a[i] !== b[i]) return true;
             }
             return false;
+        },
+
+        get isSortCategoryOrderDirty() {
+            const a = this.sortWorkingCategoryOrder || [];
+            const b = this.sortOriginalCategoryOrder || [];
+            if (a.length !== b.length) return true;
+            for (let i = 0; i < a.length; i += 1) {
+                if (a[i] !== b[i]) return true;
+            }
+            return false;
+        },
+
+        get isSortCategoryTagDirty() {
+            return !this.areCategoryTagOrdersEqual(
+                this.sortWorkingCategoryTagOrder,
+                this.sortOriginalCategoryTagOrder,
+            );
+        },
+
+        get hasSortChanges() {
+            return this.isSortDirty || this.isSortCategoryOrderDirty || this.isSortCategoryTagDirty;
         },
 
         get filterTags() { return this.$store.global.viewState.filterTags; },
@@ -470,7 +501,7 @@ export default function tagFilterModal() {
 
                 this.showTagFilterModal = val;
                 if (!val) {
-                    if (this.isSortMode && this.isSortDirty) {
+                    if (this.isSortMode && this.hasSortChanges) {
                         const ok = confirm('当前排序尚未保存，关闭后将丢失改动。确定关闭吗？');
                         if (!ok) {
                             this.$store.global.showTagFilterModal = true;
@@ -497,14 +528,12 @@ export default function tagFilterModal() {
 
             this.$watch('$store.global.tagTaxonomy.updated_at', () => {
                 this.sanitizeCategoryFilterState();
-                this.sanitizeSelectedCategorySortState();
             });
 
         },
 
         resetModalStateAfterClose() {
             this.isDeleteMode = false;
-            this.isSortMode = false;
             this.selectedTagsForDeletion = [];
             this.showCategoryMode = false;
             this.selectedCategoryTags = [];
@@ -518,14 +547,10 @@ export default function tagFilterModal() {
             this.categoryManagerDraftOpacity = 16;
             this.selectedBlacklistTags = [];
             this.blacklistSelectionInput = '';
-            this.selectedCategorySortName = '';
             this.categoryFilterInclude = [];
             this.categoryFilterExclude = [];
             this.mixedCategoryView = true;
-            this.sortWorkingTags = [];
-            this.sortOriginalTags = [];
-            this.dragTag = null;
-            this.dragOverTag = null;
+            this.resetSortModeState();
             this.mobileActiveTab = 'filter';
             this.desktopWorkspaceMode = 'filter';
             this.isDesktopWorkspaceFullscreen = false;
@@ -545,11 +570,7 @@ export default function tagFilterModal() {
             this.categoryFilterExclude = this.rememberLastTagView
                 ? [...(tagViewPrefs.categoryFilterExclude || [])]
                 : [];
-            this.selectedCategorySortName = this.rememberLastTagView
-                ? String(tagViewPrefs.lastCategorySortName || '').trim()
-                : '';
             this.sanitizeCategoryFilterState();
-            this.sanitizeSelectedCategorySortState();
         },
 
         saveDesktopWorkbenchPrefs() {
@@ -558,7 +579,6 @@ export default function tagFilterModal() {
                 mixedCategoryView: this.mixedCategoryView,
                 categoryFilterInclude: this.categoryFilterInclude,
                 categoryFilterExclude: this.categoryFilterExclude,
-                lastCategorySortName: this.selectedCategorySortName,
             });
         },
 
@@ -612,7 +632,7 @@ export default function tagFilterModal() {
         },
 
         requestCloseModal() {
-            if (this.isSortMode && this.isSortDirty) {
+            if (this.isSortMode && this.hasSortChanges) {
                 const ok = confirm('当前排序尚未保存，关闭后将丢失改动。确定关闭吗？');
                 if (!ok) return;
             }
@@ -687,6 +707,139 @@ export default function tagFilterModal() {
             return Math.max(0, Math.min(100, Math.round(raw)));
         },
 
+        normalizeCategoryTagOrder(rawValue) {
+            const next = {};
+            if (!rawValue || typeof rawValue !== 'object') return next;
+
+            Object.entries(rawValue).forEach(([rawCategory, rawTags]) => {
+                const category = String(rawCategory || '').trim();
+                if (!category || !Array.isArray(rawTags)) return;
+
+                const seen = new Set();
+                const tags = [];
+                rawTags.forEach((rawTag) => {
+                    const tag = String(rawTag || '').trim();
+                    if (!tag || seen.has(tag)) return;
+                    seen.add(tag);
+                    tags.push(tag);
+                });
+
+                if (tags.length > 0) {
+                    next[category] = tags;
+                }
+            });
+
+            return next;
+        },
+
+        areCategoryTagOrdersEqual(leftValue, rightValue) {
+            const left = this.normalizeCategoryTagOrder(leftValue);
+            const right = this.normalizeCategoryTagOrder(rightValue);
+            const leftKeys = Object.keys(left).sort();
+            const rightKeys = Object.keys(right).sort();
+
+            if (leftKeys.length !== rightKeys.length) return false;
+
+            for (let i = 0; i < leftKeys.length; i += 1) {
+                if (leftKeys[i] !== rightKeys[i]) return false;
+                const leftTags = left[leftKeys[i]] || [];
+                const rightTags = right[rightKeys[i]] || [];
+                if (leftTags.length !== rightTags.length) return false;
+                for (let j = 0; j < leftTags.length; j += 1) {
+                    if (leftTags[j] !== rightTags[j]) return false;
+                }
+            }
+
+            return true;
+        },
+
+        filterTagsByCurrentCategoryFilters(tags) {
+            const includeSet = new Set(this.categoryFilterInclude || []);
+            const excludeSet = new Set(this.categoryFilterExclude || []);
+            const list = Array.isArray(tags) ? tags : [];
+
+            if (includeSet.size === 0 && excludeSet.size === 0) {
+                return list;
+            }
+
+            return list.filter((tag) => {
+                const category = this.getTagCategory(tag);
+                if (excludeSet.has(category)) return false;
+                if (includeSet.size > 0 && !includeSet.has(category)) return false;
+                return true;
+            });
+        },
+
+        applyExplicitTagOrder(tags, orderedTags) {
+            const tagList = Array.isArray(tags) ? tags : [];
+            const orderList = Array.isArray(orderedTags) ? orderedTags : [];
+            if (!orderList.length) return tagList;
+
+            const tagSet = new Set(tagList);
+            const seen = new Set();
+            const result = [];
+
+            orderList.forEach((rawTag) => {
+                const tag = String(rawTag || '').trim();
+                if (!tag || seen.has(tag) || !tagSet.has(tag)) return;
+                seen.add(tag);
+                result.push(tag);
+            });
+
+            tagList.forEach((tag) => {
+                if (seen.has(tag)) return;
+                seen.add(tag);
+                result.push(tag);
+            });
+
+            return result;
+        },
+
+        getSortCategoryTags(categoryName) {
+            const category = String(categoryName || '').trim();
+            if (!category) return [];
+
+            const tags = (this.sortModeTagsPool || []).filter((tag) => this.getTagCategory(tag) === category);
+            const orderedTags = this.sortWorkingCategoryTagOrder && this.sortWorkingCategoryTagOrder[category];
+            return this.applyExplicitTagOrder(tags, orderedTags);
+        },
+
+        buildTagGroups(tags, categoryOrder = []) {
+            const filteredTags = this.filterTagsByCurrentCategoryFilters(tags);
+            if (!filteredTags.length) return [];
+
+            const grouped = new Map();
+            filteredTags.forEach((tag) => {
+                const category = this.getTagCategory(tag);
+                if (!grouped.has(category)) {
+                    grouped.set(category, []);
+                }
+                grouped.get(category).push(tag);
+            });
+
+            const orderedCategories = [];
+            const seen = new Set();
+            (Array.isArray(categoryOrder) ? categoryOrder : []).forEach((rawCategory) => {
+                const category = String(rawCategory || '').trim();
+                if (!category || seen.has(category) || !grouped.has(category)) return;
+                seen.add(category);
+                orderedCategories.push(category);
+            });
+
+            Array.from(grouped.keys()).forEach((category) => {
+                if (seen.has(category)) return;
+                seen.add(category);
+                orderedCategories.push(category);
+            });
+
+            return orderedCategories.map((category) => ({
+                category,
+                color: this.getCategoryColor(category),
+                opacity: this.getCategoryOpacity(category),
+                tags: this.applyExplicitTagOrder(grouped.get(category) || [], this.sortWorkingCategoryTagOrder[category]),
+            }));
+        },
+
         getCategoryFilterState(category) {
             if (this.categoryFilterInclude.includes(category)) return 'included';
             if (this.categoryFilterExclude.includes(category)) return 'excluded';
@@ -731,7 +884,6 @@ export default function tagFilterModal() {
         },
 
         applyFooterCategoryQuickFilter(category) {
-            if (this.isSortMode) return;
             this.mixedCategoryView = false;
             this.categoryFilterInclude = [String(category || '').trim()].filter(Boolean);
             this.categoryFilterExclude = [];
@@ -748,12 +900,6 @@ export default function tagFilterModal() {
             const valid = new Set(this.availableCategoryNames || []);
             this.categoryFilterInclude = (this.categoryFilterInclude || []).filter(name => valid.has(name));
             this.categoryFilterExclude = (this.categoryFilterExclude || []).filter(name => valid.has(name));
-        },
-
-        sanitizeSelectedCategorySortState() {
-            const name = String(this.selectedCategorySortName || '').trim();
-            if (name && this.availableCategoryNames.includes(name)) return;
-            this.selectedCategorySortName = '';
         },
 
         buildTaxonomyPayload() {
@@ -988,51 +1134,23 @@ export default function tagFilterModal() {
             this.saveTaxonomy(taxonomy);
         },
 
-        moveSelectedCategoryTag(tag, delta) {
-            const category = String(this.selectedCategorySortName || '').trim();
-            const targetTag = String(tag || '').trim();
-            if (!category || !targetTag || !Number.isFinite(delta)) return false;
-
-            const currentTags = [...this.selectedCategorySortTags];
-            const currentIndex = currentTags.indexOf(targetTag);
-            const targetIndex = currentIndex + delta;
-            if (currentIndex < 0 || targetIndex < 0 || targetIndex >= currentTags.length) return false;
-
-            currentTags.splice(currentIndex, 1);
-            currentTags.splice(targetIndex, 0, targetTag);
-
-            const taxonomy = this.buildTaxonomyPayload();
-            taxonomy.category_tag_order = taxonomy.category_tag_order && typeof taxonomy.category_tag_order === 'object'
-                ? taxonomy.category_tag_order
-                : {};
-            taxonomy.category_tag_order[category] = currentTags;
-
-            this.saveTaxonomy(taxonomy);
-            return true;
-        },
-
-        moveSelectedCategoryTagUp(tag) {
-            return this.moveSelectedCategoryTag(tag, -1);
-        },
-
-        moveSelectedCategoryTagDown(tag) {
-            return this.moveSelectedCategoryTag(tag, 1);
-        },
-
-        resetSelectedCategoryTagOrder() {
-            const category = String(this.selectedCategorySortName || '').trim();
-            if (!category) return;
-
-            const taxonomy = this.buildTaxonomyPayload();
-            taxonomy.category_tag_order = taxonomy.category_tag_order && typeof taxonomy.category_tag_order === 'object'
-                ? taxonomy.category_tag_order
-                : {};
-            delete taxonomy.category_tag_order[category];
-            this.saveTaxonomy(taxonomy, `✅ 已恢复「${category}」分类的全局顺序`);
-        },
-
         toggleCategoryMode() {
             this.setDesktopWorkspaceMode(this.desktopWorkspaceMode === 'batch-category' ? 'filter' : 'batch-category');
+        },
+
+        resetSortModeState() {
+            this.isSortMode = false;
+            this.sortWorkingTags = [];
+            this.sortOriginalTags = [];
+            this.sortWorkingCategoryOrder = [];
+            this.sortOriginalCategoryOrder = [];
+            this.sortWorkingCategoryTagOrder = {};
+            this.sortOriginalCategoryTagOrder = {};
+            this.dragTag = null;
+            this.dragTagCategory = '';
+            this.dragOverTag = null;
+            this.dragCategory = null;
+            this.dragOverCategory = null;
         },
 
         enterSortMode() {
@@ -1045,8 +1163,19 @@ export default function tagFilterModal() {
             this.tagSearchQuery = '';
             this.sortWorkingTags = [...(this.globalTagsPool || [])];
             this.sortOriginalTags = [...this.sortWorkingTags];
+            this.sortWorkingCategoryOrder = [...this.availableCategoryNames];
+            this.sortOriginalCategoryOrder = [...this.sortWorkingCategoryOrder];
+
+            const taxonomy = this.buildTaxonomyPayload();
+            const categoryTagOrder = this.normalizeCategoryTagOrder(taxonomy.category_tag_order);
+            this.sortWorkingCategoryTagOrder = categoryTagOrder;
+            this.sortOriginalCategoryTagOrder = this.normalizeCategoryTagOrder(categoryTagOrder);
+
             this.dragTag = null;
+            this.dragTagCategory = '';
             this.dragOverTag = null;
+            this.dragCategory = null;
+            this.dragOverCategory = null;
             return true;
         },
 
@@ -1216,15 +1345,11 @@ export default function tagFilterModal() {
         },
 
         cancelSortMode() {
-            if (this.isSortDirty) {
+            if (this.hasSortChanges) {
                 const ok = confirm('当前排序尚未保存，确定放弃改动吗？');
                 if (!ok) return;
             }
-            this.isSortMode = false;
-            this.sortWorkingTags = [];
-            this.sortOriginalTags = [];
-            this.dragTag = null;
-            this.dragOverTag = null;
+            this.resetSortModeState();
         },
 
         moveSortTag(tag, delta) {
@@ -1252,12 +1377,19 @@ export default function tagFilterModal() {
         onSortDragStart(event, tag) {
             if (!this.isSortMode) return;
             this.dragTag = tag;
+            this.dragTagCategory = String(this.getTagCategory(tag) || '').trim();
             event.dataTransfer.effectAllowed = 'move';
             event.dataTransfer.setData('text/plain', tag);
         },
 
         onSortDragOver(e, tag) {
             if (!this.isSortMode) return;
+            if (!this.mixedCategoryView) {
+                const targetCategory = String(this.getTagCategory(tag) || '').trim();
+                if (this.dragTagCategory && targetCategory && this.dragTagCategory !== targetCategory) {
+                    return;
+                }
+            }
             e.preventDefault();
             this.dragOverTag = tag;
         },
@@ -1267,6 +1399,25 @@ export default function tagFilterModal() {
             e.preventDefault();
             const sourceTag = this.dragTag || e.dataTransfer.getData('text/plain');
             if (!sourceTag || !targetTag || sourceTag === targetTag) return;
+
+            if (!this.mixedCategoryView) {
+                const category = String(this.getTagCategory(sourceTag) || '').trim();
+                if (!category || category !== String(this.getTagCategory(targetTag) || '').trim()) return;
+
+                const currentTags = [...this.getSortCategoryTags(category)];
+                const from = currentTags.indexOf(sourceTag);
+                const to = currentTags.indexOf(targetTag);
+                if (from < 0 || to < 0) return;
+
+                currentTags.splice(from, 1);
+                currentTags.splice(to, 0, sourceTag);
+                this.sortWorkingCategoryTagOrder = {
+                    ...(this.sortWorkingCategoryTagOrder || {}),
+                    [category]: currentTags,
+                };
+                this.dragOverTag = null;
+                return;
+            }
 
             const list = [...this.sortWorkingTags];
             const from = list.indexOf(sourceTag);
@@ -1282,7 +1433,51 @@ export default function tagFilterModal() {
 
         onSortDragEnd() {
             this.dragTag = null;
+            this.dragTagCategory = '';
             this.dragOverTag = null;
+        },
+
+        onSortCategoryDragStart(event, categoryName) {
+            if (!this.isSortMode || this.mixedCategoryView) return;
+            const category = String(categoryName || '').trim();
+            if (!category) return;
+
+            this.dragCategory = category;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', category);
+        },
+
+        onSortCategoryDragOver(event, categoryName) {
+            if (!this.isSortMode || this.mixedCategoryView) return;
+            const category = String(categoryName || '').trim();
+            if (!category) return;
+
+            event.preventDefault();
+            this.dragOverCategory = category;
+        },
+
+        onSortCategoryDrop(event, targetCategoryName) {
+            if (!this.isSortMode || this.mixedCategoryView) return;
+            event.preventDefault();
+
+            const sourceCategory = String(this.dragCategory || event.dataTransfer.getData('text/plain') || '').trim();
+            const targetCategory = String(targetCategoryName || '').trim();
+            if (!sourceCategory || !targetCategory || sourceCategory === targetCategory) return;
+
+            const order = [...(this.sortWorkingCategoryOrder || [])];
+            const from = order.indexOf(sourceCategory);
+            const to = order.indexOf(targetCategory);
+            if (from < 0 || to < 0) return;
+
+            order.splice(from, 1);
+            order.splice(to, 0, sourceCategory);
+            this.sortWorkingCategoryOrder = order;
+            this.dragOverCategory = null;
+        },
+
+        onSortCategoryDragEnd() {
+            this.dragCategory = null;
+            this.dragOverCategory = null;
         },
 
         saveSortMode() {
@@ -1293,7 +1488,7 @@ export default function tagFilterModal() {
                 .then((res) => {
                     if (!res.success) {
                         alert('保存排序失败: ' + (res.msg || '未知错误'));
-                        return;
+                        return null;
                     }
 
                     this.$store.global.globalTagsPool = [...nextOrder];
@@ -1306,8 +1501,25 @@ export default function tagFilterModal() {
                     this.customOrderEnabled = true;
                     this.sortOriginalTags = [...nextOrder];
 
+                    if (!this.isSortCategoryOrderDirty && !this.isSortCategoryTagDirty) {
+                        return { taxonomySaved: false };
+                    }
+
+                    const taxonomy = this.buildTaxonomyPayload();
+                    taxonomy.category_order = [...(this.sortWorkingCategoryOrder || [])];
+                    taxonomy.category_tag_order = this.normalizeCategoryTagOrder(this.sortWorkingCategoryTagOrder);
+
+                    return this.saveTaxonomy(taxonomy).then((saved) => {
+                        if (!saved) return null;
+                        this.sortOriginalCategoryOrder = [...(this.sortWorkingCategoryOrder || [])];
+                        this.sortOriginalCategoryTagOrder = this.normalizeCategoryTagOrder(this.sortWorkingCategoryTagOrder);
+                        return { taxonomySaved: true };
+                    });
+                })
+                .then((result) => {
+                    if (!result) return;
                     this.$store.global.showToast('✅ 标签顺序已保存', 1800);
-                    this.cancelSortMode();
+                    this.resetSortModeState();
                 })
                 .catch((err) => {
                     alert('保存排序失败: ' + err);
@@ -1315,7 +1527,7 @@ export default function tagFilterModal() {
         },
 
         clearCustomOrder() {
-            if (this.isSortMode && this.isSortDirty) {
+            if (this.isSortMode && this.hasSortChanges) {
                 const ok = confirm('当前排序尚未保存，清除自定义排序会丢失这些改动。确定继续吗？');
                 if (!ok) return;
             }
@@ -1330,11 +1542,7 @@ export default function tagFilterModal() {
                     }
 
                     this.customOrderEnabled = false;
-                    this.isSortMode = false;
-                    this.sortWorkingTags = [];
-                    this.sortOriginalTags = [];
-                    this.dragTag = null;
-                    this.dragOverTag = null;
+                    this.resetSortModeState();
 
                     window.dispatchEvent(new CustomEvent('refresh-card-list'));
                     this.$store.global.showToast('✅ 已恢复字符排序', 1800);

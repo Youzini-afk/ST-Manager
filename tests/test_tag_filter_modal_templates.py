@@ -88,7 +88,7 @@ def test_tag_filter_template_gates_legacy_control_surface_to_non_mobile_only():
     assert "x-show=\"$store.global.deviceType !== 'mobile'\"" in template_source
     assert "x-show=\"$store.global.deviceType !== 'mobile' && isSortMode\"" in template_source
     assert "x-show=\"$store.global.deviceType !== 'mobile' && customOrderEnabled && !isSortMode\"" in template_source
-    assert "x-show=\"desktopWorkspaceMode === 'filter' || desktopWorkspaceMode === 'batch-category' || desktopWorkspaceMode === 'category-manager'\"" in template_source
+    assert "x-show=\"desktopWorkspaceMode === 'filter' || desktopWorkspaceMode === 'batch-category' || desktopWorkspaceMode === 'sort' || desktopWorkspaceMode === 'category-manager' || desktopWorkspaceMode === 'blacklist' || desktopWorkspaceMode === 'delete'\"" in template_source
     assert "x-if=\"$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'batch-category' && showCategoryMode && !isSortMode\"" in template_source
     assert "x-if=\"$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'category-manager' && showCategoryManager && !isSortMode\"" in template_source
     assert 'class="tag-cloud-container custom-scrollbar"' in template_source
@@ -136,7 +136,7 @@ def test_tag_filter_js_sync_mobile_tab_state_clears_search_on_sort_entry_and_pre
     assert "if (tab === 'sort')" in section
     assert "this.tagSearchQuery = '';" in section
     assert 'this.cancelSortMode()' in section
-    assert 'if (this.isSortMode && this.isSortDirty)' in source
+    assert 'if (this.isSortMode && this.hasSortChanges)' in source
     assert '当前排序尚未保存，关闭后将丢失改动。确定关闭吗？' in source
     assert '当前排序尚未保存，确定放弃改动吗？' in source
 
@@ -435,11 +435,14 @@ def test_tag_filter_template_desktop_workbench_exposes_governance_and_remember_v
     assert '@change="saveTagManagementPrefsState()"' in desktop_shell_section
 
 
-def test_tag_filter_template_category_sort_selector_persists_last_category_choice_contract():
+def test_tag_filter_template_shared_view_panel_exposes_desktop_view_switch_contract():
     template_source = read_project_file('templates/modals/tag_filter.html')
     compact_template = compact_whitespace(template_source)
 
-    assert '<select x-model="selectedCategorySortName" @change="saveDesktopWorkbenchPrefs()" class="form-input"' in compact_template
+    assert 'tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--view' in template_source
+    assert '标签视图' in template_source
+    assert '@click="showAllCategoriesMixed()"' in compact_template
+    assert '@click="mixedCategoryView = false; saveDesktopWorkbenchPrefs()"' in compact_template
 
 
 def test_tag_filter_desktop_workbench_shell_css_contract():
@@ -534,9 +537,7 @@ def test_tool_area_filter_mode_contract_exposes_summary_clear_and_view_controls(
     assert '可见标签' in filter_panel_section
     assert '@click="filterTags=[]; $store.global.viewState.excludedTags=[]"' in filter_panel_section
     assert '清空筛选' in filter_panel_section
-    assert '标签视图' in filter_panel_section
-    assert '@click="showAllCategoriesMixed()"' in filter_panel_section
-    assert "@click=\"mixedCategoryView = false; saveDesktopWorkbenchPrefs()\"" in filter_panel_section
+    assert '标签视图' not in filter_panel_section
 
 
 def test_tool_area_batch_and_sort_contracts_use_single_desktop_tool_area():
@@ -554,10 +555,12 @@ def test_tool_area_batch_and_sort_contracts_use_single_desktop_tool_area():
     assert '目标分类' in template_source
     assert '@click="saveCategoryBatch()"' in template_source
     assert 'tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--sort' in template_source
-    assert '当前排序' in template_source
-    assert '分类内排序' in template_source
+    assert '全局排序与分组拖拽' in template_source
+    assert '当前标签顺序' in template_source
+    assert '未保存改动' in template_source
     assert '@click="saveSortMode()"' in template_source
     assert '保存排序' in template_source
+    assert 'tag-filter-current-mode-tool-panel--view' in tool_area_section
     assert 'tag-filter-current-mode-tool-panel--batch-category' in tool_area_section
     assert 'tag-filter-current-mode-tool-panel--sort' in tool_area_section
 
@@ -566,9 +569,34 @@ def test_tool_area_css_supports_single_desktop_mode_panels_contract():
     source = read_project_file('static/css/modules/modal-tools.css')
 
     assert '.tag-filter-current-mode-tool-panel--filter {' in source
+    assert '.tag-filter-current-mode-tool-panel--view,' in source
     assert '.tag-filter-current-mode-tool-summary-grid {' in source
     assert '.tag-filter-current-mode-tool-view-modes {' in source
     assert '.tag-filter-current-mode-tool-actions {' in source
+
+
+def test_sort_mode_grouped_view_uses_sortable_category_blocks_contract():
+    template_source = read_project_file('templates/modals/tag_filter.html')
+    source = read_project_file('static/css/modules/modal-tools.css')
+
+    assert 'x-for="group in sortModeTagGroups"' in template_source
+    assert 'tag-group-block tag-group-block--sortable-category' in template_source
+    assert 'class="tag-group-head tag-group-head--sortable"' in template_source
+    assert '@dragstart="onSortCategoryDragStart($event, group.category)"' in template_source
+    assert '@dragover="onSortCategoryDragOver($event, group.category)"' in template_source
+    assert '@drop="onSortCategoryDrop($event, group.category)"' in template_source
+    assert '.tag-group-block--sortable-category {' in source
+    assert '.tag-group-head--sortable {' in source
+
+
+def test_tool_area_css_stretches_category_manager_column_for_long_registry_contract():
+    source = read_project_file('static/css/modules/modal-tools.css')
+    tool_area_section = source.split('.tag-filter-current-mode-tool-area {', 1)[1].split('.tag-filter-current-mode-tool-panel {', 1)[0]
+
+    assert 'align-self: stretch;' in tool_area_section
+    assert '.tag-filter-category-manager-registry-area {' in source
+    assert '.tag-filter-category-manager-registry-list {' in source
+    assert 'flex: 1;' in source
 
 
 def test_fullscreen_contract_stays_out_of_mobile_shell():
@@ -668,12 +696,9 @@ def test_desktop_single_current_mode_tool_area_surfaces_sort_tools_only_in_activ
         'x-if="$store.global.deviceType !== \'mobile\' && desktopWorkspaceMode === \'sort\' && isSortMode"',
         tool_area_index,
     ) > tool_area_index
-    assert find_contract_index(template_source, '当前排序与分类内排序', tool_area_index) > tool_area_index
-    assert find_contract_index(template_source, 'x-text="customOrderEnabled ? \'自定义排序\' : \'字符排序\'"', tool_area_index) > tool_area_index
-    assert find_contract_index(template_source, 'x-model="selectedCategorySortName"', tool_area_index) > tool_area_index
-    assert find_contract_index(template_source, '@click="resetSelectedCategoryTagOrder()"', tool_area_index) > tool_area_index
-    assert find_contract_index(template_source, '@click="moveSelectedCategoryTagUp(tag)"', tool_area_index) > tool_area_index
-    assert find_contract_index(template_source, '@click="moveSelectedCategoryTagDown(tag)"', tool_area_index) > tool_area_index
+    assert find_contract_index(template_source, '全局排序与分组拖拽', tool_area_index) > tool_area_index
+    assert find_contract_index(template_source, "x-text=\"customOrderEnabled ? '自定义' : '字符序'\"", tool_area_index) > tool_area_index
+    assert find_contract_index(template_source, "x-text=\"hasSortChanges ? '有' : '无'\"", tool_area_index) > tool_area_index
 
 
 def test_desktop_governance_drawer_and_single_current_mode_tool_area_define_separate_layout_hooks():
@@ -732,12 +757,12 @@ def test_desktop_single_current_mode_tool_area_category_manager_panel_uses_stack
     assert 'tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--category-manager' in tool_area_section
     assert 'class="tag-filter-category-manager-stack"' in tool_area_section
     assert 'class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--draft"' in tool_area_section
-    assert 'class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--sorting"' in tool_area_section
     assert 'class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--registry"' in tool_area_section
     assert '.tag-filter-category-manager-stack {' in source
     assert 'grid-template-columns: minmax(0, 1fr);' in source
     assert '.tag-filter-category-manager-stack-item {' in source
-    assert '.tag-filter-current-mode-tool-panel--category-manager .tag-category-editor-row.tag-category-editor-row-main {' in source
+    assert '.tag-filter-current-mode-tool-panel--category-manager' in source
+    assert '.tag-category-editor-row.tag-category-editor-row-main {' in source
     assert 'align-items: stretch;' in source
 
 
@@ -752,8 +777,8 @@ def test_desktop_single_current_mode_tool_area_delete_and_category_manager_panel
     assert 'class="tag-filter-delete-stack-item tag-filter-delete-stack-item--actions tag-filter-delete-stack-item--danger"' in tool_area_section
     assert '.tag-filter-delete-stack {' in source
     assert '.tag-filter-delete-stack-item {' in source
-    assert '.tag-filter-current-mode-tool-panel--category-manager .tag-filter-category-manager-stack-item--sorting {' in source
-    assert '.tag-filter-current-mode-tool-panel--category-manager .tag-filter-category-manager-sorting-stack {' in source
+    assert '.tag-filter-category-manager-registry-area {' in source
+    assert '.tag-filter-category-manager-registry-list {' in source
 
 
 def test_complex_modes_use_stacked_tool_layout():
@@ -768,18 +793,14 @@ def test_complex_modes_use_stacked_tool_layout():
     assert tool_area_section.count('tag-filter-delete-stack-item--danger') == 1
     assert '删除操作不可撤销，请确认待删除标签列表后再执行。' in tool_area_section
     assert 'class="tag-filter-category-manager-draft-area"' in tool_area_section
-    assert 'class="tag-filter-category-manager-sorting-area"' in tool_area_section
     assert 'class="tag-filter-category-manager-registry-area"' in tool_area_section
-    assert 'class="tag-filter-category-manager-sorting-list custom-scrollbar"' in tool_area_section
     assert 'class="tag-filter-category-manager-registry-list custom-scrollbar"' in tool_area_section
     assert '.tag-filter-current-mode-tool-panel--delete {' in source
     assert '.tag-filter-delete-pending-list {' in source
     assert '.tag-filter-delete-stack-item--danger {' in source
     assert '.tag-filter-current-mode-tool-panel--category-manager {' in source
     assert '.tag-filter-category-manager-draft-area {' in source
-    assert '.tag-filter-category-manager-sorting-area {' in source
     assert '.tag-filter-category-manager-registry-area {' in source
-    assert '.tag-filter-category-manager-sorting-list {' in source
     assert '.tag-filter-category-manager-registry-list {' in source
 
 
@@ -918,6 +939,7 @@ def test_fixed_non_fullscreen_shell_with_internal_scroll():
     assert 'grid-row: 1;' in basket_section
     assert 'grid-column: 1 / -1;' in footer_section
     assert 'grid-row: 3;' in footer_section
+    assert footer_section.count('@click="saveSortMode()"') == 0
     assert 'class="tag-filter-workspace-topbar"' in template_source
     assert 'class="tag-filter-workspace-top-tabs"' in template_source
     assert 'class="tag-filter-workspace-center"' in template_source
@@ -1088,7 +1110,7 @@ def test_compact_workspace_layout_css_removes_redundant_gap_and_persistent_right
     assert 'gap: 0;' in workbench_section
     assert 'display: flex;' in center_section
     assert 'flex-direction: column;' in center_section
-    assert 'align-self: start;' in tool_area_section
+    assert 'align-self: stretch;' in tool_area_section
     assert 'border: 1px solid var(--border-light);' not in tool_area_section
     assert 'background: color-mix(in srgb, var(--bg-sub), transparent 26%);' not in tool_area_section
     assert 'height: 100%;' not in tool_area_section
@@ -1177,6 +1199,25 @@ def test_workspace_footer_exposes_category_quick_index_contract():
     assert 'x-for="name in footerCategoryIndexNames"' in footer_section
     assert '@click="applyFooterCategoryQuickFilter(name)"' in footer_section
     assert '快速查看分类' in footer_section
+    assert '@click="saveSortMode()"' not in footer_section
+
+
+def test_category_manager_registry_panel_uses_internal_scroll_instead_of_overflowing_contract():
+    source = read_project_file('static/css/modules/modal-tools.css')
+
+    panel_section = source.split('.tag-filter-current-mode-tool-panel--category-manager {', 1)[1].split('.tag-filter-current-mode-tool-panel--filter {', 1)[0]
+    stack_section = source.split('.tag-filter-category-manager-stack {', 1)[1].split('.tag-filter-category-manager-stack-item {', 1)[0]
+    registry_item_section = source.split('.tag-filter-category-manager-stack-item--registry {', 1)[1].split('.tag-filter-category-manager-registry-area {', 1)[0]
+    registry_area_section = source.split('.tag-filter-category-manager-registry-area {', 1)[1].split('.tag-filter-category-manager-registry-list {', 1)[0]
+    registry_list_section = source.split('.tag-filter-category-manager-registry-list {', 1)[1].split('.tag-filter-category-manager-registry-list', 1)[0]
+
+    assert 'flex: 1;' in panel_section
+    assert 'overflow: hidden;' in panel_section
+    assert 'grid-template-rows: auto minmax(0, 1fr);' in stack_section
+    assert 'display: flex;' in registry_item_section
+    assert 'flex: 1;' in registry_area_section
+    assert 'overflow: hidden;' in registry_area_section
+    assert 'overflow-y: auto;' in registry_list_section
 
 
 def test_selected_basket_css_polish():
@@ -1237,5 +1278,7 @@ def test_desktop_chip_state_css_polish():
     assert '.tag-filter-desktop-main .tag-chip-category-unselected {' in source
     assert 'border-radius: 0.85rem;' in source
     assert 'padding: 0.45rem 0.78rem;' in source
-    assert 'transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease,' in source
+    assert 'background-color 0.16s ease,' in source
+    assert 'border-color 0.16s ease,' in source
+    assert 'color 0.16s ease,' in source
     assert 'box-shadow: none;' in source

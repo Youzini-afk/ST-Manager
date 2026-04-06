@@ -135,7 +135,6 @@ def test_tag_filter_modal_desktop_workbench_remember_last_tag_view_uses_store_he
     assert 'mixedCategoryView: this.mixedCategoryView' in source
     assert 'categoryFilterInclude: this.categoryFilterInclude' in source
     assert 'categoryFilterExclude: this.categoryFilterExclude' in source
-    assert 'lastCategorySortName: this.selectedCategorySortName' in source
 
 
 def test_state_tag_view_prefs_contract_includes_category_filter_and_last_category_fields():
@@ -274,22 +273,27 @@ def test_tag_filter_modal_filter_category_names_follow_taxonomy_categories_contr
     assert 'this.baseTagGroups' not in filter_names_section
 
 
-def test_tag_filter_modal_desktop_category_internal_sort_hooks_persist_via_taxonomy_contract():
+def test_tag_filter_modal_desktop_sort_mode_supports_grouped_drag_sort_contract():
     source = read_project_file('static/js/components/tagFilterModal.js')
     template = read_project_file('templates/modals/tag_filter.html')
 
-    assert 'selectedCategorySortName: ' in source
-    assert 'get selectedCategorySortTags() {' in source
-    assert 'moveSelectedCategoryTag(tag, delta) {' in source
-    assert 'moveSelectedCategoryTagUp(tag) {' in source
-    assert 'moveSelectedCategoryTagDown(tag) {' in source
-    assert 'resetSelectedCategoryTagOrder() {' in source
+    assert 'sortWorkingCategoryOrder: []' in source
+    assert 'sortWorkingCategoryTagOrder: {}' in source
+    assert 'get sortModeTagGroups() {' in source
+    assert 'get sortModeMixedTagsPool() {' in source
+    assert 'get sortModeVisibleTagCount() {' in source
+    assert 'getSortCategoryTags(categoryName) {' in source
+    assert 'buildTagGroups(tags, categoryOrder = []) {' in source
+    assert 'onSortCategoryDragStart(event, categoryName) {' in source
+    assert 'onSortCategoryDragOver(event, categoryName) {' in source
+    assert 'onSortCategoryDrop(event, targetCategoryName) {' in source
+    assert 'onSortCategoryDragEnd() {' in source
     assert 'category_tag_order' in source
     assert 'saveTagTaxonomy({ taxonomy })' in source
-    assert 'x-model="selectedCategorySortName"' in template
-    assert '@click="moveSelectedCategoryTagUp(tag)"' in template
-    assert '@click="moveSelectedCategoryTagDown(tag)"' in template
-    assert '@click="resetSelectedCategoryTagOrder()"' in template
+    assert 'x-for="group in sortModeTagGroups"' in template
+    assert '@dragstart="onSortCategoryDragStart($event, group.category)"' in template
+    assert '@drop="onSortCategoryDrop($event, group.category)"' in template
+    assert '@dragstart="onSortDragStart($event, tag)"' in template
 
 
 def test_batch_tag_modal_manual_inputs_use_shared_splitter_without_search_matching_contract():

@@ -810,7 +810,7 @@
                 class="text-xs mb-2"
                 style="color: var(--text-dim)"
               >
-                排序模式仅针对完整标签库生效，侧栏分类标签池将自动继承此全局顺序。
+                排序模式仅针对完整标签库生效；混合视图调整全局标签顺序，分组视图可继续调整分类顺序和分类内顺序。
               </div>
               <div
                 x-show="$store.global.deviceType !== 'mobile' && customOrderEnabled && !isSortMode"
@@ -889,6 +889,56 @@
                 x-show="!isWorkspaceHelpOpen"
               >
                 <template
+                  x-if="$store.global.deviceType !== 'mobile'"
+                >
+                  <div
+                    class="tag-filter-current-mode-tool-panel tag-filter-current-mode-tool-panel--view"
+                  >
+                    <div class="tag-filter-current-mode-tool-header">
+                      <div>
+                        <div class="text-xs" style="color: var(--text-dim)">
+                          共享视图工具
+                        </div>
+                        <div
+                          class="text-sm"
+                          style="color: var(--text-main); font-weight: 700"
+                        >
+                          标签视图
+                        </div>
+                      </div>
+                    </div>
+                    <div class="tag-filter-current-mode-tool-view-modes">
+                      <button
+                        type="button"
+                        class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
+                        :class="mixedCategoryView ? 'is-active' : ''"
+                        @click="showAllCategoriesMixed()"
+                      >
+                        混合视图
+                      </button>
+                      <button
+                        type="button"
+                        class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
+                        :class="!mixedCategoryView ? 'is-active' : ''"
+                        @click="mixedCategoryView = false; saveDesktopWorkbenchPrefs()"
+                      >
+                        分组视图
+                      </button>
+                    </div>
+                    <div class="text-xs" style="color: var(--text-dim)">
+                      <span x-show="desktopWorkspaceMode !== 'sort'"
+                        >当前模式下也会使用这套视图；下方分类条可快速聚焦某一分类。</span
+                      >
+                      <span x-show="desktopWorkspaceMode === 'sort' && mixedCategoryView"
+                        >混合视图下直接拖拽标签，即可调整完整标签库的全局顺序。</span
+                      >
+                      <span x-show="desktopWorkspaceMode === 'sort' && !mixedCategoryView"
+                        >分组视图下可拖拽分类标题调整分类顺序，并在分类内部拖拽标签调整该分类的内部顺序。</span
+                      >
+                    </div>
+                  </div>
+                </template>
+                <template
                   x-if="$store.global.deviceType !== 'mobile' && desktopWorkspaceMode === 'filter' && !isSortMode && !isDeleteMode && !showCategoryMode && !showCategoryManager"
                 >
                   <div
@@ -945,32 +995,6 @@
                         ></span>
                       </div>
                     </div>
-                    <div class="tag-filter-current-mode-tool-section">
-                      <div
-                        class="text-xs"
-                        style="color: var(--text-dim); margin-bottom: 0.45rem"
-                      >
-                        标签视图
-                      </div>
-                      <div class="tag-filter-current-mode-tool-view-modes">
-                        <button
-                          type="button"
-                          class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
-                          :class="mixedCategoryView ? 'is-active' : ''"
-                          @click="showAllCategoriesMixed()"
-                        >
-                          混合视图
-                        </button>
-                        <button
-                          type="button"
-                          class="tag-filter-workspace-top-tab tag-filter-workspace-top-tab--utility"
-                          :class="!mixedCategoryView ? 'is-active' : ''"
-                          @click="mixedCategoryView = false; saveDesktopWorkbenchPrefs()"
-                        >
-                          分组视图
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 </template>
                 <template
@@ -988,7 +1012,7 @@
                           class="text-sm"
                           style="color: var(--text-main); font-weight: 700"
                         >
-                          当前排序与分类内排序
+                          全局排序与分组拖拽
                         </div>
                       </div>
                       <div class="tag-filter-current-mode-tool-actions">
@@ -996,7 +1020,7 @@
                           type="button"
                           class="tag-category-manager-btn"
                           @click="clearCustomOrder()"
-                          x-show="customOrderEnabled && !isSortDirty"
+                          x-show="customOrderEnabled"
                         >
                           恢复字符排序
                         </button>
@@ -1010,132 +1034,42 @@
                         </button>
                       </div>
                     </div>
-                    <div
-                      class="tag-category-editor-row"
-                      style="
-                        align-items: flex-start;
-                        justify-content: space-between;
-                        gap: 1rem;
-                        margin-bottom: 0.75rem;
-                      "
-                    >
-                      <div style="flex: 0 0 16rem; max-width: 16rem">
-                        <div
-                          class="text-xs"
-                          style="color: var(--text-dim); margin-bottom: 0.35rem"
+                    <div class="tag-filter-current-mode-tool-summary-grid">
+                      <div class="tag-filter-current-mode-tool-summary-card">
+                        <span class="tag-filter-current-mode-tool-summary-label"
+                          >当前标签顺序</span
                         >
-                          当前排序
-                        </div>
-                        <div
-                          class="text-xs"
-                          style="
-                            color: var(--text-main);
-                            margin-bottom: 0.65rem;
-                          "
-                        >
-                          <span
-                            x-text="customOrderEnabled ? '自定义排序' : '字符排序'"
-                          ></span>
-                        </div>
-                        <div
-                          class="text-xs"
-                          style="color: var(--text-dim); margin-bottom: 0.35rem"
-                        >
-                          分类内排序
-                        </div>
-                        <select
-                          x-model="selectedCategorySortName"
-                          @change="saveDesktopWorkbenchPrefs()"
-                          class="form-input"
-                          style="padding: 0.5rem 0.65rem"
-                        >
-                          <option value="">选择一个分类</option>
-                          <template
-                            x-for="name in availableCategoryNames"
-                            :key="'sort-context-cat-' + name"
-                          >
-                            <option :value="name" x-text="name"></option>
-                          </template>
-                        </select>
+                        <span
+                          class="tag-filter-current-mode-tool-summary-value"
+                          x-text="customOrderEnabled ? '自定义' : '字符序'"
+                        ></span>
                       </div>
-                      <div style="flex: 1; min-width: 0">
-                        <div
-                          class="tag-category-editor-row"
-                          style="
-                            justify-content: space-between;
-                            margin-bottom: 0.35rem;
-                          "
+                      <div class="tag-filter-current-mode-tool-summary-card">
+                        <span class="tag-filter-current-mode-tool-summary-label"
+                          >可见标签</span
                         >
-                          <span class="text-xs" style="color: var(--text-dim)"
-                            >检查当前全局排序对分类内部顺序的影响，并按需微调。</span
-                          >
-                          <button
-                            type="button"
-                            class="tag-category-manager-btn"
-                            @click="resetSelectedCategoryTagOrder()"
-                            :disabled="!selectedCategorySortName"
-                            :style="!selectedCategorySortName ? 'opacity:0.45; cursor:not-allowed;' : ''"
-                          >
-                            恢复全局顺序
-                          </button>
-                        </div>
-                        <div
-                          class="tag-category-manager-list custom-scrollbar"
-                          style="max-height: 10rem"
-                        >
-                          <template x-if="!selectedCategorySortName">
-                            <div
-                              class="text-xs"
-                              style="color: var(--text-dim); padding: 0.5rem 0"
-                            >
-                              选择分类后可在此查看并调整内部标签顺序。
-                            </div>
-                          </template>
-                          <template
-                            x-if="selectedCategorySortName && selectedCategorySortTags.length === 0"
-                          >
-                            <div
-                              class="text-xs"
-                              style="color: var(--text-dim); padding: 0.5rem 0"
-                            >
-                              当前分类暂无可排序标签。
-                            </div>
-                          </template>
-                          <template
-                            x-for="(tag, index) in selectedCategorySortTags"
-                            :key="'sort-context-tag-' + selectedCategorySortName + '-' + tag"
-                          >
-                            <div class="tag-category-manager-item">
-                              <div class="tag-category-manager-main">
-                                <span
-                                  class="tag-category-manager-name"
-                                  x-text="tag"
-                                ></span>
-                              </div>
-                              <div class="tag-category-manager-actions">
-                                <button
-                                  type="button"
-                                  class="tag-category-manager-btn"
-                                  @click="moveSelectedCategoryTagUp(tag)"
-                                  :disabled="index===0"
-                                  :style="index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''"
-                                >
-                                  上移
-                                </button>
-                                <button
-                                  type="button"
-                                  class="tag-category-manager-btn"
-                                  @click="moveSelectedCategoryTagDown(tag)"
-                                  :disabled="index===selectedCategorySortTags.length-1"
-                                  :style="index===selectedCategorySortTags.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''"
-                                >
-                                  下移
-                                </button>
-                              </div>
-                            </div>
-                          </template>
-                        </div>
+                        <span
+                          class="tag-filter-current-mode-tool-summary-value"
+                          x-text="sortModeVisibleTagCount"
+                        ></span>
                       </div>
+                      <div class="tag-filter-current-mode-tool-summary-card">
+                        <span class="tag-filter-current-mode-tool-summary-label"
+                          >未保存改动</span
+                        >
+                        <span
+                          class="tag-filter-current-mode-tool-summary-value"
+                          x-text="hasSortChanges ? '有' : '无'"
+                        ></span>
+                      </div>
+                    </div>
+                    <div class="text-xs" style="color: var(--text-dim)">
+                      <span x-show="mixedCategoryView"
+                        >当前为全局排序视图，拖拽标签即可重排整个标签库；下方分类条可快速切到分组视图并聚焦某一分类。</span
+                      >
+                      <span x-show="!mixedCategoryView"
+                        >当前为分组排序视图，拖拽分类标题可调整分类顺序，拖拽分类内部标签可调整该分类内部顺序。</span
+                      >
                     </div>
                   </div>
                 </template>
@@ -1515,136 +1449,12 @@
                         </div>
                       </div>
                       <div
-                        class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--sorting"
-                      >
-                        <div class="tag-filter-category-manager-sorting-area">
-                          <div
-                            class="tag-category-editor-row tag-filter-category-manager-sorting-stack"
-                            style="
-                              align-items: flex-start;
-                              justify-content: space-between;
-                              gap: 1rem;
-                              margin-bottom: 0.75rem;
-                            "
-                          >
-                            <div style="min-width: 0">
-                              <div
-                                class="text-xs"
-                                style="
-                                  color: var(--text-dim);
-                                  margin-bottom: 0.35rem;
-                                "
-                              >
-                                分类内排序
-                              </div>
-                              <select
-                                x-model="selectedCategorySortName"
-                                @change="saveDesktopWorkbenchPrefs()"
-                                class="form-input"
-                                style="padding: 0.5rem 0.65rem"
-                              >
-                                <option value="">选择一个分类</option>
-                                <template
-                                  x-for="name in availableCategoryNames"
-                                  :key="'sort-cat-' + name"
-                                >
-                                  <option :value="name" x-text="name"></option>
-                                </template>
-                              </select>
-                            </div>
-                            <div style="flex: 1; min-width: 0">
-                              <div
-                                class="tag-category-editor-row"
-                                style="
-                                  justify-content: space-between;
-                                  margin-bottom: 0.35rem;
-                                "
-                              >
-                                <span
-                                  class="text-xs"
-                                  style="color: var(--text-dim)"
-                                  >仅对当前选中分类生效，保存后覆盖该分类的内部顺序。</span
-                                >
-                                <button
-                                  type="button"
-                                  class="tag-category-manager-btn"
-                                  @click="resetSelectedCategoryTagOrder()"
-                                  :disabled="!selectedCategorySortName"
-                                  :style="!selectedCategorySortName ? 'opacity:0.45; cursor:not-allowed;' : ''"
-                                >
-                                  恢复全局顺序
-                                </button>
-                              </div>
-                              <div
-                                class="tag-filter-category-manager-sorting-list custom-scrollbar"
-                                style="max-height: 10rem"
-                              >
-                                <template x-if="!selectedCategorySortName">
-                                  <div
-                                    class="text-xs"
-                                    style="
-                                      color: var(--text-dim);
-                                      padding: 0.5rem 0;
-                                    "
-                                  >
-                                    选择分类后可在此调整内部标签顺序。
-                                  </div>
-                                </template>
-                                <template
-                                  x-if="selectedCategorySortName && selectedCategorySortTags.length === 0"
-                                >
-                                  <div
-                                    class="text-xs"
-                                    style="
-                                      color: var(--text-dim);
-                                      padding: 0.5rem 0;
-                                    "
-                                  >
-                                    当前分类暂无可排序标签。
-                                  </div>
-                                </template>
-                                <template
-                                  x-for="(tag, index) in selectedCategorySortTags"
-                                  :key="'sort-tag-' + selectedCategorySortName + '-' + tag"
-                                >
-                                  <div class="tag-category-manager-item">
-                                    <div class="tag-category-manager-main">
-                                      <span
-                                        class="tag-category-manager-name"
-                                        x-text="tag"
-                                      ></span>
-                                    </div>
-                                    <div class="tag-category-manager-actions">
-                                      <button
-                                        type="button"
-                                        class="tag-category-manager-btn"
-                                        @click="moveSelectedCategoryTagUp(tag)"
-                                        :disabled="index===0"
-                                        :style="index===0 ? 'opacity:0.45; cursor:not-allowed;' : ''"
-                                      >
-                                        上移
-                                      </button>
-                                      <button
-                                        type="button"
-                                        class="tag-category-manager-btn"
-                                        @click="moveSelectedCategoryTagDown(tag)"
-                                        :disabled="index===selectedCategorySortTags.length-1"
-                                        :style="index===selectedCategorySortTags.length-1 ? 'opacity:0.45; cursor:not-allowed;' : ''"
-                                      >
-                                        下移
-                                      </button>
-                                    </div>
-                                  </div>
-                                </template>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div
                         class="tag-filter-category-manager-stack-item tag-filter-category-manager-stack-item--registry"
                       >
                         <div class="tag-filter-category-manager-registry-area">
+                          <div class="text-xs" style="color: var(--text-dim)">
+                            这里只维护分类定义本身；分类拖拽排序与分类内排序请在“排序”模式中完成。
+                          </div>
                           <div
                             class="tag-filter-category-manager-registry-list custom-scrollbar"
                           >
@@ -1886,28 +1696,97 @@
                   <template
                     x-if="$store.global.deviceType !== 'mobile' && isSortMode"
                   >
-                    <template x-for="tag in sortModeTagsPool" :key="tag">
-                      <button
-                        class="tag-chip-btn flex items-center tag-chip-sortable"
-                        :class="dragOverTag === tag ? 'tag-chip-sort-over tag-chip-categorized' : 'tag-chip-unselected tag-chip-categorized'"
-                        :style="getTagChipStyle(tag)"
-                        draggable="true"
-                        @dragstart="onSortDragStart($event, tag)"
-                        @dragover="onSortDragOver($event, tag)"
-                        @drop="onSortDrop($event, tag)"
-                        @dragend="onSortDragEnd()"
-                      >
-                        <span class="tag-chip-drag-handle">☰</span>
-                        <span
-                          x-text="tag"
-                          style="
-                            overflow: hidden;
-                            text-overflow: ellipsis;
-                            white-space: nowrap;
-                          "
-                        ></span>
-                      </button>
-                    </template>
+                    <div class="tag-cloud-mode-wrap">
+                      <template x-if="mixedCategoryView">
+                        <template
+                          x-for="tag in sortModeMixedTagsPool"
+                          :key="'sort-mixed-' + tag"
+                        >
+                          <button
+                            class="tag-chip-btn flex items-center tag-chip-sortable"
+                            :class="dragOverTag === tag ? 'tag-chip-sort-over tag-chip-categorized' : 'tag-chip-unselected tag-chip-categorized'"
+                            :style="getTagChipStyle(tag)"
+                            draggable="true"
+                            @dragstart="onSortDragStart($event, tag)"
+                            @dragover="onSortDragOver($event, tag)"
+                            @drop="onSortDrop($event, tag)"
+                            @dragend="onSortDragEnd()"
+                          >
+                            <span class="tag-chip-drag-handle">☰</span>
+                            <span
+                              x-text="tag"
+                              style="
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                              "
+                            ></span>
+                          </button>
+                        </template>
+                      </template>
+                      <template x-if="!mixedCategoryView">
+                        <template
+                          x-for="group in sortModeTagGroups"
+                          :key="'sort-group-' + group.category"
+                        >
+                          <div
+                            class="tag-group-block tag-group-block--sortable-category"
+                            :class="dragOverCategory === group.category ? 'is-drag-over' : ''"
+                          >
+                            <div
+                              class="tag-group-head tag-group-head--sortable"
+                              draggable="true"
+                              @dragstart="onSortCategoryDragStart($event, group.category)"
+                              @dragover="onSortCategoryDragOver($event, group.category)"
+                              @drop="onSortCategoryDrop($event, group.category)"
+                              @dragend="onSortCategoryDragEnd()"
+                            >
+                              <span class="tag-chip-drag-handle">☰</span>
+                              <span
+                                class="tag-group-dot"
+                                :style="`background:${group.color};`"
+                              ></span>
+                              <span
+                                class="tag-group-title"
+                                x-text="group.category"
+                              ></span>
+                              <span
+                                class="tag-group-count"
+                                x-text="group.tags.length + ' 个'"
+                              ></span>
+                            </div>
+                            <div class="tag-group-cloud">
+                              <template
+                                x-for="tag in group.tags"
+                                :key="'sort-tag-' + group.category + '-' + tag"
+                              >
+                                <button
+                                  class="tag-chip-btn flex items-center tag-chip-sortable"
+                                  :class="dragOverTag === tag ? 'tag-chip-sort-over tag-chip-categorized' : 'tag-chip-unselected tag-chip-categorized'"
+                                  :style="getTagChipStyle(tag)"
+                                  draggable="true"
+                                  @dragstart="onSortDragStart($event, tag)"
+                                  @dragover="onSortDragOver($event, tag)"
+                                  @drop="onSortDrop($event, tag)"
+                                  @dragend="onSortDragEnd()"
+                                >
+                                  <span class="tag-chip-drag-handle">☰</span>
+                                  <span
+                                    class="tag-chip-label"
+                                    x-text="tag"
+                                    style="
+                                      overflow: hidden;
+                                      text-overflow: ellipsis;
+                                      white-space: nowrap;
+                                    "
+                                  ></span>
+                                </button>
+                              </template>
+                            </div>
+                          </div>
+                        </template>
+                      </template>
+                    </div>
                   </template>
                   <div
                     x-show="!isSortMode && filteredVisibleTagCount === 0"
@@ -1921,7 +1800,7 @@
                     无匹配标签
                   </div>
                   <div
-                    x-show="isSortMode && sortModeTagsPool.length === 0"
+                    x-show="isSortMode && sortModeVisibleTagCount === 0"
                     style="
                       width: 100%;
                       text-align: center;
@@ -1929,7 +1808,7 @@
                       margin-top: 2rem;
                     "
                   >
-                    暂无可排序标签
+                    当前视图下暂无可排序标签
                   </div>
                 </div>
               </div>
@@ -1947,7 +1826,7 @@
               >
                 <div class="flex items-center gap-4">
                   <div
-                    x-show="desktopWorkspaceMode === 'filter' || desktopWorkspaceMode === 'batch-category' || desktopWorkspaceMode === 'category-manager'"
+                    x-show="desktopWorkspaceMode === 'filter' || desktopWorkspaceMode === 'batch-category' || desktopWorkspaceMode === 'sort' || desktopWorkspaceMode === 'category-manager' || desktopWorkspaceMode === 'blacklist' || desktopWorkspaceMode === 'delete'"
                     class="tag-category-filter-row tag-category-filter-row--workspace"
                   >
                     <button
@@ -1990,13 +1869,6 @@
                   </button>
                 </div>
                 <div class="flex gap-2">
-                  <button
-                    @click="saveSortMode()"
-                    x-show="isSortMode"
-                    class="text-xs bg-green-700 hover:bg-green-600 px-3 py-1 rounded text-white font-bold shadow-md"
-                  >
-                    保存排序
-                  </button>
                   <button
                     @click="deleteSelectedTags()"
                     x-show="isDeleteMode && selectedTagsForDeletion.length > 0"
@@ -2180,7 +2052,7 @@
                       <ul class="tag-filter-workspace-help-list">
                         <li>排序模式用于调整完整标签库的全局顺序。</li>
                         <li>
-                          你也可以在右侧选择某个分类，单独微调这个分类内部的标签顺序。
+                          混合视图下拖拽标签可调整全局顺序；分组视图下还能拖拽分类标题和分类内标签。
                         </li>
                         <li>
                           恢复字符排序会清除全局自定义顺序并回到默认排序。
@@ -2274,7 +2146,7 @@
                         <li>
                           然后进入分类管理，整理分类定义、默认分类与视觉配置。
                         </li>
-                        <li>最后用排序模式优化全局顺序和重点分类内部顺序。</li>
+                        <li>最后用排序模式优化全局顺序，以及分组视图中的分类顺序和分类内顺序。</li>
                         <li>只有确认标签确实无用时，再进入删除模式清理。</li>
                       </ol>
                     </section>

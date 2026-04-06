@@ -208,6 +208,33 @@
   gap: 0.52rem;
 }
 
+.tag-group-block--sortable-category {
+  border: 1px solid color-mix(in srgb, var(--border-light), transparent 12%);
+  border-radius: 0.8rem;
+  padding: 0.6rem 0.7rem 0.7rem;
+  background: color-mix(in srgb, var(--bg-panel), transparent 8%);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.tag-group-block--sortable-category.is-drag-over {
+  border-color: color-mix(in srgb, var(--accent-main), transparent 36%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-main), transparent 70%);
+}
+
+.tag-group-head--sortable {
+  cursor: grab;
+  border-radius: 0.7rem;
+  padding: 0.32rem 0.4rem;
+  background: color-mix(in srgb, var(--bg-sub), transparent 22%);
+}
+
+.tag-group-head--sortable:active {
+  cursor: grabbing;
+}
+
 .tag-category-editor {
   margin-bottom: 0.65rem;
   border: 1px solid var(--border-light);
@@ -838,7 +865,7 @@
   max-block-size: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  align-self: start;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -862,9 +889,18 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .tag-filter-current-mode-tool-panel--filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.tag-filter-current-mode-tool-panel--view,
+.tag-filter-current-mode-tool-panel--sort {
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
@@ -926,8 +962,10 @@
 .tag-filter-category-manager-stack {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0.9rem;
   min-height: 0;
+  flex: 1;
 }
 
 .tag-filter-category-manager-stack-item {
@@ -935,18 +973,13 @@
   min-height: 0;
 }
 
-.tag-filter-current-mode-tool-panel--category-manager
-  .tag-filter-category-manager-stack-item--sorting {
-  min-width: 0;
+.tag-filter-category-manager-stack-item--registry {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .tag-filter-category-manager-draft-area {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.tag-filter-category-manager-sorting-area {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
@@ -957,22 +990,14 @@
   flex-direction: column;
   gap: 0.65rem;
   min-height: 0;
-}
-
-.tag-filter-current-mode-tool-panel--category-manager
-  .tag-filter-category-manager-sorting-stack {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
-}
-
-.tag-filter-category-manager-sorting-list {
-  max-height: 10rem;
+  flex: 1;
+  overflow: hidden;
 }
 
 .tag-filter-category-manager-registry-list {
   min-height: 0;
-  max-height: 18rem;
+  flex: 1;
+  overflow-y: auto;
   padding-right: 0.15rem;
   padding-bottom: 1rem;
 }
@@ -2174,6 +2199,7 @@ html.light-mode .preview-toggle-inactive {
   .tag-modal-container {
     width: 100vw;
     max-width: 100vw;
+    height: 100vh;
     height: 100dvh;
     min-height: 100dvh;
     border-radius: 0;
