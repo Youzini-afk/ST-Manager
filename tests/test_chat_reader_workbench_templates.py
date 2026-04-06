@@ -2015,6 +2015,27 @@ def test_worldinfo_grid_template_uses_info_card_front_layout():
     assert '标签待接入' in wi_grid_template or 'getWorldInfoTagPlaceholder(item)' in wi_grid_template
 
 
+def test_worldinfo_grid_template_groups_title_owner_and_tag_summary():
+    wi_grid_template = read_project_file('templates/components/grid_wi.html')
+    primary_block = extract_balanced_tag_block(wi_grid_template, '<div class="wi-card-primary">')
+
+    assert 'wi-card-title-group' in wi_grid_template
+    assert 'wi-card-tag-summary' in wi_grid_template
+    title_group_index = primary_block.index('wi-card-title-group')
+    owner_row_index = primary_block.index('wi-card-owner-row')
+    tag_summary_index = primary_block.index('wi-card-tag-summary')
+    assert title_group_index < owner_row_index < tag_summary_index
+
+
+def test_worldinfo_grid_template_uses_css_drawn_archive_markers():
+    wi_grid_template = read_project_file('templates/components/grid_wi.html')
+
+    assert 'class="wi-card-bookmark" aria-hidden="true"' in wi_grid_template
+    assert 'class="wi-card-owner-icon" aria-hidden="true"' in wi_grid_template
+    assert '📖' not in wi_grid_template
+    assert '🔗' not in wi_grid_template
+
+
 def test_worldinfo_grid_template_preserves_visual_icon_anchor():
     wi_grid_template = read_project_file('templates/components/grid_wi.html')
 
@@ -2030,12 +2051,64 @@ def test_worldinfo_css_preserves_front_visual_treatment():
     assert '.wi-card-front::before' in wi_css or '.wi-card-front::after' in wi_css
 
 
+def test_worldinfo_css_exposes_archive_front_groups_and_light_mode_palette():
+    wi_css = read_project_file('static/css/modules/view-wi.css')
+
+    assert '.wi-card-title-group {' in wi_css
+    assert '.wi-card-tag-summary {' in wi_css
+    assert '.wi-card-owner-icon::before' in wi_css
+    assert 'html.light-mode .wi-card-front {' in wi_css
+    assert 'html.light-mode .wi-card-title-row::before' in wi_css
+    assert 'html.light-mode .wi-card-tag-summary {' in wi_css
+
+
 def test_worldinfo_css_separates_badge_tag_and_note_state_visual_weight():
     wi_css = read_project_file('static/css/modules/view-wi.css')
 
     assert '.wi-card-tag-placeholder::before' in wi_css
     assert '.wi-card-note-state.no-note' in wi_css
     assert '.wi-card-note-state.has-note' in wi_css
+
+
+def test_worldinfo_css_archive_tag_summary_overrides_placeholder_rules():
+    wi_css = read_project_file('static/css/modules/view-wi.css')
+
+    placeholder_index = wi_css.index('.wi-card-tag-placeholder {')
+    archive_override_index = wi_css.index('.wi-card-tag-placeholder.wi-card-tag-summary {')
+    assert placeholder_index < archive_override_index
+    assert '.wi-card-tag-placeholder.wi-card-tag-summary::before {' in wi_css
+
+
+def test_worldinfo_css_styles_archive_backface_and_catalog_meta():
+    wi_css = read_project_file('static/css/modules/view-wi.css')
+
+    assert '.wi-card-back-header::after' in wi_css
+    assert '.wi-card-back-note-wrap::before' in wi_css
+    assert 'html.light-mode .wi-card-back {' in wi_css
+    assert 'html.light-mode .wi-card-meta-chip {' in wi_css
+    assert 'html.light-mode .wi-card-note-state.has-note {' in wi_css
+
+
+def test_worldinfo_css_back_header_reserves_space_for_catalog_stamp():
+    wi_css = read_project_file('static/css/modules/view-wi.css')
+
+    back_header_block = extract_exact_css_block(wi_css, '.wi-card-back-header')
+    assert '.wi-card-back-header::after' in wi_css
+    assert 'padding:' in back_header_block
+
+    padding_match = re.search(r'padding\s*:\s*([^;]+);', back_header_block)
+    assert padding_match is not None
+
+    padding_values = padding_match.group(1).split()
+    assert len(padding_values) == 4
+
+    right_padding_match = re.fullmatch(r'([0-9]*\.?[0-9]+)([a-z%]+)', padding_values[1])
+    left_padding_match = re.fullmatch(r'([0-9]*\.?[0-9]+)([a-z%]+)', padding_values[3])
+
+    assert right_padding_match is not None
+    assert left_padding_match is not None
+    assert right_padding_match.group(2) == left_padding_match.group(2)
+    assert float(right_padding_match.group(1)) > float(left_padding_match.group(1))
 
 
 def test_worldinfo_mobile_back_note_is_constrained_within_card_bounds():
@@ -2057,6 +2130,26 @@ def test_worldinfo_grid_template_uses_back_note_reading_layout():
     assert 'wi-card-back-note-wrap' in wi_grid_template
     assert 'wi-card-back-meta' in wi_grid_template
     assert 'card-bottom-toolbar wi-card-bottom-toolbar' not in wi_grid_template
+
+
+def test_worldinfo_grid_template_uses_shell_padding_only_for_flip_corner_space():
+    wi_grid_template = read_project_file('templates/components/grid_wi.html')
+
+    assert 'class="wi-grid-card group relative rounded-xl p-[1px] cursor-pointer transition-all duration-200 flex flex-col"' in wi_grid_template
+    assert 'class="wi-grid-card group relative border rounded-xl p-3 cursor-pointer transition-all duration-200 flex flex-col"' not in wi_grid_template
+    assert 'style="background: var(--bg-panel); border-color: var(--border-main);"' not in wi_grid_template
+
+
+def test_worldinfo_css_uses_single_shell_card_and_stretches_flip_inner():
+    wi_css = read_project_file('static/css/modules/view-wi.css')
+
+    grid_card_block = extract_exact_css_block(wi_css, '.wi-grid-card')
+    assert 'padding: 0;' in grid_card_block
+    assert 'background: transparent;' in grid_card_block
+    assert 'border-color: transparent;' in grid_card_block
+
+    flip_inner_block = extract_exact_css_block(wi_css, '.wi-grid-card .card-flip-inner')
+    assert 'height: 100%;' in flip_inner_block
 
 
 def test_worldinfo_detail_template_includes_local_note_editor_actions():

@@ -21,12 +21,11 @@
             class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
             <template x-for="item in wiList" :key="getWorldInfoRenderKey(item)">
                 <div @click="handleWorldInfoClick($event, item)"
-                    class="wi-grid-card group relative border rounded-xl p-3 cursor-pointer transition-all duration-200 flex flex-col"
+                    class="wi-grid-card group relative rounded-xl p-[1px] cursor-pointer transition-all duration-200 flex flex-col"
                     :class="[$store.global.deviceType === 'mobile' ? '' : 'h-52', selectedIds.includes(item.id) ? 'selected' : '', canSelectWorldInfoItem(item) ? '' : 'is-selection-disabled', isWorldInfoFlipped(item.id) ? 'is-flipped' : '']"
                     :data-wi-id="item.id"
                     draggable="true" @dragstart="dragStart($event, item)" @mouseenter="handleWorldInfoMouseEnter(item.id)"
-                    @mouseleave="handleWorldInfoMouseLeave(item.id)"
-                    style="background: var(--bg-panel); border-color: var(--border-main);">
+                    @mouseleave="handleWorldInfoMouseLeave(item.id)">
 
                     <div class="card-flip-inner" :class="{'is-flipped': isWorldInfoFlipped(item.id)}">
                         <div class="card-face card-front wi-card-front">
@@ -58,28 +57,31 @@
 
                             <div class="wi-card-primary">
                                 <div class="wi-card-title-row">
-                                    <div class="wi-card-bookmark" aria-hidden="true">📖</div>
-                                    <div class="wi-card-title-wrap">
-                                        <h3 class="wi-card-title"
-                                            :class="item.name_source === 'filename' ? 'wi-title-fallback' : ''"
-                                            x-text="item.name"></h3>
+                                    <div class="wi-card-bookmark" aria-hidden="true"></div>
+                                    <div class="wi-card-title-group">
+                                        <div class="wi-card-title-wrap">
+                                            <h3 class="wi-card-title"
+                                                :class="item.name_source === 'filename' ? 'wi-title-fallback' : ''"
+                                                x-text="item.name"></h3>
+                                        </div>
+
+                                        <div class="wi-card-owner-row">
+                                            <template x-if="getWorldInfoOwnerName(item)">
+                                                <button type="button" class="wi-card-owner-link" @click.stop="jumpToCardFromWi(getWorldInfoOwnerId(item))"
+                                                    :title="getWorldInfoOwnerName(item)">
+                                                    <span class="wi-card-owner-icon" aria-hidden="true"></span>
+                                                    <span class="wi-card-owner-text" x-text="getWorldInfoOwnerName(item)"></span>
+                                                </button>
+                                            </template>
+                                            <template x-if="!getWorldInfoOwnerName(item)">
+                                                <div class="wi-card-owner-empty" x-text="getWorldInfoOwnerFallback(item)"></div>
+                                            </template>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div class="wi-card-owner-row">
-                                    <template x-if="getWorldInfoOwnerName(item)">
-                                        <button type="button" class="wi-card-owner-link" @click.stop="jumpToCardFromWi(getWorldInfoOwnerId(item))"
-                                            :title="getWorldInfoOwnerName(item)">
-                                            <span class="wi-card-owner-icon">🔗</span>
-                                            <span class="wi-card-owner-text" x-text="getWorldInfoOwnerName(item)"></span>
-                                        </button>
-                                    </template>
-                                    <template x-if="!getWorldInfoOwnerName(item)">
-                                        <div class="wi-card-owner-empty" x-text="getWorldInfoOwnerFallback(item)"></div>
-                                    </template>
-                                </div>
-
-                                <div class="wi-card-tag-placeholder" :title="getWorldInfoTagPlaceholder(item)"
+                                <div class="wi-card-tag-placeholder wi-card-tag-summary"
+                                    :title="getWorldInfoTagPlaceholder(item)"
                                     x-text="getWorldInfoTagPlaceholder(item)"></div>
                             </div>
 

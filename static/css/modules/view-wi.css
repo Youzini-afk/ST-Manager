@@ -202,16 +202,17 @@ html.light-mode .wi-status-constant {
 
 .wi-badge {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid;
-  font-weight: bold;
+  top: 0.72rem;
+  right: 0.72rem;
+  padding: 0.18rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border-light), transparent 18%);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .wi-badge.global {
@@ -1198,10 +1199,9 @@ html.light-mode .wi-help-modal-content {
 }
 
 .wi-grid-card {
-  background: var(--bg-panel);
-  border-color: var(--border-main);
-  box-shadow: 0 6px 12px -8px var(--shadow-color);
-  overflow: hidden;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1209,8 +1209,6 @@ html.light-mode .wi-help-modal-content {
 
 .wi-grid-card.selected {
   border-color: color-mix(in srgb, var(--accent-light), #ffffff 12%);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-main), transparent 18%),
-    0 16px 30px rgba(0, 0, 0, 0.18);
 }
 
 .wi-grid-card.is-selection-disabled {
@@ -1220,7 +1218,6 @@ html.light-mode .wi-help-modal-content {
 .wi-grid-card:hover {
   transform: translateY(-3px);
   border-color: var(--accent-light);
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.14);
 }
 
 .wi-grid-card:hover .card-select-overlay,
@@ -1228,10 +1225,6 @@ html.light-mode .wi-help-modal-content {
 .wi-grid-card .card-select-overlay.is-mobile {
   opacity: 1;
   transform: scale(1);
-}
-
-html.light-mode .wi-grid-card:hover {
-  box-shadow: 0 16px 24px rgba(0, 0, 0, 0.1);
 }
 
 .wi-grid-card .wi-badge {
@@ -1249,6 +1242,7 @@ html.light-mode .wi-grid-card:hover {
 
 .wi-grid-card .card-flip-inner {
   flex: 1 1 auto;
+  height: 100%;
 }
 
 .wi-card-front,
@@ -1260,21 +1254,28 @@ html.light-mode .wi-grid-card:hover {
 }
 
 .wi-card-front {
-  padding: 0.72rem 0.78rem 0.76rem;
-  gap: 0.52rem;
   position: relative;
+  padding: 0.82rem 0.86rem 0.8rem;
+  gap: 0.68rem;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-panel), #ffffff 2%),
+    color-mix(in srgb, var(--bg-panel), #0f172a 4%)
+  );
+  border: 1px solid color-mix(in srgb, var(--border-main), #c8a96b 16%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--border-light), transparent 50%),
+    0 16px 30px rgba(2, 6, 23, 0.18);
 }
 
 .wi-card-front::before {
   content: "";
   position: absolute;
-  inset: 0;
+  inset: 0.44rem;
+  border-radius: calc(0.75rem - 0.16rem);
+  border: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 12%);
   pointer-events: none;
-  background:
-    radial-gradient(circle at 15% 14%, rgba(var(--accent-main-rgb), 0.2), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 34%),
-    linear-gradient(145deg, color-mix(in srgb, var(--accent-main), transparent 95%), transparent 46%);
-  opacity: 1;
+  opacity: 0.92;
 }
 
 .wi-card-front::after {
@@ -1283,24 +1284,21 @@ html.light-mode .wi-grid-card:hover {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--accent-main), transparent 82%) 0%,
-      color-mix(in srgb, var(--accent-main), transparent 96%) 18%,
-      transparent 32%
-    ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 26%);
-  opacity: 0.92;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 24%),
+    radial-gradient(circle at 18% 12%, rgba(214, 179, 106, 0.1), transparent 22%);
+  opacity: 0.9;
 }
 
 .wi-card-back {
   background: linear-gradient(
     180deg,
-    rgba(var(--bg-panel-rgb), 0.54),
-    rgba(var(--bg-panel-rgb), 0.68)
+    color-mix(in srgb, var(--bg-panel), #ffffff 2%),
+    color-mix(in srgb, var(--bg-panel), #0f172a 6%)
   );
+  border: 1px solid color-mix(in srgb, var(--border-main), #d6b36a 14%);
   padding: 0;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-light), transparent 52%);
 }
 
 .wi-card-header {
@@ -1362,7 +1360,7 @@ html.light-mode .wi-grid-card:hover {
 .wi-card-primary {
   display: flex;
   flex-direction: column;
-  gap: 0.36rem;
+  gap: 0.48rem;
   min-height: 0;
   flex: 1 1 auto;
   position: relative;
@@ -1372,7 +1370,7 @@ html.light-mode .wi-grid-card:hover {
 .wi-card-title-row {
   display: flex;
   align-items: flex-start;
-  gap: 0.52rem;
+  gap: 0.62rem;
   min-width: 0;
   position: relative;
 }
@@ -1380,51 +1378,66 @@ html.light-mode .wi-grid-card:hover {
 .wi-card-title-row::before {
   content: "";
   position: absolute;
-  left: -0.1rem;
-  top: -0.1rem;
-  bottom: -0.16rem;
+  left: -0.08rem;
+  top: 0.05rem;
+  bottom: 0.05rem;
   width: 2px;
   border-radius: 999px;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--accent-main), #ffffff 10%),
-    color-mix(in srgb, var(--accent-main), transparent 46%)
+    color-mix(in srgb, var(--accent-main), #d6b36a 58%),
+    color-mix(in srgb, var(--accent-main), transparent 68%)
   );
-  opacity: 0.88;
+  opacity: 0.78;
 }
 
 .wi-card-bookmark {
   flex: 0 0 auto;
-  width: 1.72rem;
-  height: 1.72rem;
-  border-radius: 0.62rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.92rem;
+  width: 1.82rem;
+  height: 1.82rem;
+  border-radius: 0.58rem;
   background: linear-gradient(
-    155deg,
-    color-mix(in srgb, var(--accent-main), transparent 72%),
-    color-mix(in srgb, var(--bg-sub), transparent 0%)
+    180deg,
+    color-mix(in srgb, var(--bg-sub), #d6b36a 14%),
+    color-mix(in srgb, var(--bg-sub), #0f172a 4%)
   );
-  border: 1px solid color-mix(in srgb, var(--accent-main), transparent 64%);
+  border: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 26%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 8px 18px rgba(0, 0, 0, 0.16),
-    0 0 0 1px color-mix(in srgb, var(--accent-main), transparent 88%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 22px rgba(2, 6, 23, 0.18);
   position: relative;
 }
 
 .wi-card-bookmark::before {
   content: "";
   position: absolute;
-  left: 0.22rem;
+  left: 0.3rem;
   top: 0.24rem;
   bottom: 0.24rem;
   width: 0.18rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-main), #ffffff 18%);
-  opacity: 0.58;
+  background: color-mix(in srgb, #d6b36a, #ffffff 22%);
+  opacity: 0.88;
+}
+
+.wi-card-bookmark::after {
+  content: "";
+  position: absolute;
+  right: 0.34rem;
+  top: 0.36rem;
+  width: 0.62rem;
+  height: 0.88rem;
+  border-radius: 0.14rem;
+  border: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 28%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent);
+}
+
+.wi-card-title-group {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
 }
 
 .wi-card-title-wrap {
@@ -1436,14 +1449,14 @@ html.light-mode .wi-grid-card:hover {
 .wi-card-title {
   margin: 0;
   color: var(--text-main);
-  font-size: 0.95rem;
-  font-weight: 700;
-  line-height: 1.22;
+  font-size: 0.98rem;
+  font-weight: 750;
+  line-height: 1.18;
+  letter-spacing: 0.01em;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .wi-card-owner-row {
@@ -1467,19 +1480,29 @@ html.light-mode .wi-grid-card:hover {
   border: 0;
   padding: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--accent-light), #ffffff 18%);
+  color: color-mix(in srgb, var(--text-sub), #d6b36a 28%);
   cursor: pointer;
   text-align: left;
-  text-shadow: 0 0 10px color-mix(in srgb, var(--accent-main), transparent 92%);
 }
 
 .wi-card-owner-link:hover {
-  color: color-mix(in srgb, var(--accent-light), #ffffff 6%);
+  color: color-mix(in srgb, var(--text-main), #d6b36a 24%);
 }
 
 .wi-card-owner-icon {
+  width: 0.72rem;
+  height: 0.72rem;
   flex: 0 0 auto;
-  opacity: 0.9;
+  position: relative;
+}
+
+.wi-card-owner-icon::before {
+  content: "";
+  position: absolute;
+  inset: 0.12rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-main), #d6b36a 44%);
+  opacity: 0.7;
 }
 
 .wi-card-owner-text {
@@ -1491,6 +1514,39 @@ html.light-mode .wi-grid-card:hover {
 
 .wi-card-owner-empty {
   color: var(--text-dim);
+}
+
+.wi-card-tag-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+  min-height: 1.36rem;
+  max-width: 100%;
+  padding: 0.18rem 0.58rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 20%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-sub), #d6b36a 6%),
+    color-mix(in srgb, var(--bg-sub), transparent 4%)
+  );
+  color: color-mix(in srgb, var(--text-dim), #d6b36a 28%);
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wi-card-tag-summary::before {
+  content: "";
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, #d6b36a, #ffffff 14%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #d6b36a, transparent 90%);
 }
 
 .wi-card-tag-placeholder {
@@ -1527,20 +1583,44 @@ html.light-mode .wi-grid-card:hover {
   opacity: 0.88;
 }
 
+.wi-card-tag-placeholder.wi-card-tag-summary {
+  gap: 0.36rem;
+  min-height: 1.36rem;
+  padding: 0.18rem 0.58rem;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--border-light), #d6b36a 20%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-sub), #d6b36a 6%),
+    color-mix(in srgb, var(--bg-sub), transparent 4%)
+  );
+  color: color-mix(in srgb, var(--text-dim), #d6b36a 28%);
+}
+
+.wi-card-tag-placeholder.wi-card-tag-summary::before {
+  width: 0.3rem;
+  height: 0.3rem;
+  background: color-mix(in srgb, #d6b36a, #ffffff 14%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #d6b36a, transparent 90%);
+  opacity: 1;
+}
+
 .wi-card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.55rem;
-  padding-top: 0.42rem;
-  border-top: 1px solid color-mix(in srgb, var(--border-light), #ffffff 8%);
+  padding-top: 0.56rem;
   padding-right: 1.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 12%);
+  position: relative;
+  z-index: 1;
 }
 
 .wi-card-footer-meta {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.45rem;
   min-width: 0;
   flex: 1 1 auto;
   flex-wrap: wrap;
@@ -1549,11 +1629,15 @@ html.light-mode .wi-grid-card:hover {
 .wi-card-meta-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
+  gap: 0.3rem;
   min-width: 0;
   max-width: 100%;
-  color: var(--text-sub);
-  font-size: 0.66rem;
+  padding: 0.2rem 0.46rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 14%);
+  background: color-mix(in srgb, var(--bg-sub), #d6b36a 6%);
+  color: color-mix(in srgb, var(--text-sub), #d6b36a 18%);
+  font-size: 0.64rem;
   line-height: 1;
 }
 
@@ -1586,20 +1670,16 @@ html.light-mode .wi-grid-card:hover {
   line-height: 1;
   white-space: nowrap;
   color: var(--text-dim);
-  padding: 0.1rem 0.38rem;
+  padding: 0.12rem 0.42rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-sub), transparent 4%);
-  border: 1px solid color-mix(in srgb, var(--border-light), #ffffff 10%);
+  border: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 10%);
 }
 
 .wi-card-note-state.has-note {
-  color: #fef08a;
-  border-color: rgba(250, 204, 21, 0.2);
-  background: linear-gradient(
-    180deg,
-    rgba(133, 77, 14, 0.18),
-    rgba(120, 53, 15, 0.1)
-  );
+  color: #f6e3ab;
+  border-color: rgba(214, 179, 106, 0.26);
+  background: linear-gradient(180deg, rgba(125, 88, 35, 0.24), rgba(92, 63, 24, 0.14));
 }
 
 .wi-card-note-state.no-note {
@@ -1609,15 +1689,42 @@ html.light-mode .wi-grid-card:hover {
   background: color-mix(in srgb, var(--bg-sub), transparent 16%);
 }
 
+html.light-mode .wi-card-front {
+  background: linear-gradient(180deg, #fbf7ee, #f4edde 100%);
+  border-color: color-mix(in srgb, var(--border-main), #b89455 28%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55),
+    0 14px 28px rgba(15, 23, 42, 0.08);
+}
+
 html.light-mode .wi-card-front::before {
-  background:
-    radial-gradient(circle at 15% 14%, rgba(var(--accent-main-rgb), 0.12), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 34%),
-    linear-gradient(145deg, color-mix(in srgb, var(--accent-main), transparent 96%), transparent 46%);
+  opacity: 1;
 }
 
 html.light-mode .wi-card-front::after {
   opacity: 0.7;
+}
+
+html.light-mode .wi-card-title-row::before {
+  background: linear-gradient(180deg, #b89455, rgba(184, 148, 85, 0.16));
+}
+
+html.light-mode .wi-card-tag-summary {
+  background: linear-gradient(180deg, rgba(255, 251, 245, 0.96), rgba(243, 232, 212, 0.92));
+  border-color: rgba(148, 116, 60, 0.18);
+  color: #6b5a41;
+}
+
+html.light-mode .wi-card-meta-chip {
+  background: rgba(252, 247, 236, 0.92);
+  border-color: rgba(148, 116, 60, 0.16);
+  color: #5e4d37;
+}
+
+html.light-mode .wi-card-note-state.has-note {
+  color: #7a5a1f;
+  border-color: rgba(184, 148, 85, 0.24);
+  background: linear-gradient(180deg, rgba(232, 214, 173, 0.72), rgba(244, 235, 214, 0.88));
 }
 
 html.light-mode .wi-card-bookmark {
@@ -1632,7 +1739,18 @@ html.light-mode .wi-card-bookmark {
 }
 
 .wi-card-back-header {
-  padding: 0.62rem 0.75rem 0.34rem;
+  padding: 0.78rem 4.8rem 0.42rem 0.82rem;
+  position: relative;
+}
+
+.wi-card-back-header::after {
+  content: "CATALOG";
+  position: absolute;
+  top: 0.78rem;
+  right: 0.82rem;
+  font-size: 0.52rem;
+  letter-spacing: 0.14em;
+  color: color-mix(in srgb, var(--text-dim), #d6b36a 28%);
 }
 
 .wi-card-back-meta-row {
@@ -1640,16 +1758,16 @@ html.light-mode .wi-card-bookmark {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-top: 0.38rem;
+  margin-top: 0.44rem;
   min-width: 0;
 }
 
 .wi-card-back-source {
   flex: 0 0 auto;
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   line-height: 1;
-  letter-spacing: 0.05em;
-  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--text-dim), #d6b36a 22%);
   text-transform: uppercase;
 }
 
@@ -1662,27 +1780,45 @@ html.light-mode .wi-card-bookmark {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.34rem;
-  padding: 0.1rem 0.75rem 0.72rem;
+  gap: 0.36rem;
+  padding: 0.18rem 0.82rem 0.82rem;
+  position: relative;
+}
+
+.wi-card-back-note-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0.1rem 0.82rem 0.82rem;
+  border-radius: 0.82rem;
+  border: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 12%);
+  pointer-events: none;
 }
 
 .wi-card-back-note-title {
-  font-size: 0.64rem;
+  font-size: 0.62rem;
   line-height: 1;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: color-mix(in srgb, var(--text-dim), #d6b36a 22%);
 }
 
 .wi-back-note {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto !important;
-  line-height: 1.42;
-  padding: 0.58rem 0.62rem;
+  line-height: 1.46;
+  padding: 0.68rem 0.7rem;
   border-radius: 0.72rem;
-  border: 1px solid color-mix(in srgb, var(--border-light), #ffffff 10%);
-  background: color-mix(in srgb, var(--bg-sub), transparent 4%);
+  border: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 10%);
+  background: color-mix(in srgb, var(--bg-sub), #d6b36a 4%);
+}
+
+html.light-mode .wi-card-back {
+  background: linear-gradient(180deg, #faf4e8, #f3ead8 100%);
+  border-color: rgba(148, 116, 60, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55),
+    0 14px 28px rgba(15, 23, 42, 0.06);
 }
 
 .wi-li-preview {
@@ -1716,8 +1852,8 @@ html.light-mode .wi-card-bookmark {
 
 @media (max-width: 768px) {
   .wi-card-front {
-    padding: 0.68rem;
-    gap: 0.48rem;
+    padding: 0.72rem;
+    gap: 0.56rem;
   }
 
   .wi-card-header-actions,
@@ -1726,12 +1862,16 @@ html.light-mode .wi-card-bookmark {
   }
 
   .wi-card-title-row {
-    gap: 0.42rem;
+    gap: 0.5rem;
+  }
+
+  .wi-card-title-group {
+    gap: 0.28rem;
   }
 
   .wi-card-bookmark {
-    width: 1.55rem;
-    height: 1.55rem;
+    width: 1.58rem;
+    height: 1.58rem;
     font-size: 0.84rem;
     border-radius: 0.56rem;
   }
