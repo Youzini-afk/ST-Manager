@@ -59,6 +59,145 @@
   min-width: 0;
 }
 
+.header-advanced-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-sub), transparent 8%);
+  color: var(--text-main);
+  transition: all 0.18s ease;
+}
+
+.header-advanced-filter-btn:hover {
+  border-color: color-mix(in srgb, var(--accent-main), transparent 40%);
+  background: color-mix(in srgb, var(--accent-main), transparent 88%);
+}
+
+.header-advanced-filter-btn.is-active {
+  border-color: color-mix(in srgb, var(--accent-main), transparent 20%);
+  background: color-mix(in srgb, var(--accent-main), transparent 80%);
+}
+
+.header-advanced-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-main), transparent 12%);
+  color: #ffffff;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.card-filter-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem 0.5rem;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--border-main), transparent 30%);
+  background: color-mix(in srgb, var(--bg-panel), transparent 6%);
+}
+
+.card-filter-summary-label {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.card-filter-summary-list {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.card-filter-summary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.9rem;
+  padding: 0.2rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--accent-main), transparent 45%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-main), transparent 86%);
+  color: var(--text-main);
+  font-size: 0.75rem;
+  transition: all 0.18s ease;
+}
+
+.card-filter-summary-chip:hover {
+  border-color: color-mix(in srgb, var(--accent-main), transparent 25%);
+  background: color-mix(in srgb, var(--accent-main), transparent 80%);
+}
+
+.card-filter-summary-chip-close {
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.card-filter-summary-chip-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-sub), transparent 12%);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.card-filter-summary-clear {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent-light);
+  font-size: 0.75rem;
+}
+
+.card-filter-summary-clear-all {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent-light);
+  font-size: 0.75rem;
+}
+
+.card-advanced-filter-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  z-index: var(--z-modal, 1200);
+}
+
+.card-advanced-filter-drawer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(30rem, calc(100vw - 1rem));
+  height: 100%;
+  margin-left: auto;
+  background: color-mix(in srgb, var(--bg-panel), transparent 4%);
+  border-left: 1px solid var(--border-main);
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.28);
+}
+
+.mobile-advanced-filter-entry {
+  align-items: center;
+  justify-content: space-between;
+}
+
 .sidebar {
   width: 300px;
   background-color: color-mix(in srgb, var(--bg-panel), transparent 10%);
@@ -305,13 +444,29 @@
 }
 
 .sidebar-tag-category-pill:hover {
-  border-color: color-mix(in srgb, var(--tag-cat-color, var(--text-sub)), transparent 38%);
-  color: color-mix(in srgb, var(--tag-cat-color, var(--text-main)), #ffffff 10%);
+  border-color: color-mix(
+    in srgb,
+    var(--tag-cat-color, var(--text-sub)),
+    transparent 38%
+  );
+  color: color-mix(
+    in srgb,
+    var(--tag-cat-color, var(--text-main)),
+    #ffffff 10%
+  );
 }
 
 .sidebar-tag-category-pill.active {
-  background: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 82%);
-  border-color: color-mix(in srgb, var(--tag-cat-color, var(--accent-main)), transparent 42%);
+  background: color-mix(
+    in srgb,
+    var(--tag-cat-color, var(--accent-main)),
+    transparent 82%
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--tag-cat-color, var(--accent-main)),
+    transparent 42%
+  );
   color: color-mix(in srgb, var(--tag-cat-color, #ffffff), #ffffff 18%);
 }
 
@@ -860,6 +1015,17 @@ html.light-mode .header-favorite-btn.is-excluded .header-favorite-icon::after {
 }
 
 @media (max-width: 768px) {
+  .card-filter-summary-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 0.7rem 0.75rem 0.45rem;
+  }
+  .card-filter-summary-clear {
+    padding-left: 0.1rem;
+  }
+  .card-advanced-filter-drawer {
+    width: min(100vw, 32rem);
+  }
   .header-bar {
     padding: 0.5rem 0.75rem;
     height: auto;

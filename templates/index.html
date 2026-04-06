@@ -1,66 +1,65 @@
 <!-- templates/index.html -->
-{% extends "layout.html" %}
+{% extends "layout.html" %} {% block content %}
+<!-- 顶部导航栏 -->
+{% include "components/header.html" %}
 
-{% block content %}
-    <!-- 顶部导航栏 -->
-    {% include "components/header.html" %}
+<div class="main-container">
+  <!-- 侧边栏 -->
+  {% include "components/sidebar.html" %}
 
-    <div class="main-container">
-        <!-- 侧边栏 -->
-        {% include "components/sidebar.html" %}
+  <!-- 右侧主内容区域 -->
+  <main
+    class="content-area"
+    style="
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+    "
+  >
+    <!-- 模式 1: 角色卡网格 -->
+    {% include "components/grid_cards.html" %}
 
-        <!-- 右侧主内容区域 -->
-        <main class="content-area" style="overflow: hidden; display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0;">
-            
-            <!-- 模式 1: 角色卡网格 -->
-            {% include "components/grid_cards.html" %}
+    <!-- 模式 2: 世界书网格 -->
+    {% include "components/grid_wi.html" %}
 
-            <!-- 模式 2: 世界书网格 -->
-            {% include "components/grid_wi.html" %}
+    <!-- 模式 3: 聊天记录网格 -->
+    {% include "components/chat_manager.html" %} {% include
+    "components/grid_extensions.html" %}
 
-            <!-- 模式 3: 聊天记录网格 -->
-            {% include "components/chat_manager.html" %}
+    <!-- 模式 4: 预设网格 -->
+    {% include "components/grid_presets.html" %}
+  </main>
+</div>
 
-            {% include "components/grid_extensions.html" %}
+<!-- === 模态框区域 (Modals) === -->
+<!-- 为保持整洁，建议将模态框按功能归类引入 -->
 
-            <!-- 模式 4: 预设网格 -->
-            {% include "components/grid_presets.html" %}
-            
-        </main>
-    </div>
+<!-- 核心详情页 -->
+{% include "modals/detail_card.html" %} {% include
+"modals/detail_wi_fullscreen.html" %} {% include "modals/detail_wi_popup.html"
+%} {% include "modals/detail_preset_popup.html" %}
 
-    <!-- === 模态框区域 (Modals) === -->
-    <!-- 为保持整洁，建议将模态框按功能归类引入 -->
-    
-    <!-- 核心详情页 -->
-    {% include "modals/detail_card.html" %}
-    {% include "modals/detail_wi_fullscreen.html" %}
-    {% include "modals/detail_wi_popup.html" %}
-    {% include "modals/detail_preset_popup.html" %}
-    
-    <!-- 设置与工具 -->
-    {% include "modals/settings.html" %}
-    {% include "modals/advanced_editor.html" %}
-    {% include "modals/rollback.html" %}
-    
-    <!-- 文件与标签操作 -->
-    {% include "modals/tag_filter.html" %}
-    {% include "modals/batch_tag.html" %}
-    {% include "modals/folder_operations.html" %}
-    {% include "modals/import.html" %}
-    {% include "modals/move_cards.html" %}
-    {% include "modals/execute_rules_mobile.html" %}
-    
-    <!-- 自动化规则编辑器 -->
-    {% include "modals/automation.html" %}
+<!-- 设置与工具 -->
+{% include "modals/settings.html" %} {% include "modals/advanced_editor.html" %}
+{% include "modals/rollback.html" %}
 
-    <!-- 预览与其他 -->
-    <div x-data="largeEditor">
-        {% include "modals/large_editor.html" %}
-        {% include "modals/markdown_preview.html" %}
-        {% include "modals/html_preview.html" %}
-    </div>
-    {% include "modals/batch_import.html" %}
-    {% include "components/context_menu.html" %}
+<!-- 文件与标签操作 -->
+{% include "modals/tag_filter.html" %} {% include
+"modals/card_advanced_filter.html" %} {% include "modals/batch_tag.html" %} {%
+include "modals/folder_operations.html" %} {% include "modals/import.html" %} {%
+include "modals/move_cards.html" %} {% include
+"modals/execute_rules_mobile.html" %}
 
-{% endblock %}
+<!-- 自动化规则编辑器 -->
+{% include "modals/automation.html" %}
+
+<!-- 预览与其他 -->
+<div x-data="largeEditor">
+  {% include "modals/large_editor.html" %} {% include
+  "modals/markdown_preview.html" %} {% include "modals/html_preview.html" %}
+</div>
+{% include "modals/batch_import.html" %} {% include
+"components/context_menu.html" %} {% endblock %}

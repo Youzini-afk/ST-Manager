@@ -1,0 +1,130 @@
+<div
+  x-data="cardAdvancedFilter"
+  x-show="showCardAdvancedFilterDrawer && isCardsMode"
+  x-cloak
+  @keydown.escape.window="requestClose()"
+  class="card-advanced-filter-overlay"
+>
+  <div class="card-advanced-filter-backdrop" @click="requestClose()"></div>
+
+  <aside class="card-advanced-filter-drawer" @click.stop>
+    <div class="card-advanced-filter-header">
+      <div class="card-advanced-filter-eyebrow">角色卡工作台</div>
+      <h2>高级筛选</h2>
+      <p>集中调整当前角色卡列表的范围、排序、收藏、时间和数值条件。</p>
+      <button
+        type="button"
+        class="card-advanced-filter-close"
+        @click="requestClose()"
+      >
+        关闭
+      </button>
+    </div>
+
+    <div class="card-advanced-filter-body custom-scrollbar">
+      <section class="card-advanced-filter-section">
+        <h3>基础筛选</h3>
+        <div class="card-advanced-filter-field">
+          <label>
+            搜索范围
+            <select x-model="draft.searchScope">
+              <option value="current">当前目录</option>
+              <option value="all_dirs">全部目录</option>
+              <option value="full">全量</option>
+            </select>
+          </label>
+        </div>
+        <div class="card-advanced-filter-field">
+          <label>
+            当前列表排序
+            <select x-model="draft.sort">
+              <option value="date_desc">修改日期 (新→旧)</option>
+              <option value="date_asc">修改日期 (旧→新)</option>
+              <option value="import_desc">导入日期 (新→旧)</option>
+              <option value="import_asc">导入日期 (旧→新)</option>
+              <option value="name_asc">名称 (A→Z)</option>
+              <option value="name_desc">名称 (Z→A)</option>
+              <option value="token_desc">Token (大→小)</option>
+              <option value="token_asc">Token (小→大)</option>
+            </select>
+          </label>
+        </div>
+        <label class="card-advanced-filter-checkbox">
+          <input type="checkbox" x-model="draft.recursiveFilter" />
+          包含子目录
+        </label>
+        <div class="card-advanced-filter-field">
+          <label>
+            收藏筛选
+            <select x-model="draft.favFilter">
+              <option value="none">显示全部</option>
+              <option value="included">只看收藏</option>
+              <option value="excluded">排除收藏</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="card-advanced-filter-section">
+        <h3>时间筛选</h3>
+        <div class="card-advanced-filter-field">
+          <label>
+            导入开始
+            <input type="date" x-model="draft.importDateFrom" />
+          </label>
+          <label>
+            导入结束
+            <input type="date" x-model="draft.importDateTo" />
+          </label>
+        </div>
+        <div class="card-advanced-filter-field">
+          <label>
+            修改开始
+            <input type="date" x-model="draft.modifiedDateFrom" />
+          </label>
+          <label>
+            修改结束
+            <input type="date" x-model="draft.modifiedDateTo" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card-advanced-filter-section">
+        <h3>数值筛选</h3>
+        <div class="card-advanced-filter-field">
+          <label>
+            Token 最小值
+            <input type="number" inputmode="numeric" x-model="draft.tokenMin" />
+          </label>
+          <label>
+            Token 最大值
+            <input type="number" inputmode="numeric" x-model="draft.tokenMax" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card-advanced-filter-section">
+        <h3>标签条件</h3>
+        <div class="card-advanced-filter-tag-summary">
+          <p x-text="tagSummary"></p>
+          <div class="card-advanced-filter-tag-stat">
+            <span>包含 <span x-text="tagIncludeCount"></span></span>
+            <span>排除 <span x-text="tagExcludeCount"></span></span>
+          </div>
+        </div>
+        <div class="card-advanced-filter-tag-actions">
+          <button type="button" @click="openTagFilterEditor()">
+            编辑标签条件
+          </button>
+          <button type="button" @click="clearTagFilters()">清空标签条件</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="card-advanced-filter-footer">
+      <button type="button" @click="requestClose()">取消</button>
+      <button type="button" @click="clearDraft()">清空草稿</button>
+      <button type="button" @click="applyFilters()">应用筛选</button>
+    </div>
+  </aside>
+</div>

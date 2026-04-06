@@ -8,6 +8,7 @@ import time
 import requests
 import sqlite3
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 from urllib.parse import quote, unquote, urlparse
 from PIL import Image
@@ -425,6 +426,37 @@ def _normalize_sort_mode(sort_mode: str) -> str:
     return mode if mode in allowed else 'date_desc'
 
 
+def _parse_optional_date_filter(param_name: str):
+    raw_value = request.args.get(param_name, '').strip()
+    if not raw_value:
+        return None
+
+    try:
+        parsed = datetime.strptime(raw_value, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ValueError(f'{param_name} 格式无效，应为 YYYY-MM-DD') from exc
+
+    return parsed.timestamp()
+
+
+def _parse_optional_date_filter_exclusive_end(param_name: str):
+    parsed = _parse_optional_date_filter(param_name)
+    if parsed is None:
+        return None
+    return (datetime.fromtimestamp(parsed, tz=timezone.utc) + timedelta(days=1)).timestamp()
+
+
+def _parse_optional_int_filter(param_name: str):
+    raw_value = request.args.get(param_name, '').strip()
+    if not raw_value:
+        return None
+
+    try:
+        return int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f'{param_name} 必须是整数') from exc
+
+
 def _sort_cards_inplace(cards_list, sort_mode: str):
     mode = _normalize_sort_mode(sort_mode)
     reverse = mode.endswith('_desc')
@@ -567,6 +599,19 @@ def api_list_cards():
     fav_filter = request.args.get('fav_filter', 'none') # 'included', 'excluded', 'none'
     fav_first = request.args.get('favorites_first', 'false') == 'true'
 
+    try:
+        import_date_from = _parse_optional_date_filter('import_date_from')
+        import_date_to = _parse_optional_date_filter_exclusive_end('import_date_to')
+        modified_date_from = _parse_optional_date_filter('modified_date_from')
+        modified_date_to = _parse_optional_date_filter_exclusive_end('modified_date_to')
+        token_min = _parse_optional_int_filter('token_min')
+        token_max = _parse_optional_int_filter('token_max')
+    except ValueError as exc:
+        return jsonify({'success': False, 'msg': str(exc)}), 400
+
+    if token_min is not None and token_max is not None and token_min > token_max:
+        return jsonify({'success': False, 'msg': 'token_min 不能大于 token_max'}), 400
+
     # 1. 获取所有卡片, 浅拷贝
     with ctx.cache.lock:
         candidates = list(ctx.cache.cards)
@@ -692,6 +737,33 @@ def api_list_cards():
             tag_list = [t.strip() for t in tags_param.split('|||') if t.strip()]
             if tag_list:
                 candidates = [c for c in candidates if all(t in c['tags'] for t in tag_list)]
+
+    if import_date_from is not None:
+        candidates = [
+            c for c in candidates
+            if float(c.get('import_time') or 0) >= import_date_from
+        ]
+    if import_date_to is not None:
+        candidates = [
+            c for c in candidates
+            if float(c.get('import_time') or 0) < import_date_to
+        ]
+
+    if modified_date_from is not None:
+        candidates = [
+            c for c in candidates
+            if float(c.get('last_modified') or 0) >= modified_date_from
+        ]
+    if modified_date_to is not None:
+        candidates = [
+            c for c in candidates
+            if float(c.get('last_modified') or 0) < modified_date_to
+        ]
+
+    if token_min is not None:
+        candidates = [c for c in candidates if int(c.get('token_count') or 0) >= token_min]
+    if token_max is not None:
+        candidates = [c for c in candidates if int(c.get('token_count') or 0) <= token_max]
 
     # 5. 排序
     filtered_cards = candidates
