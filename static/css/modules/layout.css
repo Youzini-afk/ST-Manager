@@ -1528,6 +1528,20 @@ html.light-mode .header-favorite-btn.is-excluded .header-favorite-icon::after {
     gap: 0.5rem;
     width: 100%;
   }
+  .mobile-header-search-row {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+  .mobile-header-search-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    width: 100%;
+  }
   .mobile-header-left {
     display: flex;
     align-items: center;
@@ -1640,7 +1654,12 @@ html.light-mode .header-favorite-btn.is-excluded .header-favorite-icon::after {
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    width: auto;
+    flex: none;
+  }
+  .mobile-search-mode-row {
     width: 100%;
+    display: flex;
   }
   .mobile-filter-bar {
     display: flex;

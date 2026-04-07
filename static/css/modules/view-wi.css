@@ -1878,6 +1878,9 @@ html.light-mode .wi-card-back {
 }
 
 @media (max-width: 768px) {
+  .wi-grid-card {
+    height: 13.75rem;
+  }
   .wi-card-front {
     padding: var(--wi-card-page-inset-y) var(--wi-card-page-inset-x);
     gap: 0.56rem;

@@ -64,6 +64,20 @@ def test_header_source_forces_stale_fulltext_modes_back_to_fast():
     assert 'this.ensureSearchModeAllowed();' in header_source
 
 
+def test_mobile_header_search_mode_toggle_is_separated_from_search_row_contract():
+    header_template = read_project_file('templates/components/header.html')
+    layout_css = read_project_file('static/css/modules/layout.css')
+
+    assert 'class="mobile-header-search-row"' in header_template
+    assert 'class="mobile-header-search-tools"' in header_template
+    assert 'class="mobile-search-mode-row"' in header_template
+    assert '.mobile-header-search-row {' in layout_css
+    assert '.mobile-header-search-tools {' in layout_css
+    assert '.mobile-search-mode-row {' in layout_css
+    assert '.mobile-search-mode-toggle {' in layout_css
+    assert 'width: auto;' in layout_css
+
+
 def test_card_grid_source_and_template_use_windowed_slice_contracts():
     card_grid_source = read_project_file('static/js/components/cardGrid.js')
     grid_template = read_project_file('templates/components/grid_cards.html')
