@@ -124,7 +124,12 @@ def start_fs_watcher():
             watch_paths.append(path)
 
     for watch_path in watch_paths:
-        observer.schedule(handler, watch_path, recursive=True)
+        try:
+            observer.schedule(handler, watch_path, recursive=True)
+        except FileNotFoundError:
+            logger.warning('Watch path does not exist yet, skipping watchdog registration: %s', watch_path)
+        except OSError as e:
+            logger.warning('Failed to register watchdog path %s: %s', watch_path, e)
     observer.daemon = True
     observer.start()
     logger.info("File system watcher (watchdog) started.")

@@ -29,7 +29,7 @@ if getattr(sys, 'frozen', False):
 # create_app: 创建 Flask 应用实例
 # init_services: 初始化数据库、缓存和后台扫描线程
 from core import create_app, init_services
-from core.config import ensure_config_file, load_config
+from core.config import ensure_config_file, ensure_runtime_dirs, load_config
 from core.utils.net import is_port_available
 
 
@@ -65,6 +65,9 @@ def get_default_config_overrides(in_docker):
 
 def ensure_startup_config(in_docker):
     ensure_config_file(default_overrides=get_default_config_overrides(in_docker))
+    cfg = load_config()
+    ensure_runtime_dirs(cfg)
+    return cfg
 
 
 def resolve_server_settings(cfg, cli_args):
@@ -78,7 +81,7 @@ if __name__ == '__main__':
     in_docker = is_running_in_docker()
 
     try:
-        ensure_startup_config(in_docker)
+        cfg = ensure_startup_config(in_docker)
     except Exception as exc:
         print(f'❌ 配置文件生成失败: {exc}')
         if platform.system() == 'Windows':
@@ -86,7 +89,6 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # 1. 加载配置
-    cfg = load_config()
     server_host, server_port, debug_mode = resolve_server_settings(cfg, cli_args)
 
     # 2. 端口占用检测

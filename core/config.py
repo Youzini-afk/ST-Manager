@@ -146,6 +146,18 @@ DEFAULT_CONFIG = {
 VALID_ST_AUTH_TYPES = {'basic', 'web', 'auth_web'}
 
 
+RUNTIME_DIR_DEFAULTS = {
+    'cards_dir': 'data/library/characters',
+    'world_info_dir': 'data/library/lorebooks',
+    'chats_dir': 'data/library/chats',
+    'presets_dir': 'data/library/presets',
+    'regex_dir': 'data/library/extensions/regex',
+    'scripts_dir': 'data/library/extensions/tavern_helper',
+    'quick_replies_dir': 'data/library/extensions/quick-replies',
+    'resources_dir': 'data/assets/card_assets',
+}
+
+
 def _normalize_st_auth_type(auth_type):
     if auth_type in VALID_ST_AUTH_TYPES:
         return auth_type
@@ -272,18 +284,31 @@ def _resolve_dir(cfg: dict, key: str, default: str) -> str:
     if os.path.isabs(raw):
         return raw
     return os.path.join(BASE_DIR, raw)
+
+
+def ensure_runtime_dirs(cfg=None):
+    cfg = cfg or load_config()
+    resolved = {}
+
+    for key, default in RUNTIME_DIR_DEFAULTS.items():
+        path = _resolve_dir(cfg, key, default)
+        resolved[key] = _ensure_dir(path)
+
+    return resolved
+
+
 def get_cards_folder() -> str:
     cfg = load_config()
-    return _ensure_dir(_resolve_dir(cfg, 'cards_dir', 'data/library/characters'))
+    return _ensure_dir(_resolve_dir(cfg, 'cards_dir', RUNTIME_DIR_DEFAULTS['cards_dir']))
 
 def get_world_info_folder() -> str:
     cfg = load_config()
-    return _ensure_dir(_resolve_dir(cfg, 'world_info_dir', 'data/library/lorebooks'))
+    return _ensure_dir(_resolve_dir(cfg, 'world_info_dir', RUNTIME_DIR_DEFAULTS['world_info_dir']))
 
 
 def get_chats_folder() -> str:
     cfg = load_config()
-    return _ensure_dir(_resolve_dir(cfg, 'chats_dir', 'data/library/chats'))
+    return _ensure_dir(_resolve_dir(cfg, 'chats_dir', RUNTIME_DIR_DEFAULTS['chats_dir']))
 
 class DynamicPath:
     def __init__(self, getter):

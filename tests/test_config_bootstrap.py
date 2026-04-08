@@ -181,3 +181,79 @@ def test_ensure_startup_config_passes_docker_default_overrides(monkeypatch):
     app_module.ensure_startup_config(True)
 
     assert captured['default_overrides'] == {'host': '0.0.0.0'}
+
+
+def test_ensure_runtime_dirs_creates_all_configured_runtime_directories(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, 'BASE_DIR', str(tmp_path))
+    cfg = {
+        'cards_dir': 'data/library/characters',
+        'world_info_dir': 'data/library/lorebooks',
+        'chats_dir': 'data/library/chats',
+        'presets_dir': 'data/library/presets',
+        'regex_dir': 'data/library/extensions/regex',
+        'scripts_dir': 'data/library/extensions/tavern_helper',
+        'quick_replies_dir': 'data/library/extensions/quick-replies',
+        'resources_dir': 'data/assets/card_assets',
+    }
+
+    resolved = config_module.ensure_runtime_dirs(cfg)
+
+    expected_keys = [
+        'cards_dir',
+        'chats_dir',
+        'presets_dir',
+        'quick_replies_dir',
+        'regex_dir',
+        'resources_dir',
+        'scripts_dir',
+        'world_info_dir',
+    ]
+
+    for key in expected_keys:
+        assert key in resolved
+        assert Path(resolved[key]).is_dir()
+
+
+def test_ensure_runtime_dirs_keeps_absolute_paths_and_resolves_relative_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, 'BASE_DIR', str(tmp_path / 'base'))
+
+    absolute_resources = tmp_path / 'external-assets'
+    cfg = {
+        'cards_dir': 'cards',
+        'world_info_dir': 'lorebooks',
+        'chats_dir': 'chats',
+        'presets_dir': 'presets',
+        'regex_dir': 'regex',
+        'scripts_dir': 'scripts',
+        'quick_replies_dir': 'quick-replies',
+        'resources_dir': str(absolute_resources),
+    }
+
+    resolved = config_module.ensure_runtime_dirs(cfg)
+
+    assert resolved['cards_dir'] == str(tmp_path / 'base' / 'cards')
+    assert resolved['resources_dir'] == str(absolute_resources)
+    assert Path(resolved['cards_dir']).is_dir()
+    assert Path(resolved['resources_dir']).is_dir()
+
+
+def test_ensure_startup_config_bootstraps_runtime_directories(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(
+        app_module,
+        'ensure_config_file',
+        lambda default_overrides=None: calls.append(('ensure_config_file', default_overrides)),
+    )
+    monkeypatch.setattr(app_module, 'load_config', lambda: {'cards_dir': 'cards'})
+    monkeypatch.setattr(
+        app_module,
+        'ensure_runtime_dirs',
+        lambda cfg=None: calls.append(('ensure_runtime_dirs', cfg)),
+        raising=False,
+    )
+
+    app_module.ensure_startup_config(False)
+
+    assert ('ensure_config_file', None) in calls
+    assert ('ensure_runtime_dirs', {'cards_dir': 'cards'}) in calls

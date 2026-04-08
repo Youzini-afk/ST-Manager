@@ -1,3 +1,4 @@
+import logging
 import sys
 import types
 from pathlib import Path
@@ -191,6 +192,59 @@ def test_worldinfo_watcher_ignores_non_write_events(monkeypatch):
     scheduled['handler'].on_any_event(event)
 
     assert calls == []
+
+
+def test_start_fs_watcher_skips_missing_watch_paths(monkeypatch, caplog, tmp_path):
+    scheduled_paths = []
+    started = []
+
+    class _FakeObserver:
+        daemon = False
+
+        def schedule(self, _handler, watch_path, recursive=True):
+            scheduled_paths.append((watch_path, recursive))
+            if watch_path != str(cards_dir):
+                raise FileNotFoundError(watch_path)
+
+        def start(self):
+            started.append(True)
+
+    class _FakeHandlerBase:
+        pass
+
+    cards_dir = tmp_path / 'cards'
+    cards_dir.mkdir()
+
+    watchdog_module = types.ModuleType('watchdog')
+    observers_module = types.ModuleType('watchdog.observers')
+    observers_module.Observer = _FakeObserver
+    events_module = types.ModuleType('watchdog.events')
+    events_module.FileSystemEventHandler = _FakeHandlerBase
+
+    monkeypatch.setitem(sys.modules, 'watchdog', watchdog_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.observers', observers_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.events', events_module)
+
+    monkeypatch.setattr(scan_service, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(
+        scan_service,
+        'load_config',
+        lambda: {
+            'world_info_dir': str(tmp_path / 'missing-lorebooks'),
+            'resources_dir': str(tmp_path / 'missing-resources'),
+        },
+    )
+
+    with caplog.at_level(logging.WARNING):
+        scan_service.start_fs_watcher()
+
+    assert scheduled_paths == [
+        (str(cards_dir), True),
+        (str(tmp_path / 'missing-lorebooks'), True),
+        (str(tmp_path / 'missing-resources'), True),
+    ]
+    assert started == [True]
+    assert 'does not exist yet' in caplog.text
 
 
 def test_update_card_cache_returns_false_when_cache_write_fails(monkeypatch):
