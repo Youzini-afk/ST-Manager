@@ -1,7 +1,6 @@
 import os
 import shutil
 import logging
-import threading
 import traceback
 import mimetypes
 from flask import Flask
@@ -12,9 +11,15 @@ from core.context import ctx
 from core.auth import init_auth
 
 # === 数据与服务 ===
-from core.data.db_session import init_database, close_connection, backfill_wi_metadata
-from core.services.index_service import start_index_service
+from core.data.db_session import init_database, close_connection
+from core.services.index_upgrade_service import run_startup_upgrade_if_needed
 from core.services.scan_service import start_background_scanner
+
+try:
+    from core.services.index_job_worker import start_index_job_worker
+except ImportError:  # pragma: no cover - temporary compatibility for Task 3
+    def start_index_job_worker():
+        logger.info('Index job worker not available yet; skipping startup.')
 
 # === API 蓝图 ===
 from core.api.v1 import cards, world_info, system, resources, automation, extensions, presets, st_sync, chats
@@ -102,7 +107,12 @@ def init_services():
         # 1. 数据库初始化 (建表、迁移)
         init_database()
 
-        # 2. 缓存加载
+        # 2. 启动索引升级恢复/引导
+        print('正在检查索引升级状态...')
+        ctx.set_status(status='initializing', message='正在检查索引升级状态...')
+        run_startup_upgrade_if_needed(index_auto_bootstrap=True)
+
+        # 3. 缓存加载
         # 数据库就绪后，将数据全量加载到内存缓存中，加速后续查询
         print("正在加载缓存...")
         ctx.set_status(status="initializing", message="正在加载缓存...")
@@ -112,16 +122,12 @@ def init_services():
         else:
             logger.error("Cache component not initialized in Context!")
         
-        # 3. 数据修正 (后台任务)
-        # 检查并修复旧版数据的索引 (如 WI 关联)
-        threading.Thread(target=backfill_wi_metadata, daemon=True).start()
-        
         # 4. 启动文件系统扫描器
         # 负责监听文件变动并同步到数据库
         start_background_scanner()
 
-        # 5. 启动索引服务
-        start_index_service()
+        # 5. 启动索引工作线程
+        start_index_job_worker()
 
         # 初始化完成
         ctx.set_status(status="ready", message="服务已就绪")

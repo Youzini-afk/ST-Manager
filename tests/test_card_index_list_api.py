@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 
 from core.api.v1 import cards as cards_api
+from core.data.index_runtime_store import ensure_index_runtime_schema
 from core.data.index_store import ensure_index_schema
 from core.data import ui_store as ui_store_module
 from core.data.ui_store import get_tag_taxonomy
@@ -83,47 +84,84 @@ def _install_fake_cache(monkeypatch, cards):
 
 def _seed_index(db_path):
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'cards'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('card::cards/alpha.png', 'card', 'cards/alpha.png', 'Alpha', 'alpha.png', 'SciFi', 'SciFi', 'physical', 1, 'pilot note', 200.0, 150.0, 3200, 'alpha', 200.0, '', '200:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'card::cards/alpha.png', 'card', 'cards/alpha.png', 'Alpha', 'alpha.png', 'SciFi', 'SciFi', 'physical', 1, 'pilot note', 200.0, 150.0, 3200, 'alpha', 200.0, '', '200:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('card::cards/beta.png', 'card', 'cards/beta.png', 'Beta', 'beta.png', 'Fantasy', 'Fantasy', 'physical', 0, 'forest note', 100.0, 90.0, 1200, 'beta', 100.0, '', '100:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'card::cards/beta.png', 'card', 'cards/beta.png', 'Beta', 'beta.png', 'Fantasy', 'Fantasy', 'physical', 0, 'forest note', 100.0, 90.0, 1200, 'beta', 100.0, '', '100:1'),
         )
-        conn.execute("INSERT OR REPLACE INTO index_entity_tags(entity_id, tag) VALUES (?, ?)", ('card::cards/alpha.png', 'blue'))
-        conn.execute("INSERT OR REPLACE INTO index_entity_tags(entity_id, tag) VALUES (?, ?)", ('card::cards/alpha.png', 'hero'))
-        conn.execute("INSERT OR REPLACE INTO index_entity_tags(entity_id, tag) VALUES (?, ?)", ('card::cards/beta.png', 'green'))
-        conn.execute("INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)", ('card::cards/alpha.png', 'Alpha alpha.png SciFi blue hero pilot note'))
-        conn.execute("INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)", ('card::cards/beta.png', 'Beta beta.png Fantasy green forest note'))
+        conn.execute("INSERT OR REPLACE INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (?, ?, ?)", (1, 'card::cards/alpha.png', 'blue'))
+        conn.execute("INSERT OR REPLACE INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (?, ?, ?)", (1, 'card::cards/alpha.png', 'hero'))
+        conn.execute("INSERT OR REPLACE INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (?, ?, ?)", (1, 'card::cards/beta.png', 'green'))
+        conn.execute("INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)", (1, 'card::cards/alpha.png', 'Alpha alpha.png SciFi blue hero pilot note'))
+        conn.execute("INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)", (1, 'card::cards/beta.png', 'Beta beta.png Fantasy green forest note'))
+        conn.commit()
+
+
+def _seed_index_v2_cards(db_path, *, active_generation=1):
+    with sqlite3.connect(db_path) as conn:
+        ensure_index_runtime_schema(conn)
+        conn.execute(
+            "UPDATE index_build_state SET active_generation = ?, state = 'ready', phase = 'ready' WHERE scope = 'cards'",
+            (active_generation,),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (active_generation, 'card::cards/alpha.png', 'card', 'cards/alpha.png', 'Alpha', 'alpha.png', 'SciFi', 'SciFi', 'physical', 1, 'pilot note', 200.0, 150.0, 3200, 'alpha', 200.0, '', '200:1'),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (active_generation + 1, 'card::cards/beta.png', 'card', 'cards/beta.png', 'Beta', 'beta.png', 'Fantasy', 'Fantasy', 'physical', 0, 'forest note', 100.0, 90.0, 1200, 'beta', 100.0, '', '100:1'),
+        )
+        conn.execute(
+            'INSERT OR REPLACE INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (?, ?, ?)',
+            (active_generation, 'card::cards/alpha.png', 'blue'),
+        )
+        conn.execute(
+            'INSERT OR REPLACE INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (?, ?, ?)',
+            (active_generation + 1, 'card::cards/beta.png', 'green'),
+        )
+        conn.execute(
+            'INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)',
+            (active_generation, 'card::cards/alpha.png', 'Alpha alpha.png SciFi blue pilot note'),
+        )
+        conn.execute(
+            'INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)',
+            (active_generation + 1, 'card::cards/beta.png', 'Beta beta.png Fantasy green forest note'),
+        )
         conn.commit()
 
 
 def _seed_fulltext_index(db_path):
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'cards'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('card::cards/fulltext.png', 'card', 'cards/fulltext.png', 'Fulltext Hero', 'fulltext.png', 'SciFi', 'SciFi', 'physical', 0, 'rare pilot entry', 210.0, 160.0, 2200, 'fulltext hero', 210.0, '', '210:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'card::cards/fulltext.png', 'card', 'cards/fulltext.png', 'Fulltext Hero', 'fulltext.png', 'SciFi', 'SciFi', 'physical', 0, 'rare pilot entry', 210.0, 160.0, 2200, 'fulltext hero', 210.0, '', '210:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_search_full(entity_id, content) VALUES (?, ?)",
-            ('card::cards/fulltext.png', 'phrase hero "quoted term" rare pilot entry'),
+            "INSERT INTO index_search_full_v2(generation, entity_id, content) VALUES (?, ?, ?)",
+            (1, 'card::cards/fulltext.png', 'phrase hero "quoted term" rare pilot entry'),
         )
         conn.commit()
 
 
 def _seed_root_index(db_path):
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'cards'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('card::cards/root.png', 'card', 'cards/root.png', 'Root', 'root.png', '', '', 'physical', 0, 'root note', 300.0, 250.0, 800, 'root', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'card::cards/root.png', 'card', 'cards/root.png', 'Root', 'root.png', '', '', 'physical', 0, 'root note', 300.0, 250.0, 800, 'root', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)",
-            ('card::cards/root.png', 'Root root.png root note'),
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)",
+            (1, 'card::cards/root.png', 'Root root.png root note'),
         )
         conn.commit()
 
@@ -416,14 +454,15 @@ def test_indexed_list_cards_returns_relative_ids_when_index_source_paths_are_abs
     absolute_source_path = str((tmp_path / 'cards' / 'alpha.png').resolve())
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'cards'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('card::cards/alpha.png', 'card', absolute_source_path, 'Alpha', 'alpha.png', 'SciFi', 'SciFi', 'physical', 0, 'pilot note', 200.0, 150.0, 3200, 'alpha', 200.0, '', '200:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'card::cards/alpha.png', 'card', absolute_source_path, 'Alpha', 'alpha.png', 'SciFi', 'SciFi', 'physical', 0, 'pilot note', 200.0, 150.0, 3200, 'alpha', 200.0, '', '200:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)",
-            ('card::cards/alpha.png', 'Alpha alpha.png SciFi pilot note'),
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)",
+            (1, 'card::cards/alpha.png', 'Alpha alpha.png SciFi pilot note'),
         )
         conn.commit()
 
@@ -560,3 +599,64 @@ def test_query_indexed_cards_reraises_no_such_column_operational_error(monkeypat
         assert 'no such column: missing_column' in str(exc)
     else:
         raise AssertionError('Expected sqlite3.OperationalError to be re-raised')
+
+
+def test_query_indexed_cards_reads_only_active_generation_v2_rows(tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+    _seed_index_v2_cards(db_path, active_generation=3)
+
+    result = query_indexed_cards({
+        'page': 1,
+        'page_size': 20,
+        'category': 'SciFi',
+        'search': 'pilot',
+        'search_mode': 'fast',
+        'include_tags': ['blue'],
+        'db_path': str(db_path),
+    })
+
+    assert result['index_ready'] is True
+    assert [item['id'] for item in result['cards']] == ['cards/alpha.png']
+    assert result['total_count'] == 1
+
+
+def test_query_indexed_cards_reports_not_ready_when_active_generation_missing(tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+
+    with sqlite3.connect(db_path) as conn:
+        ensure_index_runtime_schema(conn)
+
+    result = query_indexed_cards({
+        'page': 1,
+        'page_size': 20,
+        'db_path': str(db_path),
+    })
+
+    assert result == {
+        'cards': [],
+        'total_count': 0,
+        'index_ready': False,
+    }
+
+
+def test_list_cards_falls_back_when_index_query_reports_not_ready(monkeypatch, tmp_path):
+    _configure_indexed_list(
+        monkeypatch,
+        tmp_path,
+        [
+            _make_card('cards/alpha.png', char_name='Alpha', category='SciFi', last_modified=10.0),
+            _make_card('cards/beta.png', char_name='Beta', category='Fantasy', last_modified=20.0),
+        ],
+    )
+    monkeypatch.setattr(
+        cards_api,
+        'query_indexed_cards',
+        lambda *_args, **_kwargs: {'cards': [], 'total_count': 0, 'index_ready': False},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/list_cards?page=1&page_size=20&category=SciFi')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert [item['id'] for item in payload['cards']] == ['cards/alpha.png']

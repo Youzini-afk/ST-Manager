@@ -120,6 +120,24 @@ def test_header_template_does_not_expose_runtime_inspector_controls():
     assert '<div class="menu-label">运行时</div>' not in header_template
 
 
+def test_mobile_header_keeps_search_mode_inside_primary_search_tools_contract():
+    header_template = read_project_file('templates/components/header.html')
+
+    assert 'class="mobile-header-search-tools"' in header_template
+    assert 'class="mobile-search-mode-row"' not in header_template
+    assert 'class="mobile-search-mode-toggle"' in header_template
+    assert (
+        'x-show="[\'cards\', \'worldinfo\'].includes(currentMode) && canUseFulltextSearch"'
+        in header_template
+    )
+
+    mobile_tools_segment = extract_balanced_tag_block(
+        header_template,
+        '<div class="mobile-header-search-tools">',
+    )
+    assert 'class="mobile-search-mode-toggle"' in mobile_tools_segment
+
+
 def test_index_template_does_not_include_runtime_inspector_modal():
     index_template = read_project_file('templates/index.html')
 
@@ -1364,25 +1382,28 @@ def test_mobile_layout_css_defines_search_upload_group_and_no_legacy_sidebar_but
     assert '.sidebar-group-btn {' not in layout_css
 
 
-def test_mobile_header_css_wraps_search_toggle_onto_its_own_row():
+def test_mobile_header_css_keeps_search_tools_on_a_single_compact_row():
     layout_css = read_project_file('static/css/modules/layout.css')
     mobile_layout_css = extract_media_block(layout_css, '@media (max-width: 768px)')
 
     search_row_block = extract_exact_css_block(mobile_layout_css, '.mobile-header-search-row')
     tools_block = extract_exact_css_block(mobile_layout_css, '.mobile-header-search-tools')
-    mode_row_block = extract_exact_css_block(mobile_layout_css, '.mobile-search-mode-row')
     toggle_block = extract_exact_css_block(mobile_layout_css, '.mobile-search-mode-toggle')
+    toggle_button_block = extract_exact_css_block(mobile_layout_css, '.mobile-search-mode-toggle button')
 
     assert 'display: flex;' in search_row_block
-    assert 'flex-direction: column;' in search_row_block
-    assert 'gap: 0.375rem;' in search_row_block
+    assert 'flex-direction: row;' not in search_row_block
+    assert 'flex-direction: column;' not in search_row_block
     assert 'display: flex;' in tools_block
     assert 'align-items: center;' in tools_block
     assert 'min-width: 0;' in tools_block
-    assert 'width: 100%;' in mode_row_block
+    assert 'width: 100%;' in tools_block
     assert 'display: flex;' in toggle_block
-    assert 'width: auto;' in toggle_block
-    assert 'flex: none;' in toggle_block
+    assert 'flex-shrink: 0;' in toggle_block
+    assert '.mobile-search-mode-row {' not in mobile_layout_css
+    assert 'height: 32px;' in toggle_button_block
+    assert 'border-radius: 6px;' in toggle_button_block
+    assert 'border: 1px solid var(--border-light);' in toggle_button_block
 
 
 def test_mobile_header_template_tracks_sidebar_open_state_for_toggle_feedback():

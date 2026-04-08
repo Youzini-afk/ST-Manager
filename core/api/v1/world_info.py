@@ -743,20 +743,21 @@ def api_list_world_infos():
                 query_filters['owner_entity_ids'] = sorted(set(extra_owner_entity_ids))
 
             indexed_source = query_worldinfo_index(query_filters)
-            items = [
-                _enrich_indexed_worldinfo_item(item, card_map, ui_data)
-                for item in indexed_source['items']
-            ]
-            return jsonify({
-                'success': True,
-                'items': items,
-                'total': int(indexed_source.get('total') or 0),
-                'page': page,
-                'page_size': page_size,
-                'all_folders': indexed_source.get('all_folders') or [],
-                'category_counts': indexed_source.get('category_counts') or {},
-                'folder_capabilities': indexed_source.get('folder_capabilities') or {},
-            })
+            if indexed_source.get('index_ready', True):
+                items = [
+                    _enrich_indexed_worldinfo_item(item, card_map, ui_data)
+                    for item in indexed_source['items']
+                ]
+                return jsonify({
+                    'success': True,
+                    'items': items,
+                    'total': int(indexed_source.get('total') or 0),
+                    'page': page,
+                    'page_size': page_size,
+                    'all_folders': indexed_source.get('all_folders') or [],
+                    'category_counts': indexed_source.get('category_counts') or {},
+                    'folder_capabilities': indexed_source.get('folder_capabilities') or {},
+                })
 
         current_wi_folder = _resolve_wi_dir(cfg)
         resources_root = _resolve_resources_dir(cfg)

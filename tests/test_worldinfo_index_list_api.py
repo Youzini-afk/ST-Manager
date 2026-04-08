@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 
 
 from core.api.v1 import world_info as world_info_api
+from core.data.index_runtime_store import ensure_index_runtime_schema
 from core.data.index_store import ensure_index_schema
 
 
@@ -52,17 +53,52 @@ def _make_app():
 
 def _seed_world_index(db_path):
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::科幻/dragon.json', 'world_global', 'D:/lorebooks/科幻/dragon.json', '', 'Dragon Lore', 'dragon.json', '科幻', '科幻', 'physical', 0, 'lore', 300.0, 0.0, 0, 'dragon lore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::科幻/dragon.json', 'world_global', 'D:/lorebooks/科幻/dragon.json', '', 'Dragon Lore', 'dragon.json', '科幻', '科幻', 'physical', 0, 'lore', 300.0, 0.0, 0, 'dragon lore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::embedded::cards/lucy.png', 'world_embedded', 'D:/cards/lucy.png', 'card::cards/lucy.png', 'Embedded Book', 'lucy.png', '科幻', '', 'inherited', 0, 'embedded', 200.0, 0.0, 0, 'embedded book', 200.0, '', '200:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::embedded::cards/lucy.png', 'world_embedded', 'D:/cards/lucy.png', 'card::cards/lucy.png', 'Embedded Book', 'lucy.png', '科幻', '', 'inherited', 0, 'embedded', 200.0, 0.0, 0, 'embedded book', 200.0, '', '200:1'),
         )
-        conn.execute("INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)", ('world::global::科幻/dragon.json', 'Dragon Lore 科幻 lore'))
-        conn.execute("INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)", ('world::embedded::cards/lucy.png', 'Embedded Book Lucy 科幻 embedded'))
+        conn.execute("INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)", (1, 'world::global::科幻/dragon.json', 'Dragon Lore 科幻 lore'))
+        conn.execute("INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)", (1, 'world::embedded::cards/lucy.png', 'Embedded Book Lucy 科幻 embedded'))
+        conn.commit()
+
+
+def _seed_world_index_v2(db_path, *, active_generation=1):
+    with sqlite3.connect(db_path) as conn:
+        ensure_index_runtime_schema(conn)
+        conn.execute(
+            "UPDATE index_build_state SET active_generation = ?, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'",
+            (active_generation,),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (active_generation, 'world::global::科幻/dragon.json', 'world_global', 'D:/lorebooks/科幻/dragon.json', '', 'Dragon Lore', 'dragon.json', '科幻', '科幻', 'physical', 0, 'lore', 300.0, 0.0, 0, 'dragon lore', 300.0, '', '300:1'),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (active_generation + 1, 'world::global::奇幻/forest.json', 'world_global', 'D:/lorebooks/奇幻/forest.json', '', 'Forest Lore', 'forest.json', '奇幻', '奇幻', 'physical', 0, 'forest', 200.0, 0.0, 0, 'forest lore', 200.0, '', '200:1'),
+        )
+        conn.execute(
+            'INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)',
+            (active_generation, 'world::global::科幻/dragon.json', 'Dragon Lore 科幻 lore'),
+        )
+        conn.execute(
+            'INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)',
+            (active_generation + 1, 'world::global::奇幻/forest.json', 'Forest Lore 奇幻 forest'),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (active_generation, 'worldinfo', 'world_global', '科幻', 1, 1),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (active_generation + 1, 'worldinfo', 'world_global', '奇幻', 1, 1),
+        )
         conn.commit()
 
 
@@ -97,14 +133,15 @@ def test_indexed_worldinfo_list_folder_metadata_uses_full_source_set(monkeypatch
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::科幻/dragon.json', 'world_global', str(lorebooks_dir / '科幻' / 'dragon.json'), '', 'Dragon Lore', 'dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'dragon lore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::科幻/dragon.json', 'world_global', str(lorebooks_dir / '科幻' / 'dragon.json'), '', 'Dragon Lore', 'dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'dragon lore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::奇幻/forest.json', 'world_global', str(lorebooks_dir / '奇幻' / 'forest.json'), '', 'Forest Lore', 'forest.json', '奇幻', '奇幻', 'physical', 0, '', 200.0, 0.0, 0, 'forest lore', 200.0, '', '200:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::奇幻/forest.json', 'world_global', str(lorebooks_dir / '奇幻' / 'forest.json'), '', 'Forest Lore', 'forest.json', '奇幻', '奇幻', 'physical', 0, '', 200.0, 0.0, 0, 'forest lore', 200.0, '', '200:1'),
         )
         conn.commit()
 
@@ -122,6 +159,38 @@ def test_indexed_worldinfo_list_folder_metadata_uses_full_source_set(monkeypatch
     assert payload['folder_capabilities']['科幻']['has_physical_folder'] is True
     assert payload['folder_capabilities']['科幻/空目录']['can_delete_physical_folder'] is True
     assert payload['folder_capabilities'][''].get('can_create_child_folder') is True
+
+
+def test_indexed_worldinfo_list_fallback_folder_metadata_finds_empty_root_child_folder(monkeypatch, tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+    lorebooks_dir = tmp_path / 'lorebooks'
+    (lorebooks_dir / '空目录').mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(world_info_api, 'DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr(world_info_api, 'load_config', lambda: {
+        'worldinfo_list_use_index': True,
+        'world_info_dir': str(lorebooks_dir),
+        'resources_dir': str(tmp_path / 'resources'),
+    })
+    monkeypatch.setattr(world_info_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
+
+    with sqlite3.connect(db_path) as conn:
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::root.json', str('world_global'), str(lorebooks_dir / 'root.json'), '', 'Root Lore', 'root.json', '', '', 'physical', 0, '', 300.0, 0.0, 0, 'root lore', 300.0, '', '300:1'),
+        )
+        conn.commit()
+
+    client = _make_app().test_client()
+    res = client.get('/api/world_info/list?type=global&page=1&page_size=20')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert '空目录' in payload['all_folders']
+    assert payload['folder_capabilities']['空目录']['can_delete_physical_folder'] is True
 
 
 def test_indexed_worldinfo_resource_preserves_legacy_owner_fields_and_search(monkeypatch, tmp_path):
@@ -145,14 +214,15 @@ def test_indexed_worldinfo_resource_preserves_legacy_owner_fields_and_search(mon
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([_make_card('cards/lucy.png', '科幻', char_name='Lucy')]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::resource::cards/lucy.png::companion.json', 'world_resource', str(resource_file), 'card::cards/lucy.png', 'Companion Lore', 'companion.json', '科幻', '', 'inherited', 0, 'indexed summary only', 300.0, 0.0, 0, 'companion lore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::resource::cards/lucy.png::companion.json', 'world_resource', str(resource_file), 'card::cards/lucy.png', 'Companion Lore', 'companion.json', '科幻', '', 'inherited', 0, 'indexed summary only', 300.0, 0.0, 0, 'companion lore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)",
-            ('world::resource::cards/lucy.png::companion.json', 'Companion Lore lorebook'),
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)",
+            (1, 'world::resource::cards/lucy.png::companion.json', 'Companion Lore lorebook'),
         )
         conn.commit()
 
@@ -190,14 +260,15 @@ def test_indexed_worldinfo_search_preserves_name_substring_matching(monkeypatch,
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::科幻/super-dragon.json', 'world_global', 'D:/lorebooks/科幻/super-dragon.json', '', 'SuperDragonLore', 'super-dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'superdragonlore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::科幻/super-dragon.json', 'world_global', 'D:/lorebooks/科幻/super-dragon.json', '', 'SuperDragonLore', 'super-dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'superdragonlore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)",
-            ('world::global::科幻/super-dragon.json', 'unrelated tokens only'),
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)",
+            (1, 'world::global::科幻/super-dragon.json', 'unrelated tokens only'),
         )
         conn.commit()
 
@@ -218,14 +289,15 @@ def test_indexed_worldinfo_fast_search_preserves_name_substring_matching(monkeyp
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::科幻/super-dragon.json', 'world_global', 'D:/lorebooks/科幻/super-dragon.json', '', 'SuperDragonLore', 'super-dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'superdragonlore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::科幻/super-dragon.json', 'world_global', 'D:/lorebooks/科幻/super-dragon.json', '', 'SuperDragonLore', 'super-dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'superdragonlore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)",
-            ('world::global::科幻/super-dragon.json', 'unrelated tokens only'),
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (?, ?, ?)",
+            (1, 'world::global::科幻/super-dragon.json', 'unrelated tokens only'),
         )
         conn.commit()
 
@@ -246,14 +318,15 @@ def test_indexed_worldinfo_fulltext_search_uses_match_semantics(monkeypatch, tmp
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::科幻/dragon.json', 'world_global', 'D:/lorebooks/科幻/dragon.json', '', 'Dragon Lore', 'dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'dragon lore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::科幻/dragon.json', 'world_global', 'D:/lorebooks/科幻/dragon.json', '', 'Dragon Lore', 'dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'dragon lore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_search_fast(entity_id, content) VALUES (?, ?)",
-            ('world::global::科幻/dragon.json', 'dragon hero rare pilot entry'),
+            "INSERT INTO index_search_full_v2(generation, entity_id, content) VALUES (?, ?, ?)",
+            (1, 'world::global::科幻/dragon.json', 'dragon hero rare pilot entry'),
         )
         conn.commit()
 
@@ -278,10 +351,11 @@ def test_indexed_worldinfo_name_source_stays_meta_when_explicit_name_equals_file
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::科幻/dragon.json', 'world_global', 'D:/lorebooks/科幻/dragon.json', '', 'dragon.json', 'dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'dragon.json', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::科幻/dragon.json', 'world_global', 'D:/lorebooks/科幻/dragon.json', '', 'dragon.json', 'dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'dragon.json', 300.0, '', '300:1'),
         )
         conn.commit()
 
@@ -311,10 +385,11 @@ def test_indexed_worldinfo_name_source_detects_filename_fallback_from_source_jso
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::科幻/dragon.json', 'world_global', str(source_file), '', 'dragon.json', 'dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'dragon.json', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::科幻/dragon.json', 'world_global', str(source_file), '', 'dragon.json', 'dragon.json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'dragon.json', 300.0, '', '300:1'),
         )
         conn.commit()
 
@@ -399,6 +474,92 @@ def test_indexed_worldinfo_list_delegates_query_and_folder_metadata_to_index_hel
     }]
 
 
+def test_query_worldinfo_index_reads_only_active_generation_v2_rows(tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+    _seed_world_index_v2(db_path, active_generation=5)
+
+    from core.services.worldinfo_index_query_service import query_worldinfo_index
+
+    result = query_worldinfo_index({
+        'type': 'global',
+        'category': '科幻',
+        'search': 'dragon',
+        'search_mode': 'fast',
+        'page': 1,
+        'page_size': 20,
+        'paginate': True,
+        'db_path': str(db_path),
+    })
+
+    assert result['index_ready'] is True
+    assert [item['id'] for item in result['items']] == ['world::global::科幻/dragon.json']
+    assert result['total'] == 1
+    assert result['all_folders'] == ['科幻']
+    assert result['category_counts'] == {'科幻': 1}
+
+
+def test_query_worldinfo_index_reports_not_ready_when_active_generation_missing(tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+
+    with sqlite3.connect(db_path) as conn:
+        ensure_index_runtime_schema(conn)
+
+    from core.services.worldinfo_index_query_service import query_worldinfo_index
+
+    result = query_worldinfo_index({
+        'type': 'global',
+        'page': 1,
+        'page_size': 20,
+        'paginate': True,
+        'db_path': str(db_path),
+    })
+
+    assert result == {
+        'items': [],
+        'total': 0,
+        'all_folders': [],
+        'category_counts': {},
+        'folder_capabilities': {},
+        'index_ready': False,
+    }
+
+
+def test_worldinfo_list_falls_back_when_index_query_reports_not_ready(monkeypatch, tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+    lorebooks_dir = tmp_path / 'lorebooks'
+    lorebooks_dir.mkdir(parents=True, exist_ok=True)
+    (lorebooks_dir / '科幻').mkdir(parents=True, exist_ok=True)
+    (lorebooks_dir / '科幻' / 'dragon.json').write_text('{"name": "Dragon Lore", "entries": {}}', encoding='utf-8')
+
+    monkeypatch.setattr(world_info_api, 'DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr(world_info_api, 'load_config', lambda: {
+        'worldinfo_list_use_index': True,
+        'world_info_dir': str(lorebooks_dir),
+        'resources_dir': str(tmp_path / 'resources'),
+    })
+    monkeypatch.setattr(world_info_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
+    monkeypatch.setattr(
+        world_info_api,
+        'query_worldinfo_index',
+        lambda *_args, **_kwargs: {
+            'items': [],
+            'total': 0,
+            'all_folders': [],
+            'category_counts': {},
+            'folder_capabilities': {},
+            'index_ready': False,
+        },
+    )
+
+    client = _make_app().test_client()
+    res = client.get('/api/world_info/list?type=global&page=1&page_size=20')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert [item['id'] for item in payload['items']] == ['global::科幻/dragon.json']
+
+
 def test_indexed_worldinfo_route_uses_subtree_counts_for_nested_categories(monkeypatch, tmp_path):
     db_path = tmp_path / 'cards_metadata.db'
 
@@ -408,18 +569,19 @@ def test_indexed_worldinfo_route_uses_subtree_counts_for_nested_categories(monke
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::科幻/赛博朋克/dragon.json', 'world_global', 'D:/lorebooks/科幻/赛博朋克/dragon.json', '', 'Dragon Lore', 'dragon.json', '科幻/赛博朋克', '科幻/赛博朋克', 'physical', 0, '', 300.0, 0.0, 0, 'dragon lore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::科幻/赛博朋克/dragon.json', 'world_global', 'D:/lorebooks/科幻/赛博朋克/dragon.json', '', 'Dragon Lore', 'dragon.json', '科幻/赛博朋克', '科幻/赛博朋克', 'physical', 0, '', 300.0, 0.0, 0, 'dragon lore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_category_stats(scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?)",
-            ('worldinfo', 'world_global', '科幻', 0, 1),
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (1, 'worldinfo', 'world_global', '科幻', 0, 1),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_category_stats(scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?)",
-            ('worldinfo', 'world_global', '科幻/赛博朋克', 1, 1),
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (1, 'worldinfo', 'world_global', '科幻/赛博朋克', 1, 1),
         )
         conn.commit()
 
@@ -441,18 +603,19 @@ def test_indexed_worldinfo_route_keeps_virtual_folder_capabilities_for_resource_
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([_make_card('cards/lucy.png', '科幻', char_name='Lucy')]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::resource::cards/lucy.png::companion.json', 'world_resource', 'D:/resources/lucy/lorebooks/companion.json', 'card::cards/lucy.png', 'Companion Lore', 'companion.json', '科幻/伙伴', '', 'inherited', 0, '', 300.0, 0.0, 0, 'companion lore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::resource::cards/lucy.png::companion.json', 'world_resource', 'D:/resources/lucy/lorebooks/companion.json', 'card::cards/lucy.png', 'Companion Lore', 'companion.json', '科幻/伙伴', '', 'inherited', 0, '', 300.0, 0.0, 0, 'companion lore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_category_stats(scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?)",
-            ('worldinfo', 'world_resource', '科幻', 0, 1),
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (1, 'worldinfo', 'world_resource', '科幻', 0, 1),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_category_stats(scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?)",
-            ('worldinfo', 'world_resource', '科幻/伙伴', 1, 1),
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (1, 'worldinfo', 'world_resource', '科幻/伙伴', 1, 1),
         )
         conn.commit()
 
@@ -476,26 +639,27 @@ def test_indexed_worldinfo_type_all_keeps_virtual_folder_capabilities_for_virtua
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([_make_card('cards/lucy.png', '科幻', char_name='Lucy')]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::resource::cards/lucy.png::companion.json', 'world_resource', 'D:/resources/lucy/lorebooks/companion.json', 'card::cards/lucy.png', 'Companion Lore', 'companion.json', '科幻/伙伴', '', 'inherited', 0, '', 300.0, 0.0, 0, 'companion lore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::resource::cards/lucy.png::companion.json', 'world_resource', 'D:/resources/lucy/lorebooks/companion.json', 'card::cards/lucy.png', 'Companion Lore', 'companion.json', '科幻/伙伴', '', 'inherited', 0, '', 300.0, 0.0, 0, 'companion lore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_category_stats(scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?)",
-            ('worldinfo', 'world_all', '科幻', 0, 1),
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (1, 'worldinfo', 'world_all', '科幻', 0, 1),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_category_stats(scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?)",
-            ('worldinfo', 'world_all', '科幻/伙伴', 1, 1),
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (1, 'worldinfo', 'world_all', '科幻/伙伴', 1, 1),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_category_stats(scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?)",
-            ('worldinfo', 'world_resource', '科幻', 0, 1),
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (1, 'worldinfo', 'world_resource', '科幻', 0, 1),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_category_stats(scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?)",
-            ('worldinfo', 'world_resource', '科幻/伙伴', 1, 1),
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (1, 'worldinfo', 'world_resource', '科幻/伙伴', 1, 1),
         )
         conn.commit()
 
@@ -519,14 +683,15 @@ def test_indexed_worldinfo_route_malformed_search_preserves_literal_name_matchin
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([]))
 
     with sqlite3.connect(db_path) as conn:
-        ensure_index_schema(conn)
+        ensure_index_runtime_schema(conn)
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
         conn.execute(
-            "INSERT OR REPLACE INTO index_entities(entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ('world::global::科幻/broken[query].json', 'world_global', 'D:/lorebooks/科幻/broken[query].json', '', 'broken[query] lore', 'broken[query].json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'broken[query] lore', 300.0, '', '300:1'),
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::global::科幻/broken[query].json', 'world_global', 'D:/lorebooks/科幻/broken[query].json', '', 'broken[query] lore', 'broken[query].json', '科幻', '科幻', 'physical', 0, '', 300.0, 0.0, 0, 'broken[query] lore', 300.0, '', '300:1'),
         )
         conn.execute(
-            "INSERT OR REPLACE INTO index_category_stats(scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?)",
-            ('worldinfo', 'world_global', '科幻', 1, 1),
+            "INSERT OR REPLACE INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (?, ?, ?, ?, ?, ?)",
+            (1, 'worldinfo', 'world_global', '科幻', 1, 1),
         )
         conn.commit()
 

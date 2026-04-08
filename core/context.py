@@ -4,6 +4,60 @@ import time
 
 from core.data.cache import GlobalMetadataCache
 
+
+class IndexState(dict):
+    """兼容旧扁平状态写入，同时暴露新的嵌套索引状态。"""
+
+    def __init__(self):
+        super().__init__(
+            schema={
+                'db_version': 0,
+                'index_runtime_version': 0,
+                'state': 'empty',
+                'message': '',
+            },
+            cards={
+                'state': 'empty',
+                'phase': '',
+                'active_generation': 0,
+                'building_generation': 0,
+                'items_written': 0,
+                'last_error': '',
+            },
+            worldinfo={
+                'state': 'empty',
+                'phase': '',
+                'active_generation': 0,
+                'building_generation': 0,
+                'items_written': 0,
+                'last_error': '',
+            },
+            jobs={
+                'pending_jobs': 0,
+                'worker_state': 'idle',
+            },
+            state='empty',
+            scope='cards',
+            progress=0,
+            message='',
+            pending_jobs=0,
+        )
+
+    def update(self, *args, **kwargs):
+        updates = dict(*args, **kwargs)
+        super().update(updates)
+
+        scope = str(self.get('scope') or 'cards')
+        if scope not in ('cards', 'worldinfo'):
+            scope = 'cards'
+
+        if 'state' in updates:
+            self[scope]['state'] = updates['state']
+        if 'message' in updates:
+            self['schema']['message'] = updates['message']
+        if 'pending_jobs' in updates:
+            self['jobs']['pending_jobs'] = updates['pending_jobs']
+
 class AppContext:
     """
     应用程序全局上下文 (Singleton)。
@@ -69,13 +123,10 @@ class AppContext:
         # === 索引服务状态 ===
         self.index_lock = threading.Lock()
         self.index_job_lock = threading.Lock()
-        self.index_state = {
-            'state': 'empty',
-            'scope': 'cards',
-            'progress': 0,
-            'message': '',
-            'pending_jobs': 0,
-        }
+        self.index_state = IndexState()
+        self.index_owner_token = ''
+        self.index_wakeup = threading.Event()
+        self.index_upgrade_active = False
         self.index_worker_started = False
 
     def _init_components(self):

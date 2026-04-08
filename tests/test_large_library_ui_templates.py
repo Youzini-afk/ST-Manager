@@ -9,6 +9,33 @@ def read_project_file(relative_path):
     return (PROJECT_ROOT / relative_path).read_text(encoding='utf-8')
 
 
+def extract_balanced_tag_block(source, opening_tag):
+    start = source.find(opening_tag)
+    if start == -1:
+        raise AssertionError(f'Opening tag not found: {opening_tag}')
+
+    search_from = start
+    depth = 0
+    while search_from < len(source):
+        next_open = source.find('<div', search_from)
+        next_close = source.find('</div>', search_from)
+
+        if next_close == -1:
+            break
+
+        if next_open != -1 and next_open < next_close:
+            depth += 1
+            search_from = next_open + 4
+            continue
+
+        depth -= 1
+        search_from = next_close + len('</div>')
+        if depth == 0:
+            return source[start:search_from]
+
+    raise AssertionError(f'Balanced block not found for: {opening_tag}')
+
+
 def test_header_template_exposes_search_mode_and_index_status_contracts():
     header_template = read_project_file('templates/components/header.html')
     header_source = read_project_file('static/js/components/header.js')
@@ -64,18 +91,66 @@ def test_header_source_forces_stale_fulltext_modes_back_to_fast():
     assert 'this.ensureSearchModeAllowed();' in header_source
 
 
-def test_mobile_header_search_mode_toggle_is_separated_from_search_row_contract():
+def test_desktop_header_places_search_mode_toggle_inside_search_block_contract():
     header_template = read_project_file('templates/components/header.html')
+
+    search_block_anchor = '<div class="header-search-block ml-auto mr-4">'
+    search_container_anchor = 'search-container'
+    search_mode_anchor = 'search-mode-toggle'
+    advanced_filter_anchor = 'header-advanced-filter-btn'
+
+    assert search_block_anchor in header_template
+    search_block_markup = extract_balanced_tag_block(header_template, search_block_anchor)
+
+    assert 'header-search-block' in search_block_markup
+    assert search_container_anchor in search_block_markup
+    assert search_mode_anchor in search_block_markup
+    assert advanced_filter_anchor in search_block_markup
+    assert (
+        search_block_markup.index(search_container_anchor)
+        < search_block_markup.index(search_mode_anchor)
+        < search_block_markup.index(advanced_filter_anchor)
+    )
+
+    toggle_match = re.search(r'<[^>]*class="[^"]*\bsearch-mode-toggle\b[^"]*"[^>]*>', search_block_markup)
+    assert toggle_match is not None
+
+    toggle_tag = toggle_match.group(0)
+    assert 'x-show=' in toggle_tag
+    assert 'canUseFulltextSearch' in toggle_tag
+    assert '.includes(currentMode)' in toggle_tag
+    assert "'cards'" in toggle_tag or '"cards"' in toggle_tag
+    assert "'worldinfo'" in toggle_tag or '"worldinfo"' in toggle_tag
+
+
+def test_layout_css_defines_compact_desktop_search_mode_toggle_contract():
     layout_css = read_project_file('static/css/modules/layout.css')
 
-    assert 'class="mobile-header-search-row"' in header_template
-    assert 'class="mobile-header-search-tools"' in header_template
-    assert 'class="mobile-search-mode-row"' in header_template
-    assert '.mobile-header-search-row {' in layout_css
-    assert '.mobile-header-search-tools {' in layout_css
-    assert '.mobile-search-mode-row {' in layout_css
-    assert '.mobile-search-mode-toggle {' in layout_css
-    assert 'width: auto;' in layout_css
+    toggle_block = re.search(r'\.search-mode-toggle\s*\{([^}]*)\}', layout_css)
+    button_block = re.search(r'\.search-mode-toggle button\s*\{([^}]*)\}', layout_css)
+    active_button_block = re.search(r'\.search-mode-toggle button\.is-active\s*\{([^}]*)\}', layout_css)
+
+    assert toggle_block is not None
+    assert button_block is not None
+    assert active_button_block is not None
+
+    toggle_css = toggle_block.group(1)
+    button_css = button_block.group(1)
+    active_button_css = active_button_block.group(1)
+
+    assert 'display: inline-flex;' in toggle_css
+    assert 'flex-shrink: 0;' in toggle_css
+    assert 'border-radius:' in toggle_css
+    assert 'background:' in toggle_css or 'background-color:' in toggle_css
+
+    assert 'height: 100%;' in button_css
+    assert 'background: transparent;' in button_css
+    assert 'cursor: pointer;' in button_css
+    assert 'border-radius:' in button_css
+    assert 'color: var(--text-dim);' in button_css
+
+    assert 'background:' in active_button_css
+    assert 'color: var(--accent-main);' in active_button_css
 
 
 def test_card_grid_source_and_template_use_windowed_slice_contracts():

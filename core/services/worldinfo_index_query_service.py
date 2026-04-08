@@ -2,6 +2,7 @@ import os
 import sqlite3
 
 from core.config import DEFAULT_DB_PATH
+from core.data.index_runtime_store import get_active_generation
 
 
 def _connect(db_path=None):
@@ -70,15 +71,15 @@ def _iter_category_ancestors(category: str):
         current = current.rsplit('/', 1)[0]
 
 
-def _fallback_folder_metadata(conn, requested_entity_type: str):
-    where = ["entity_type LIKE 'world_%'"]
-    params = []
+def _fallback_folder_metadata(conn, requested_entity_type: str, generation: int):
+    where = ['generation = ?', "entity_type LIKE 'world_%'"]
+    params = [generation]
     if requested_entity_type != 'world_all':
         where.append('entity_type = ?')
         params.append(requested_entity_type)
 
     rows = conn.execute(
-        f"SELECT entity_type, display_category, source_path FROM index_entities WHERE {' AND '.join(where)}",
+        f"SELECT entity_type, display_category, source_path FROM index_entities_v2 WHERE {' AND '.join(where)}",
         params,
     ).fetchall()
 
@@ -109,8 +110,17 @@ def _fallback_folder_metadata(conn, requested_entity_type: str):
 
         if entity_type == 'world_global':
             source_path = str(row['source_path'] or '').replace('\\', '/')
-            if source_path and category and source_path.lower().endswith('/' + category.lower() + '/' + source_path.split('/')[-1].lower()):
-                root_path = source_path[:-(len(category) + len(source_path.split('/')[-1]) + 2)]
+            filename = source_path.split('/')[-1] if source_path else ''
+            if source_path and filename and source_path.lower().endswith('/' + filename.lower()):
+                if category:
+                    expected_suffix = '/' + category.lower() + '/' + filename.lower()
+                    if source_path.lower().endswith(expected_suffix):
+                        root_path = source_path[:-len(expected_suffix)]
+                    else:
+                        root_path = ''
+                else:
+                    root_path = source_path[:-(len(filename) + 1)]
+
                 if root_path:
                     global_roots.add(root_path.rstrip('/'))
 
@@ -134,10 +144,10 @@ def _fallback_folder_metadata(conn, requested_entity_type: str):
     return sorted(all_folders), category_counts, empty_physical_folders, folder_semantics
 
 
-def _category_stats_metadata(conn, requested_entity_type: str):
+def _category_stats_metadata(conn, requested_entity_type: str, generation: int):
     stat_rows = conn.execute(
-        'SELECT category_path, direct_count, subtree_count FROM index_category_stats WHERE scope = ? AND entity_type = ? ORDER BY category_path ASC',
-        ('worldinfo', requested_entity_type),
+        'SELECT category_path, direct_count, subtree_count FROM index_category_stats_v2 WHERE generation = ? AND scope = ? AND entity_type = ? ORDER BY category_path ASC',
+        (generation, 'worldinfo', requested_entity_type),
     ).fetchall()
     if not stat_rows:
         return None
@@ -153,23 +163,23 @@ def _category_stats_metadata(conn, requested_entity_type: str):
 
     def _stat_count(entity_type: str, path: str) -> int:
         row = conn.execute(
-            'SELECT subtree_count FROM index_category_stats WHERE scope = ? AND entity_type = ? AND category_path = ?',
-            ('worldinfo', entity_type, path),
+            'SELECT subtree_count FROM index_category_stats_v2 WHERE generation = ? AND scope = ? AND entity_type = ? AND category_path = ?',
+            (generation, 'worldinfo', entity_type, path),
         ).fetchone()
         return int((row or [0])[0] or 0)
 
     def _has_stat_row(entity_type: str, path: str) -> bool:
         row = conn.execute(
-            'SELECT 1 FROM index_category_stats WHERE scope = ? AND entity_type = ? AND category_path = ? LIMIT 1',
-            ('worldinfo', entity_type, path),
+            'SELECT 1 FROM index_category_stats_v2 WHERE generation = ? AND scope = ? AND entity_type = ? AND category_path = ? LIMIT 1',
+            (generation, 'worldinfo', entity_type, path),
         ).fetchone()
         return row is not None
 
     def _has_physical_child_folder(path: str) -> bool:
         prefix = f'{path}/%'
         row = conn.execute(
-            'SELECT 1 FROM index_category_stats WHERE scope = ? AND entity_type = ? AND category_path LIKE ? LIMIT 1',
-            ('worldinfo', 'world_global', prefix),
+            'SELECT 1 FROM index_category_stats_v2 WHERE generation = ? AND scope = ? AND entity_type = ? AND category_path LIKE ? LIMIT 1',
+            (generation, 'worldinfo', 'world_global', prefix),
         ).fetchone()
         return row is not None
 
@@ -199,9 +209,9 @@ def _category_stats_metadata(conn, requested_entity_type: str):
     return all_folders, category_counts, empty_physical_folders, folder_semantics
 
 
-def _build_query_parts(filters, *, literal_only=False):
-    where = ["e.entity_type LIKE 'world_%'"]
-    params = []
+def _build_query_parts(filters, generation: int, *, literal_only=False):
+    where = ['e.generation = ?', "e.entity_type LIKE 'world_%'"]
+    params = [generation]
     search_mode = str(filters.get('search_mode') or 'fast').strip().lower()
     if search_mode not in ('fast', 'fulltext'):
         search_mode = 'fast'
@@ -223,10 +233,10 @@ def _build_query_parts(filters, *, literal_only=False):
         search_params = [f'%{search.lower()}%']
 
         if not literal_only and search_mode == 'fulltext':
-            search_terms.insert(0, 'e.entity_id IN (SELECT entity_id FROM index_search_fast WHERE index_search_fast MATCH ?)')
+            search_terms.insert(0, 'e.entity_id IN (SELECT entity_id FROM index_search_full_v2 WHERE generation = e.generation AND index_search_full_v2 MATCH ?)')
             search_params.insert(0, search)
         elif not literal_only:
-            search_terms.insert(0, 'e.entity_id IN (SELECT entity_id FROM index_search_fast WHERE content LIKE ? ESCAPE \'\\\')')
+            search_terms.insert(0, 'e.entity_id IN (SELECT entity_id FROM index_search_fast_v2 WHERE generation = e.generation AND content LIKE ? ESCAPE \'\\\')')
             escaped = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
             search_params.insert(0, f'%{escaped.lower()}%')
 
@@ -268,15 +278,15 @@ def _build_query_parts(filters, *, literal_only=False):
                 WHEN e.entity_type = 'world_resource' THEN 'resource'
                 ELSE 'embedded'
             END AS source_type
-        FROM index_entities e
+        FROM index_entities_v2 e
         WHERE {' AND '.join(where)}
         ORDER BY e.sort_mtime DESC, e.sort_name ASC
     '''
     return requested_entity_type, search, sql, where, params
 
 
-def _run_query(conn, filters, *, literal_only=False):
-    requested_entity_type, search, sql, where, params = _build_query_parts(filters, literal_only=literal_only)
+def _run_query(conn, filters, generation: int, *, literal_only=False):
+    requested_entity_type, search, sql, where, params = _build_query_parts(filters, generation, literal_only=literal_only)
     paginate = bool(filters.get('paginate', True))
     query_params = list(params)
     if paginate:
@@ -287,7 +297,7 @@ def _run_query(conn, filters, *, literal_only=False):
 
     items = [dict(row) for row in conn.execute(sql, query_params).fetchall()]
     total = conn.execute(
-        f"SELECT COUNT(*) FROM index_entities e WHERE {' AND '.join(where)}",
+        f"SELECT COUNT(*) FROM index_entities_v2 e WHERE {' AND '.join(where)}",
         params,
     ).fetchone()[0]
     return requested_entity_type, search, items, int(total)
@@ -297,19 +307,40 @@ def query_worldinfo_index(filters):
     search = str(filters.get('search') or '').strip()
     try:
         with _connect(filters.get('db_path')) as conn:
-            requested_entity_type, search, items, total = _run_query(conn, filters, literal_only=False)
-            stats_result = _category_stats_metadata(conn, requested_entity_type)
+            generation = get_active_generation(conn, 'worldinfo')
+            if generation <= 0:
+                return {
+                    'items': [],
+                    'total': 0,
+                    'all_folders': [],
+                    'category_counts': {},
+                    'folder_capabilities': {},
+                    'index_ready': False,
+                }
+
+            requested_entity_type, search, items, total = _run_query(conn, filters, generation, literal_only=False)
+            stats_result = _category_stats_metadata(conn, requested_entity_type, generation)
             if stats_result is None:
-                all_folders, category_counts, empty_physical_folders, folder_semantics = _fallback_folder_metadata(conn, requested_entity_type)
+                all_folders, category_counts, empty_physical_folders, folder_semantics = _fallback_folder_metadata(conn, requested_entity_type, generation)
             else:
                 all_folders, category_counts, empty_physical_folders, folder_semantics = stats_result
     except sqlite3.OperationalError as exc:
         if search and _is_malformed_match_error(exc):
             with _connect(filters.get('db_path')) as conn:
-                requested_entity_type, _search, items, total = _run_query(conn, filters, literal_only=True)
-                stats_result = _category_stats_metadata(conn, requested_entity_type)
+                generation = get_active_generation(conn, 'worldinfo')
+                if generation <= 0:
+                    return {
+                        'items': [],
+                        'total': 0,
+                        'all_folders': [],
+                        'category_counts': {},
+                        'folder_capabilities': {},
+                        'index_ready': False,
+                    }
+                requested_entity_type, _search, items, total = _run_query(conn, filters, generation, literal_only=True)
+                stats_result = _category_stats_metadata(conn, requested_entity_type, generation)
                 if stats_result is None:
-                    all_folders, category_counts, empty_physical_folders, folder_semantics = _fallback_folder_metadata(conn, requested_entity_type)
+                    all_folders, category_counts, empty_physical_folders, folder_semantics = _fallback_folder_metadata(conn, requested_entity_type, generation)
                 else:
                     all_folders, category_counts, empty_physical_folders, folder_semantics = stats_result
         else:
@@ -327,4 +358,5 @@ def query_worldinfo_index(filters):
             }
             for path, caps in _build_folder_capabilities(all_folders, folder_semantics).items()
         },
+        'index_ready': True,
     }

@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 
 from core.services import cache_service
 from core.services import scan_service
+from core.services import index_job_worker
 
 
 def test_worldinfo_watch_filter_accepts_global_and_resource_lorebooks(monkeypatch):
@@ -192,6 +193,30 @@ def test_background_scanner_enqueues_cards_and_worldinfo_rebuilds_when_changes_d
         (('rebuild_scope',), {'payload': {'scope': 'cards'}}),
         (('rebuild_scope',), {'payload': {'scope': 'worldinfo'}}),
     ]
+
+
+def test_enqueue_index_job_persists_pending_row(monkeypatch, tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / 'cards_metadata.db'
+
+    with sqlite3.connect(db_path) as conn:
+        from core.data.index_runtime_store import ensure_index_runtime_schema
+
+        ensure_index_runtime_schema(conn)
+
+    monkeypatch.setattr(index_job_worker, 'DEFAULT_DB_PATH', str(db_path))
+
+    index_job_worker.enqueue_index_job('rebuild_scope', payload={'scope': 'worldinfo'})
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            'SELECT job_type, status, payload_json FROM index_jobs ORDER BY id DESC LIMIT 1'
+        ).fetchone()
+
+    assert row[0] == 'rebuild_scope'
+    assert row[1] == 'pending'
+    assert 'worldinfo' in row[2]
 
 
 def test_update_card_cache_returns_true_when_enqueue_fails_after_commit(monkeypatch):

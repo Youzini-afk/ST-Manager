@@ -773,29 +773,30 @@ def api_list_cards():
             'token_max': token_max,
             'db_path': DEFAULT_DB_PATH,
         })
-        metadata_candidates = _collect_list_cards_metadata_candidates(
-            getattr(ctx.cache, 'cards', []) or [],
-            category,
-            search_scope,
-            is_recursive,
-            isolated_paths,
-        )
-        tag_metadata = _build_list_cards_tag_metadata(metadata_candidates, ui_data_for_order)
-        return jsonify({
-            'cards': indexed['cards'],
-            'global_tags': tag_metadata['global_tags'],
-            'sidebar_tags': tag_metadata['sidebar_tags'],
-            'isolated_categories': isolated_categories,
-            'tag_taxonomy': tag_metadata['tag_taxonomy'],
-            'global_tag_groups': tag_metadata['global_tag_groups'],
-            'sidebar_tag_groups': tag_metadata['sidebar_tag_groups'],
-            'all_folders': _serialize_all_folders(getattr(ctx.cache, 'visible_folders', []) or []),
-            'category_counts': dict(getattr(ctx.cache, 'category_counts', {}) or {}),
-            'total_count': indexed['total_count'],
-            'library_total': len(getattr(ctx.cache, 'cards', []) or []),
-            'page': page,
-            'page_size': page_size,
-        })
+        if indexed.get('index_ready', True):
+            metadata_candidates = _collect_list_cards_metadata_candidates(
+                getattr(ctx.cache, 'cards', []) or [],
+                category,
+                search_scope,
+                is_recursive,
+                isolated_paths,
+            )
+            tag_metadata = _build_list_cards_tag_metadata(metadata_candidates, ui_data_for_order)
+            return jsonify({
+                'cards': indexed['cards'],
+                'global_tags': tag_metadata['global_tags'],
+                'sidebar_tags': tag_metadata['sidebar_tags'],
+                'isolated_categories': isolated_categories,
+                'tag_taxonomy': tag_metadata['tag_taxonomy'],
+                'global_tag_groups': tag_metadata['global_tag_groups'],
+                'sidebar_tag_groups': tag_metadata['sidebar_tag_groups'],
+                'all_folders': _serialize_all_folders(getattr(ctx.cache, 'visible_folders', []) or []),
+                'category_counts': dict(getattr(ctx.cache, 'category_counts', {}) or {}),
+                'total_count': indexed['total_count'],
+                'library_total': len(getattr(ctx.cache, 'cards', []) or []),
+                'page': page,
+                'page_size': page_size,
+            })
 
     # 1. 获取所有卡片, 浅拷贝
     with ctx.cache.lock:

@@ -11,7 +11,7 @@ from core.config import CARDS_FOLDER, DEFAULT_DB_PATH
 from core.context import ctx
 from core.data.db_session import get_db, execute_with_retry
 from core.data.ui_store import load_ui_data
-from core.services.index_service import enqueue_index_job
+from core.services.index_job_worker import enqueue_index_job
 
 # === 工具函数 ===
 from core.utils.hash import get_file_hash_and_size

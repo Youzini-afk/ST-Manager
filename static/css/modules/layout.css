@@ -1301,6 +1301,40 @@ html.light-mode .header-favorite-btn.is-excluded .header-favorite-icon::after {
   box-shadow: 0 0 0 2px var(--accent-faint);
 }
 
+.search-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.22rem;
+  height: 38px;
+  border-radius: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--border-light), #ffffff 10%);
+  background: color-mix(in srgb, var(--bg-sub), var(--bg-panel) 24%);
+  flex-shrink: 0;
+}
+
+.search-mode-toggle button {
+  height: 100%;
+  padding: 0 0.72rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.search-mode-toggle button.is-active {
+  border-color: color-mix(in srgb, var(--accent-main), transparent 35%);
+  background: color-mix(in srgb, var(--accent-main), transparent 86%);
+  color: var(--accent-main);
+}
+
 .search-type-inline {
   display: flex;
   align-items: center;
@@ -1532,8 +1566,6 @@ html.light-mode .header-favorite-btn.is-excluded .header-favorite-icon::after {
     flex: 1;
     min-width: 0;
     display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
   }
   .mobile-header-search-tools {
     display: flex;
@@ -1655,11 +1687,7 @@ html.light-mode .header-favorite-btn.is-excluded .header-favorite-icon::after {
     align-items: center;
     gap: 0.375rem;
     width: auto;
-    flex: none;
-  }
-  .mobile-search-mode-row {
-    width: 100%;
-    display: flex;
+    flex-shrink: 0;
   }
   .mobile-filter-bar {
     display: flex;
@@ -2007,13 +2035,17 @@ html.light-mode .header-favorite-btn.is-excluded .header-favorite-icon::after {
     padding: 0.125rem 0.375rem;
   }
   .mobile-search-mode-toggle button {
-    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     height: 32px;
+    padding: 0 0.625rem;
     border-radius: 6px;
     border: 1px solid var(--border-light);
     background-color: var(--bg-sub);
     color: var(--text-main);
     font-size: 0.8125rem;
+    flex: 0 0 auto;
   }
   .mobile-search-mode-toggle button.is-active {
     border-color: var(--accent-main);

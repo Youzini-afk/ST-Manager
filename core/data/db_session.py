@@ -8,6 +8,7 @@ from flask import g
 # === 基础设施 ===
 from core.config import CARDS_FOLDER, DEFAULT_DB_PATH
 from core.data.index_store import ensure_index_schema
+from core.data.index_runtime_store import ensure_index_runtime_schema
 
 # === 工具函数 (用于数据迁移) ===
 from core.utils.image import extract_card_info
@@ -170,10 +171,27 @@ def init_database():
         print("正在升级数据库: 添加 has_character_book 列...")
         try:
             cursor.execute("ALTER TABLE card_metadata ADD COLUMN has_character_book INTEGER DEFAULT 0")
+            conn.commit()
+        except Exception as e:
+            logger.error(f"数据库升级失败 (has_character_book): {e}")
+
+    if 'character_book_name' not in columns:
+        print("正在升级数据库: 添加 character_book_name 列...")
+        try:
             cursor.execute("ALTER TABLE card_metadata ADD COLUMN character_book_name TEXT DEFAULT ''")
             conn.commit()
         except Exception as e:
-            logger.error(f"数据库升级失败 (WI columns): {e}")
+            logger.error(f"数据库升级失败 (character_book_name): {e}")
+
+    if 'wi_metadata_scanned' not in columns:
+        print('正在升级数据库: 添加 wi_metadata_scanned 列...')
+        try:
+            cursor.execute("ALTER TABLE card_metadata ADD COLUMN wi_metadata_scanned INTEGER DEFAULT 0")
+            conn.commit()
+        except Exception as e:
+            logger.error(f"数据库升级失败 (wi_metadata_scanned): {e}")
+
+    ensure_index_runtime_schema(conn)
 
     # === 3. 数据迁移逻辑 ===
     if not is_existing_db:

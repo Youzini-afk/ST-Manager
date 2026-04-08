@@ -4,12 +4,15 @@ import os
 import sqlite3
 import threading
 import time
+from copy import deepcopy
 from typing import Any
 
 from core.config import CARDS_FOLDER, DEFAULT_DB_PATH, load_config
 from core.context import ctx
 from core.data.index_store import ensure_index_schema
 from core.data.ui_store import load_ui_data
+from core.services.index_job_worker import enqueue_index_job as enqueue_index_job
+from core.services.index_job_worker import start_index_job_worker
 from core.utils.image import extract_card_info
 from core.utils.source_revision import build_file_source_revision
 
@@ -148,21 +151,93 @@ def _connect():
 
 def get_index_status() -> dict[str, Any]:
     with ctx.index_lock:
-        return dict(ctx.index_state)
+        snapshot = deepcopy(dict(ctx.index_state))
+
+    try:
+        with sqlite3.connect(DEFAULT_DB_PATH, timeout=60) as conn:
+            conn.row_factory = sqlite3.Row
+
+            schema_rows = conn.execute(
+                'SELECT component, applied_version, state, last_error FROM index_schema_state'
+            ).fetchall()
+            schema_map = {str(row['component']): row for row in schema_rows}
+
+            db_row = schema_map.get('db')
+            runtime_row = schema_map.get('index_runtime')
+            schema_state = 'ready'
+            for row in (db_row, runtime_row):
+                if not row:
+                    schema_state = 'empty'
+                    continue
+                if str(row['state'] or '') not in ('ready', ''):
+                    schema_state = str(row['state'] or 'empty')
+                    break
+
+            snapshot['schema'] = {
+                'db_version': int((db_row['applied_version'] if db_row else 0) or 0),
+                'index_runtime_version': int((runtime_row['applied_version'] if runtime_row else 0) or 0),
+                'state': schema_state,
+                'message': str(snapshot.get('schema', {}).get('message') or ''),
+            }
+
+            build_rows = conn.execute(
+                'SELECT scope, active_generation, building_generation, state, phase, items_written, last_error FROM index_build_state'
+            ).fetchall()
+    except sqlite3.OperationalError:
+        return snapshot
+
+    persisted_scopes: dict[str, dict[str, Any]] = {}
+    for row in build_rows:
+        scope = str(row['scope'] or '')
+        if scope not in ('cards', 'worldinfo'):
+            continue
+        persisted_scopes[scope] = {
+            'state': str(row['state'] or 'empty'),
+            'phase': str(row['phase'] or ''),
+            'active_generation': int(row['active_generation'] or 0),
+            'building_generation': int(row['building_generation'] or 0),
+            'items_written': int(row['items_written'] or 0),
+            'last_error': str(row['last_error'] or ''),
+        }
+
+    for scope in ('cards', 'worldinfo'):
+        if scope in persisted_scopes:
+            snapshot[scope] = persisted_scopes[scope]
+
+    pending_jobs = int(snapshot.get('jobs', {}).get('pending_jobs') or snapshot.get('pending_jobs') or 0)
+    worker_state = str(snapshot.get('jobs', {}).get('worker_state') or 'idle')
+    active_scope = str(snapshot.get('scope') or 'cards')
+    if active_scope not in ('cards', 'worldinfo'):
+        active_scope = 'cards'
+
+    if pending_jobs > 0 or worker_state in ('waiting', 'processing'):
+        snapshot['state'] = 'building' if pending_jobs > 0 or worker_state == 'processing' else 'idle'
+        snapshot['scope'] = active_scope
+    else:
+        ready_scope = next(
+            (
+                scope
+                for scope in ('cards', 'worldinfo')
+                if str(snapshot.get(scope, {}).get('state') or '') == 'ready'
+            ),
+            active_scope,
+        )
+        snapshot['scope'] = ready_scope
+        snapshot['state'] = str(snapshot.get(ready_scope, {}).get('state') or snapshot['schema']['state'] or 'empty')
+
+    snapshot['pending_jobs'] = pending_jobs
+    snapshot['jobs'] = {
+        'pending_jobs': pending_jobs,
+        'worker_state': worker_state,
+    }
+    snapshot['progress'] = int(snapshot.get('progress') or 0)
+    snapshot['message'] = str(snapshot.get('message') or '')
+    return snapshot
 
 
 def _set_index_state(**updates):
     with ctx.index_lock:
         ctx.index_state.update(updates)
-
-
-def enqueue_index_job(job_type: str, entity_id: str = '', source_path: str = '', payload: dict[str, Any] | None = None):
-    with _connect() as conn:
-        conn.execute(
-            'INSERT INTO index_jobs(job_type, entity_id, source_path, payload_json) VALUES (?, ?, ?, ?)',
-            (job_type, entity_id, source_path, json.dumps(payload or {}, ensure_ascii=False)),
-        )
-        conn.commit()
 
 
 def request_index_rebuild(scope: str = 'cards') -> str:
@@ -460,63 +535,6 @@ def _bootstrap_index():
         request_index_rebuild('cards')
 
 
-def _worker_loop():
-    while True:
-        time.sleep(0.5)
-        with _connect() as conn:
-            row = conn.execute(
-                "SELECT id, job_type, entity_id, source_path, payload_json FROM index_jobs WHERE status = 'pending' ORDER BY id LIMIT 1"
-            ).fetchone()
-            pending = conn.execute(
-                "SELECT COUNT(*) FROM index_jobs WHERE status = 'pending'"
-            ).fetchone()[0]
-        _set_index_state(pending_jobs=int(pending))
-        if row is None:
-            continue
-        started_at = time.time()
-        _set_index_state(state='building', message=row['job_type'])
-        try:
-            payload = json.loads(row['payload_json'] or '{}')
-            if row['job_type'] == 'rebuild_scope':
-                scope = payload.get('scope') or 'cards'
-                if scope not in SUPPORTED_REBUILD_SCOPES:
-                    raise ValueError(f'unsupported rebuild scope: {scope}')
-                if scope == 'worldinfo':
-                    rebuild_worldinfo_index()
-                else:
-                    rebuild_card_index()
-            elif row['job_type'] == 'upsert_card':
-                with _connect() as conn:
-                    _process_upsert_card(conn, row)
-                    conn.commit()
-            elif row['job_type'] == 'upsert_worldinfo_path':
-                rebuild_worldinfo_index()
-            elif row['job_type'] in ('upsert_world_embedded', 'upsert_world_owner'):
-                rebuild_worldinfo_index()
-            else:
-                raise ValueError(f'unsupported index job type: {row["job_type"]}')
-
-            with _connect() as conn:
-                conn.execute(
-                    'UPDATE index_jobs SET status = ?, started_at = ?, finished_at = ?, error_msg = ? WHERE id = ?',
-                    ('done', started_at, time.time(), '', row['id']),
-                )
-                conn.commit()
-            _set_index_state(state='ready', message='idle')
-        except Exception as exc:
-            logger.warning('Index worker failed job %s', row['id'], exc_info=True)
-            with _connect() as conn:
-                conn.execute(
-                    'UPDATE index_jobs SET status = ?, started_at = ?, finished_at = ?, error_msg = ? WHERE id = ?',
-                    ('failed', started_at, time.time(), str(exc), row['id']),
-                )
-                conn.commit()
-            _set_index_state(state='ready', message='idle')
-
-
 def start_index_service():
-    if ctx.index_worker_started:
-        return
-    ctx.index_worker_started = True
-    threading.Thread(target=_worker_loop, daemon=True).start()
     threading.Thread(target=_bootstrap_index, daemon=True).start()
+    start_index_job_worker()

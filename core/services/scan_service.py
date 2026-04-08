@@ -11,7 +11,7 @@ from core.context import ctx
 
 # === 业务逻辑引用 ===
 from core.services.cache_service import schedule_reload
-from core.services.index_service import enqueue_index_job
+from core.services.index_job_worker import enqueue_index_job
 
 # === 工具函数 ===
 from core.utils.filesystem import is_card_file
