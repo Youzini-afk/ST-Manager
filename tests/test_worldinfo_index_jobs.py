@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 
 
 from core.services import cache_service
+from core.services import index_build_service
 from core.services import scan_service
 from core.services import index_job_worker
 
@@ -20,6 +21,24 @@ def test_worldinfo_watch_filter_accepts_global_and_resource_lorebooks(monkeypatc
     assert scan_service._is_worldinfo_watch_path('D:/data/lorebooks/main/book.json') is True
     assert scan_service._is_worldinfo_watch_path('D:/data/resources/lucy/lorebooks/book.json') is True
     assert scan_service._is_worldinfo_watch_path('D:/data/resources/lucy/images/cover.png') is False
+
+
+def test_resolve_resource_worldinfo_owner_card_ids_returns_all_matching_cards(monkeypatch):
+    monkeypatch.setattr(index_build_service, 'load_config', lambda: {'world_info_dir': 'D:/data/lorebooks', 'resources_dir': 'D:/data/resources'})
+    monkeypatch.setattr(
+        index_build_service,
+        'load_ui_data',
+        lambda: {
+            'cards/zeta.png': {'resource_folder': 'shared-pack'},
+            'cards/alpha.png': {'resource_folder': 'shared-pack'},
+            'cards/other.png': {'resource_folder': 'other-pack'},
+        },
+    )
+
+    assert index_build_service.resolve_resource_worldinfo_owner_card_ids('D:/data/resources/shared-pack/lorebooks/book.json') == [
+        'cards/alpha.png',
+        'cards/zeta.png',
+    ]
 
 
 def test_update_card_cache_enqueues_embedded_owner_refresh(monkeypatch):
@@ -144,6 +163,63 @@ def test_worldinfo_watcher_move_into_lorebook_path_enqueues_dest_path(monkeypatc
     scheduled['handler'].on_any_event(event)
 
     assert calls == [(('upsert_worldinfo_path',), {'source_path': 'D:/data/lorebooks/main/book.json'})]
+
+
+def test_worldinfo_watcher_routes_resource_lorebook_to_owner_refresh(monkeypatch):
+    calls = []
+    scheduled = {}
+
+    class _FakeObserver:
+        daemon = False
+
+        def schedule(self, handler, watch_path, recursive=True):
+            scheduled['handler'] = handler
+            scheduled['watch_path'] = watch_path
+            scheduled['recursive'] = recursive
+
+        def start(self):
+            scheduled['started'] = True
+
+    class _FakeHandlerBase:
+        pass
+
+    monkeypatch.setattr(scan_service.ctx, 'should_ignore_fs_event', lambda: False)
+    monkeypatch.setattr(scan_service, 'CARDS_FOLDER', 'D:/cards')
+    monkeypatch.setattr(scan_service, 'enqueue_index_job', lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(scan_service, 'request_scan', lambda **_kwargs: calls.append((('scan',), {})))
+
+    watchdog_module = types.ModuleType('watchdog')
+    observers_module = types.ModuleType('watchdog.observers')
+    observers_module.Observer = _FakeObserver
+    events_module = types.ModuleType('watchdog.events')
+    events_module.FileSystemEventHandler = _FakeHandlerBase
+
+    monkeypatch.setitem(sys.modules, 'watchdog', watchdog_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.observers', observers_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.events', events_module)
+
+    monkeypatch.setattr(scan_service, 'load_config', lambda: {'world_info_dir': 'D:/data/lorebooks', 'resources_dir': 'D:/data/resources'})
+    monkeypatch.setattr(
+        scan_service,
+        'resolve_resource_worldinfo_owner_card_ids',
+        lambda source_path: ['cards/alpha.png', 'cards/zeta.png'] if 'hero-assets' in source_path else [],
+        raising=False,
+    )
+
+    scan_service.start_fs_watcher()
+
+    event = types.SimpleNamespace(
+        is_directory=False,
+        event_type='modified',
+        src_path='D:/data/resources/hero-assets/lorebooks/book.json',
+        dest_path='',
+    )
+    scheduled['handler'].on_any_event(event)
+
+    assert calls == [
+        (('upsert_world_owner',), {'entity_id': 'cards/alpha.png', 'source_path': 'D:/data/resources/hero-assets/lorebooks/book.json'}),
+        (('upsert_world_owner',), {'entity_id': 'cards/zeta.png', 'source_path': 'D:/data/resources/hero-assets/lorebooks/book.json'}),
+    ]
 
 
 def test_worldinfo_watcher_ignores_non_write_events(monkeypatch):

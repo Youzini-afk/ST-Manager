@@ -11,6 +11,7 @@ from core.services.index_build_service import (
     apply_worldinfo_embedded_increment,
     apply_worldinfo_owner_increment,
     apply_worldinfo_path_increment,
+    resolve_resource_worldinfo_owner_card_ids,
 )
 from core.services.index_upgrade_service import rebuild_scope_generation
 
@@ -116,6 +117,15 @@ def _mark_job_status(job_id: int, status: str, error_msg: str = ''):
         conn.commit()
 
 
+def _retry_resource_worldinfo_job(conn, source_path: str) -> bool:
+    owner_card_ids = resolve_resource_worldinfo_owner_card_ids(source_path)
+    if not owner_card_ids:
+        return False
+    for owner_card_id in owner_card_ids:
+        apply_worldinfo_owner_increment(conn, owner_card_id, source_path)
+    return True
+
+
 def worker_loop():
     while True:
         _set_jobs_state(worker_state='waiting')
@@ -139,6 +149,12 @@ def worker_loop():
                         with _connect() as conn:
                             apply_worldinfo_path_increment(conn, row['source_path'])
                     except RuntimeError as exc:
+                        if 'worldinfo path outside global directory' in str(exc):
+                            with _connect() as conn:
+                                if _retry_resource_worldinfo_job(conn, row['source_path']):
+                                    processed_worldinfo_reconcile = True
+                                    _mark_job_status(row['id'], 'done', '')
+                                    continue
                         if 'active generation missing' not in str(exc):
                             raise
                         if not processed_worldinfo_reconcile:

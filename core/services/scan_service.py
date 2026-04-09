@@ -6,11 +6,12 @@ import json
 import logging
 
 # === 基础设施 ===
-from core.config import CARDS_FOLDER, DEFAULT_DB_PATH, current_config, load_config
+from core.config import BASE_DIR, CARDS_FOLDER, DEFAULT_DB_PATH, current_config, load_config
 from core.context import ctx
 
 # === 业务逻辑引用 ===
 from core.services.cache_service import schedule_reload
+from core.services.index_build_service import resolve_resource_worldinfo_owner_card_ids
 from core.services.index_job_worker import enqueue_index_job
 
 # === 工具函数 ===
@@ -29,26 +30,46 @@ def _normalize_watch_path(path):
     return os.path.normcase(os.path.abspath(str(path or '')))
 
 
-def _is_worldinfo_watch_path(path):
+def _resolve_runtime_dir(raw_path, default):
+    value = str(raw_path or default or '').strip()
+    if not value:
+        return ''
+    if os.path.isabs(value):
+        return os.path.normpath(value)
+    return os.path.normpath(os.path.join(BASE_DIR, value))
+
+
+def _is_global_worldinfo_watch_path(path):
     cfg = load_config()
-    global_dir = _normalize_watch_path(cfg.get('world_info_dir'))
-    resources_dir = _normalize_watch_path(cfg.get('resources_dir'))
+    global_dir = _normalize_watch_path(_resolve_runtime_dir(cfg.get('world_info_dir'), 'data/library/lorebooks'))
     abs_path = _normalize_watch_path(path)
 
-    if not abs_path.lower().endswith('.json'):
+    if not global_dir or not abs_path.lower().endswith('.json'):
         return False
 
     try:
-        if global_dir and os.path.commonpath([global_dir, abs_path]) == global_dir:
-            return True
+        return os.path.commonpath([global_dir, abs_path]) == global_dir
     except ValueError:
+        return False
+
+
+def _is_resource_worldinfo_watch_path(path):
+    cfg = load_config()
+    resources_dir = _normalize_watch_path(_resolve_runtime_dir(cfg.get('resources_dir'), 'data/assets/card_assets'))
+    abs_path = _normalize_watch_path(path)
+
+    if not resources_dir or not abs_path.lower().endswith('.json'):
         return False
 
     rel = abs_path.replace('\\', '/').lower()
     try:
-        return bool(resources_dir) and '/lorebooks/' in rel and os.path.commonpath([resources_dir, abs_path]) == resources_dir
+        return '/lorebooks/' in rel and os.path.commonpath([resources_dir, abs_path]) == resources_dir
     except ValueError:
         return False
+
+
+def _is_worldinfo_watch_path(path):
+    return _is_global_worldinfo_watch_path(path) or _is_resource_worldinfo_watch_path(path)
 
 def suppress_fs_events(seconds: float = 1.5):
     """
@@ -103,9 +124,15 @@ def start_fs_watcher():
                 return
 
             for candidate_path in (getattr(event, 'src_path', ''), getattr(event, 'dest_path', '')):
-                if _is_worldinfo_watch_path(candidate_path):
+                if _is_global_worldinfo_watch_path(candidate_path):
                     enqueue_index_job('upsert_worldinfo_path', source_path=candidate_path)
                     return
+                if _is_resource_worldinfo_watch_path(candidate_path):
+                    owner_card_ids = resolve_resource_worldinfo_owner_card_ids(candidate_path)
+                    if owner_card_ids:
+                        for owner_card_id in owner_card_ids:
+                            enqueue_index_job('upsert_world_owner', entity_id=owner_card_id, source_path=candidate_path)
+                        return
             
             # 过滤掉非关注文件类型，减少噪音
             if not is_card_file(event.src_path):

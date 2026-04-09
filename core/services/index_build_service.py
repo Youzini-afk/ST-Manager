@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 
-from core.config import CARDS_FOLDER, DEFAULT_DB_PATH, load_config
+from core.config import BASE_DIR, CARDS_FOLDER, DEFAULT_DB_PATH, load_config
 from core.data.index_runtime_store import get_active_generation
 from core.data.ui_store import load_ui_data
 from core.utils.image import extract_card_info
@@ -62,6 +62,48 @@ def _insert_worldinfo_search(conn, generation: int, entity_id: str, *parts):
         'INSERT INTO index_search_full_v2(generation, entity_id, content) VALUES (?, ?, ?)',
         (generation, entity_id, content),
     )
+
+
+def _resolve_runtime_dir(raw_path: str, default: str) -> str:
+    value = str(raw_path or default or '').strip()
+    if not value:
+        return ''
+    if os.path.isabs(value):
+        return os.path.normpath(value)
+    return os.path.normpath(os.path.join(BASE_DIR, value))
+
+
+def resolve_resource_worldinfo_owner_card_ids(source_path: str) -> list[str]:
+    cfg = load_config()
+    resources_dir = _resolve_runtime_dir(cfg.get('resources_dir'), 'data/assets/card_assets')
+    normalized_path = os.path.normpath(str(source_path or ''))
+    if not resources_dir or not normalized_path:
+        return []
+
+    try:
+        rel_path = os.path.relpath(normalized_path, resources_dir).replace('\\', '/')
+    except ValueError:
+        return []
+
+    if rel_path.startswith('../') or rel_path == '..':
+        return []
+
+    parts = [part for part in rel_path.split('/') if part]
+    if len(parts) < 3 or parts[1].lower() != 'lorebooks':
+        return []
+
+    resource_folder = parts[0]
+    ui_data = load_ui_data()
+    if not isinstance(ui_data, dict):
+        return []
+
+    owner_card_ids = []
+    for card_id, meta in ui_data.items():
+        if not isinstance(meta, dict) or str(meta.get('resource_folder') or '').strip() != resource_folder:
+            continue
+        owner_card_ids.append(str(card_id))
+
+    return sorted(set(owner_card_ids))
 
 
 def _rebuild_worldinfo_category_stats_v2(conn, generation: int, global_dir: str):

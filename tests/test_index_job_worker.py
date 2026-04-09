@@ -1,5 +1,6 @@
 import sqlite3
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -216,3 +217,61 @@ def test_claim_pending_jobs_returns_only_rows_claimed_by_current_invocation(monk
 
     assert claimed_rows == []
     assert pending == 0
+
+
+def test_worker_reroutes_legacy_resource_worldinfo_path_job_to_owner_increment(monkeypatch):
+    class _StopLoop(Exception):
+        pass
+
+    rows = [[{
+        'id': 1,
+        'job_type': 'upsert_worldinfo_path',
+        'entity_id': '',
+        'source_path': 'D:/data/resources/hero-assets/lorebooks/book.json',
+        'payload_json': '{}',
+    }], []]
+    calls = []
+    wait_calls = {'count': 0}
+
+    def fake_wait(_timeout):
+        wait_calls['count'] += 1
+        if wait_calls['count'] >= 2:
+            raise _StopLoop()
+        return True
+
+    class _FakeResult:
+        def fetchone(self):
+            return [0]
+
+    class _FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, *_args, **_kwargs):
+            return _FakeResult()
+
+    monkeypatch.setattr(index_job_worker.ctx.index_wakeup, 'wait', fake_wait)
+    monkeypatch.setattr(index_job_worker.ctx.index_wakeup, 'clear', lambda: None)
+
+    def fake_claim_pending_jobs(_limit):
+        return rows.pop(0), 0
+
+    monkeypatch.setattr(index_job_worker, '_claim_pending_jobs', fake_claim_pending_jobs)
+    monkeypatch.setattr(index_job_worker, '_set_jobs_state', lambda **_kwargs: None)
+    monkeypatch.setattr(index_job_worker, '_mark_job_status', lambda job_id, status, error_msg='': calls.append(('mark', job_id, status, error_msg)))
+    monkeypatch.setattr(index_job_worker, '_connect', lambda: _FakeConn())
+    monkeypatch.setattr(index_job_worker, 'apply_worldinfo_path_increment', lambda _conn, _source_path: (_ for _ in ()).throw(RuntimeError('worldinfo path outside global directory: D:/data/resources/hero-assets/lorebooks/book.json')))
+    monkeypatch.setattr(index_job_worker, 'apply_worldinfo_owner_increment', lambda _conn, entity_id, source_path='': calls.append(('owner', entity_id, source_path)) or True)
+    monkeypatch.setattr(index_job_worker, 'resolve_resource_worldinfo_owner_card_ids', lambda source_path: ['cards/alpha.png', 'cards/zeta.png'] if 'hero-assets' in source_path else [], raising=False)
+
+    with pytest.raises(_StopLoop):
+        index_job_worker.worker_loop()
+
+    assert calls == [
+        ('owner', 'cards/alpha.png', 'D:/data/resources/hero-assets/lorebooks/book.json'),
+        ('owner', 'cards/zeta.png', 'D:/data/resources/hero-assets/lorebooks/book.json'),
+        ('mark', 1, 'done', ''),
+    ]
