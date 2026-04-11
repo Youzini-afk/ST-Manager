@@ -136,3 +136,118 @@ def test_preset_detail_identifies_instruct_context_and_reasoning(monkeypatch, tm
     assert 'story' in context['sections']
     assert reasoning['preset_kind'] == 'reasoning'
     assert 'template' in reasoning['sections']
+
+
+def test_preset_detail_builds_reader_view_for_openai_chat_shape(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'openai-chat.json',
+        {
+            'name': 'OpenAI Chat',
+            'temp': 0.8,
+            'prompts': [
+                {'identifier': 'main', 'name': 'Main Prompt', 'role': 'system', 'content': '你是助手', 'enabled': True},
+                {'identifier': 'summary', 'role': 'system', 'content': '总结要点'},
+            ],
+            'prompt_order': ['main', 'summary'],
+            'extensions': {
+                'memory': {'enabled': True},
+            },
+            'custom_flag': True,
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::openai-chat.json')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['success'] is True
+
+    preset = payload['preset']
+    assert preset['preset_kind'] == 'textgen'
+    reader_view = preset['reader_view']
+    assert reader_view['family'] == 'openai_chat'
+    assert reader_view['family_label'] == 'OpenAI Chat'
+    assert 'groups' in reader_view
+    assert 'items' in reader_view
+    assert 'stats' in reader_view
+
+    group_ids = [group['id'] for group in reader_view['groups']]
+    assert 'prompt_items' in group_ids
+    assert 'prompt_order' in group_ids
+    assert 'extensions' in group_ids
+
+    prompt_items = [item for item in reader_view['items'] if item['type'] == 'prompt']
+    prompt_order_items = [item for item in reader_view['items'] if item['type'] == 'prompt_order']
+    extension_items = [item for item in reader_view['items'] if item['group'] == 'extensions']
+
+    assert len(prompt_items) == 2
+    assert len(prompt_order_items) == 2
+    assert extension_items
+    assert reader_view['stats']['prompt_count'] == 2
+    assert reader_view['stats']['unknown_count'] == 1
+
+    first_prompt = prompt_items[0]
+    assert first_prompt['id']
+    assert first_prompt['title'] == 'Main Prompt'
+    assert isinstance(first_prompt['summary'], str)
+    assert first_prompt['payload']['identifier'] == 'main'
+
+    first_order = prompt_order_items[0]
+    assert first_order['payload']['identifier'] == 'main'
+
+    assert 'prompts' not in preset['unknown_fields']
+    assert 'prompt_order' not in preset['unknown_fields']
+    assert 'extensions' not in preset['unknown_fields']
+    assert 'custom_flag' in preset['unknown_fields']
+
+
+def test_preset_detail_reader_view_has_generic_fallback(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'malformed.json',
+        {
+            'name': 'Malformed',
+            'prompt_order': 'not-a-list',
+            'prompts': {'main': 'bad-shape'},
+            'custom_flag': 'x',
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::malformed.json')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['success'] is True
+
+    preset = payload['preset']
+    assert 'reader_view' in preset
+    reader_view = preset['reader_view']
+    assert reader_view['family'] == 'generic'
+    assert reader_view['family_label'] == '通用预设'
+    assert reader_view['groups']
+    assert reader_view['stats']['prompt_count'] == 0
+    assert reader_view['stats']['unknown_count'] == 1
+
+    group_ids = [group['id'] for group in reader_view['groups']]
+    assert 'structured_objects' in group_ids
+    assert 'scalar_fields' in group_ids
+    assert 'unknown_fields' in group_ids
+
+    assert all('id' in item and 'title' in item and 'payload' in item for item in reader_view['items'])

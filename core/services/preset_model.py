@@ -14,6 +14,11 @@ PRESET_KIND_LABELS = {
     'reasoning': '思维链模板',
 }
 
+READER_FAMILY_LABELS = {
+    'openai_chat': 'OpenAI Chat',
+    'generic': '通用预设',
+}
+
 
 COMMON_FIELD_KEYS = {
     'name',
@@ -27,6 +32,33 @@ COMMON_FIELD_KEYS = {
 
 
 FIELD_ALIAS_MAP = {}
+
+READER_COMMON_FIELD_DEFS = [
+    {'key': 'name', 'label': '名称'},
+    {'key': 'title', 'label': '标题'},
+    {'key': 'description', 'label': '描述'},
+    {'key': 'note', 'label': '备注'},
+]
+
+READER_OPENAI_CHAT_FIELD_DEFS = [
+    {'key': 'prompts', 'label': '消息模板'},
+    {'key': 'prompt_order', 'label': '消息顺序'},
+    {'key': 'extensions', 'label': '扩展设置'},
+]
+
+GENERIC_READER_GROUP_LABELS = {
+    'scalar_fields': '基础字段',
+    'structured_objects': '结构化对象',
+    'extensions': '扩展设置',
+    'unknown_fields': '未知字段',
+}
+
+OPENAI_CHAT_GROUP_LABELS = {
+    'meta': '基础信息',
+    'prompt_items': '消息模板',
+    'prompt_order': '消息顺序',
+    'extensions': '扩展设置',
+}
 
 
 SECTION_DEFINITIONS = {
@@ -236,9 +268,195 @@ def build_capabilities(source_type, preset_kind):
     }
 
 
+def detect_reader_family(raw_data, preset_kind):
+    data = raw_data or {}
+    if preset_kind == 'textgen' and isinstance(data.get('prompts'), list) and isinstance(data.get('prompt_order'), list):
+        return 'openai_chat'
+    return 'generic'
+
+
+def _build_reader_item(*, item_id, item_type, group, title, payload, summary=''):
+    return {
+        'id': item_id,
+        'type': item_type,
+        'group': group,
+        'title': title,
+        'summary': summary,
+        'payload': copy.deepcopy(payload),
+    }
+
+
+def _build_scalar_reader_item(group, key, value, title=''):
+    return _build_reader_item(
+        item_id=f'{group}:{key}',
+        item_type='field',
+        group=group,
+        title=title or key,
+        summary=str(value),
+        payload={'key': key, 'value': copy.deepcopy(value)},
+    )
+
+
+def _build_structured_reader_item(group, key, value, title=''):
+    value_type = type(value).__name__
+    return _build_reader_item(
+        item_id=f'{group}:{key}',
+        item_type='structured',
+        group=group,
+        title=title or key,
+        summary=value_type,
+        payload={'key': key, 'value': copy.deepcopy(value)},
+    )
+
+
+def _build_openai_chat_prompt_items(data):
+    items = []
+    for index, prompt in enumerate(data.get('prompts') or []):
+        if not isinstance(prompt, dict):
+            continue
+        identifier = str(prompt.get('identifier') or f'prompt_{index + 1}')
+        title = str(prompt.get('name') or identifier)
+        role = str(prompt.get('role') or '').strip()
+        enabled = prompt.get('enabled', True) is not False
+        summary_parts = [role or 'prompt', 'enabled' if enabled else 'disabled']
+        if prompt.get('marker'):
+            summary_parts.append('marker')
+        summary = ' · '.join(summary_parts)
+        items.append(
+            _build_reader_item(
+                item_id=f'prompt:{identifier}',
+                item_type='prompt',
+                group='prompt_items',
+                title=title,
+                summary=summary,
+                payload=copy.deepcopy(prompt),
+            )
+        )
+    return items
+
+
+def _build_openai_chat_prompt_order_items(data):
+    items = []
+    for index, prompt_id in enumerate(data.get('prompt_order') or []):
+        identifier = str(prompt_id)
+        items.append(
+            _build_reader_item(
+                item_id=f'prompt_order:{index}',
+                item_type='prompt_order',
+                group='prompt_order',
+                title=identifier,
+                summary=f'#{index + 1}',
+                payload={'index': index, 'identifier': identifier},
+            )
+        )
+    return items
+
+
+def _build_extension_items(data):
+    extensions = data.get('extensions')
+    if not isinstance(extensions, dict):
+        return []
+
+    items = []
+    for key in sorted(extensions.keys()):
+        value = extensions.get(key)
+        items.append(
+            _build_reader_item(
+                item_id=f'extensions:{key}',
+                item_type='extension',
+                group='extensions',
+                title=key,
+                summary=type(value).__name__,
+                payload={'key': key, 'value': copy.deepcopy(value)},
+            )
+        )
+    return items
+
+
+def _build_group_defs(group_labels, items):
+    counts = {}
+    for item in items:
+        group = item['group']
+        counts[group] = counts.get(group, 0) + 1
+
+    groups = []
+    for group_id, label in group_labels.items():
+        count = counts.get(group_id, 0)
+        if count == 0:
+            continue
+        groups.append({'id': group_id, 'label': label, 'count': count})
+    return groups
+
+
+def _build_generic_reader_items(data, unknown_fields):
+    items = []
+    for field_def in READER_COMMON_FIELD_DEFS:
+        key = field_def['key']
+        if key not in data:
+            continue
+        items.append(_build_scalar_reader_item('scalar_fields', key, data.get(key), field_def['label']))
+
+    for key, value in data.items():
+        if key in {'name', 'title', 'description', 'note'}:
+            continue
+        if key == 'extensions':
+            continue
+        if key in unknown_fields:
+            items.append(_build_scalar_reader_item('unknown_fields', key, value, key))
+            continue
+        if isinstance(value, (dict, list)):
+            items.append(_build_structured_reader_item('structured_objects', key, value, key))
+        else:
+            items.append(_build_scalar_reader_item('scalar_fields', key, value, key))
+
+    items.extend(_build_extension_items(data))
+    return items
+
+
+def _build_openai_chat_reader_items(data):
+    items = []
+    for field_def in READER_COMMON_FIELD_DEFS:
+        key = field_def['key']
+        if key not in data:
+            continue
+        items.append(_build_scalar_reader_item('meta', key, data.get(key), field_def['label']))
+
+    items.extend(_build_openai_chat_prompt_items(data))
+    items.extend(_build_openai_chat_prompt_order_items(data))
+    items.extend(_build_extension_items(data))
+    return items
+
+
+def build_reader_view(raw_data, preset_kind, unknown_fields=None):
+    data = raw_data or {}
+    family = detect_reader_family(data, preset_kind)
+    unknown_fields = list(unknown_fields or [])
+
+    if family == 'openai_chat':
+        items = _build_openai_chat_reader_items(data)
+        groups = _build_group_defs(OPENAI_CHAT_GROUP_LABELS, items)
+        prompt_count = len([item for item in items if item['type'] == 'prompt'])
+    else:
+        items = _build_generic_reader_items(data, unknown_fields)
+        groups = _build_group_defs(GENERIC_READER_GROUP_LABELS, items)
+        prompt_count = 0
+
+    return {
+        'family': family,
+        'family_label': READER_FAMILY_LABELS.get(family, family),
+        'groups': groups,
+        'items': items,
+        'stats': {
+            'prompt_count': prompt_count,
+            'unknown_count': len(unknown_fields),
+        },
+    }
+
+
 def build_preset_detail(*, preset_id, file_path, filename, source_type, source_folder, raw_data, base_dir):
     preset_kind = detect_preset_kind(raw_data, source_folder=source_folder, file_path=file_path)
     sections, unknown_fields = build_sections(raw_data, preset_kind)
+    reader_view = build_reader_view(raw_data, preset_kind, unknown_fields)
 
     try:
         mtime = os.path.getmtime(file_path)
@@ -274,6 +492,7 @@ def build_preset_detail(*, preset_id, file_path, filename, source_type, source_f
         'unknown_fields': unknown_fields,
         'raw_data': copy.deepcopy(raw_data or {}),
         'sections': sections,
+        'reader_view': reader_view,
         'extensions': copy.deepcopy((raw_data or {}).get('extensions') or {}),
     }
 
