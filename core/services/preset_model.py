@@ -268,10 +268,33 @@ def build_capabilities(source_type, preset_kind):
     }
 
 
-def detect_reader_family(raw_data, preset_kind):
+def detect_reader_family(raw_data, preset_kind, source_folder='', file_path=''):
     data = raw_data or {}
-    if preset_kind == 'textgen' and isinstance(data.get('prompts'), list) and isinstance(data.get('prompt_order'), list):
+    if preset_kind != 'textgen':
+        return 'generic'
+
+    prompts = data.get('prompts')
+    prompt_order = data.get('prompt_order')
+    has_prompts_list = isinstance(prompts, list)
+    has_prompt_order_list = isinstance(prompt_order, list)
+    has_prompt_dicts = has_prompts_list and bool(prompts) and all(isinstance(prompt, dict) for prompt in prompts)
+    has_prompt_order_entries = has_prompt_order_list and len(prompt_order) > 0
+    has_malformed_openai_shape = (
+        ('prompts' in data and not has_prompts_list) or ('prompt_order' in data and not has_prompt_order_list)
+    )
+    has_chat_vendor_hint = any(key in data for key in ('openai_model', 'chat_completion_source'))
+    location_hint = f'{source_folder or ""} {file_path or ""}'.replace('\\', '/').lower()
+    has_openai_path_hint = 'openai' in location_hint
+
+    if has_malformed_openai_shape:
+        return 'generic'
+
+    if has_prompt_dicts or has_prompt_order_entries:
         return 'openai_chat'
+
+    if (has_chat_vendor_hint or has_openai_path_hint) and (has_prompts_list or has_prompt_order_list):
+        return 'openai_chat'
+
     return 'generic'
 
 
@@ -427,9 +450,9 @@ def _build_openai_chat_reader_items(data):
     return items
 
 
-def build_reader_view(raw_data, preset_kind, unknown_fields=None):
+def build_reader_view(raw_data, preset_kind, unknown_fields=None, source_folder='', file_path=''):
     data = raw_data or {}
-    family = detect_reader_family(data, preset_kind)
+    family = detect_reader_family(data, preset_kind, source_folder=source_folder, file_path=file_path)
     unknown_fields = list(unknown_fields or [])
 
     if family == 'openai_chat':
@@ -456,7 +479,13 @@ def build_reader_view(raw_data, preset_kind, unknown_fields=None):
 def build_preset_detail(*, preset_id, file_path, filename, source_type, source_folder, raw_data, base_dir):
     preset_kind = detect_preset_kind(raw_data, source_folder=source_folder, file_path=file_path)
     sections, unknown_fields = build_sections(raw_data, preset_kind)
-    reader_view = build_reader_view(raw_data, preset_kind, unknown_fields)
+    reader_view = build_reader_view(
+        raw_data,
+        preset_kind,
+        unknown_fields,
+        source_folder=source_folder,
+        file_path=file_path,
+    )
 
     try:
         mtime = os.path.getmtime(file_path)

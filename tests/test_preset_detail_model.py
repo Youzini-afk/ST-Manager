@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 
 
 from core.api.v1 import presets as presets_api
+from core.services import preset_model
 
 
 def _make_test_app():
@@ -251,3 +252,89 @@ def test_preset_detail_reader_view_has_generic_fallback(monkeypatch, tmp_path):
     assert 'unknown_fields' in group_ids
 
     assert all('id' in item and 'title' in item and 'payload' in item for item in reader_view['items'])
+
+
+def test_detect_reader_family_recognizes_openai_chat_variants():
+    assert (
+        preset_model.detect_reader_family(
+            {'prompts': [{'identifier': 'main', 'role': 'system', 'content': 'x'}]},
+            'textgen',
+        )
+        == 'openai_chat'
+    )
+    assert preset_model.detect_reader_family({'prompt_order': ['main']}, 'textgen') == 'openai_chat'
+    assert (
+        preset_model.detect_reader_family(
+            {'openai_model': 'gpt-4o-mini', 'prompts': [{'identifier': 'main'}]},
+            'textgen',
+        )
+        == 'openai_chat'
+    )
+    assert (
+        preset_model.detect_reader_family(
+            {'chat_completion_source': 'openai', 'prompt_order': ['main']},
+            'textgen',
+        )
+        == 'openai_chat'
+    )
+    assert (
+        preset_model.detect_reader_family(
+            {'prompts': [{'identifier': 'main'}]},
+            'textgen',
+            source_folder='presets/openai',
+        )
+        == 'openai_chat'
+    )
+    assert (
+        preset_model.detect_reader_family(
+            {'prompt_order': ['main']},
+            'textgen',
+            file_path='D:/data/textgen/openai-chat.json',
+        )
+        == 'openai_chat'
+    )
+
+
+def test_detect_reader_family_keeps_generic_for_malformed_textgen_data():
+    assert (
+        preset_model.detect_reader_family(
+            {'prompts': {'main': 'bad-shape'}, 'prompt_order': 'not-a-list'},
+            'textgen',
+        )
+        == 'generic'
+    )
+    assert preset_model.detect_reader_family({'prompts': {'main': 'bad-shape'}}, 'textgen') == 'generic'
+    assert preset_model.detect_reader_family({'prompt_order': 'not-a-list'}, 'textgen') == 'generic'
+    assert (
+        preset_model.detect_reader_family(
+            {'prompts': [{'identifier': 'main'}], 'prompt_order': 'not-a-list'},
+            'textgen',
+        )
+        == 'generic'
+    )
+    assert (
+        preset_model.detect_reader_family(
+            {'prompts': {'main': 'bad-shape'}, 'prompt_order': ['main']},
+            'textgen',
+        )
+        == 'generic'
+    )
+    assert (
+        preset_model.detect_reader_family(
+            {'prompts': ['bad-shape', {'identifier': 'main'}]},
+            'textgen',
+        )
+        == 'generic'
+    )
+
+
+def test_detect_reader_family_does_not_upgrade_plain_textgen_from_path_or_vendor_field_only():
+    assert preset_model.detect_reader_family({'openai_model': 'gpt-4o-mini', 'temp': 0.8}, 'textgen') == 'generic'
+    assert (
+        preset_model.detect_reader_family({'temp': 0.8}, 'textgen', source_folder='presets/openai')
+        == 'generic'
+    )
+    assert (
+        preset_model.detect_reader_family({'temp': 0.8}, 'textgen', file_path='D:/data/openai/textgen.json')
+        == 'generic'
+    )
