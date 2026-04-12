@@ -81,6 +81,15 @@ export default function presetEditor() {
     hasConflict: false,
     conflictRevision: "",
     activeNav: "basic",
+    activeGroup: "all",
+    activeItemId: "",
+    searchTerm: "",
+    uiFilter: "all",
+    showMobileSidebar: false,
+    showRightPanel: true,
+    showRawEditor: false,
+    removedUnknownFields: [],
+    dirtyPaths: {},
     editingPresetFile: null,
     editingData: null,
     baseDataJson: "",
@@ -152,6 +161,66 @@ export default function presetEditor() {
       return this.editingPresetFile?.preset_kind || "";
     },
 
+    get editorView() {
+      return (
+        this.editingPresetFile?.reader_view || {
+          groups: [],
+          items: [],
+          stats: {},
+        }
+      );
+    },
+
+    get filteredItems() {
+      const term = String(this.searchTerm || "")
+        .trim()
+        .toLowerCase();
+      return (this.editorView.items || []).filter((item) => {
+        if (this.activeGroup !== "all" && item.group !== this.activeGroup) {
+          return false;
+        }
+        if (this.uiFilter === "editable" && !item.editable) return false;
+        if (this.uiFilter === "changed" && !this.isItemDirty(item)) {
+          return false;
+        }
+        if (this.uiFilter === "unknown" && !item.unknown) return false;
+        if (this.uiFilter === "longtext" && item.editor?.kind !== "textarea") {
+          return false;
+        }
+        if (
+          this.uiFilter === "collections" &&
+          ![
+            "prompt-item",
+            "sortable-string-list",
+            "string-list",
+            "key-value-list",
+          ].includes(item.editor?.kind)
+        ) {
+          return false;
+        }
+        if (!term) return true;
+
+        const haystack = [
+          item.title,
+          item.summary,
+          item.source_key,
+          item.value_path,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(term);
+      });
+    },
+
+    get activeItem() {
+      return (
+        this.filteredItems.find((item) => item.id === this.activeItemId) ||
+        this.filteredItems[0] ||
+        null
+      );
+    },
+
     get navSections() {
       const detailSections = this.editingPresetFile?.sections || {};
       const dynamic = Object.keys(detailSections);
@@ -196,6 +265,9 @@ export default function presetEditor() {
         saved_at: new Date().toISOString(),
         source_revision: this.editingPresetFile.source_revision || "",
         content: this.editingData,
+        removed_unknown_fields: Array.isArray(this.removedUnknownFields)
+          ? [...this.removedUnknownFields]
+          : [],
       };
       localStorage.setItem(this.buildDraftKey(), JSON.stringify(payload));
       this.draftState.savedAt = payload.saved_at;
@@ -209,6 +281,13 @@ export default function presetEditor() {
         const payload = JSON.parse(raw);
         if (payload?.content && confirm("检测到本地草稿，是否恢复到编辑器？")) {
           this.editingData = payload.content;
+          this.removedUnknownFields = Array.isArray(
+            payload.removed_unknown_fields,
+          )
+            ? [...payload.removed_unknown_fields]
+            : [];
+          this.dirtyPaths = {};
+          this.markAllReaderItemsDirty();
           this.draftState.savedAt = payload.saved_at || "";
           this.draftState.restored = true;
           return true;
@@ -225,14 +304,276 @@ export default function presetEditor() {
       this.draftState = { savedAt: "", restored: false };
     },
 
+    isItemDirty(item) {
+      if (!item) return false;
+      return [item.value_path, item.source_key, item.key, item.id].some(
+        (dirtyKey) => Boolean(dirtyKey && this.dirtyPaths[dirtyKey]),
+      );
+    },
+
+    markAllReaderItemsDirty() {
+      (this.editorView.items || []).forEach((item) => {
+        [item.value_path, item.source_key, item.key, item.id].forEach(
+          (dirtyKey) => {
+            if (dirtyKey) {
+              this.dirtyPaths[dirtyKey] = true;
+            }
+          },
+        );
+      });
+    },
+
+    getByPath(path) {
+      if (!path || !this.editingData) return undefined;
+      const normalized = String(path).replace(/\[(\d+)\]/g, ".$1");
+      return normalized
+        .split(".")
+        .filter(Boolean)
+        .reduce((value, part) => {
+          if (value === null || value === undefined) return undefined;
+          return value[part];
+        }, this.editingData);
+    },
+
+    setByPath(path, value) {
+      if (!path || !this.editingData) return;
+      const normalized = String(path).replace(/\[(\d+)\]/g, ".$1");
+      const parts = normalized.split(".").filter(Boolean);
+      if (!parts.length) return;
+
+      let target = this.editingData;
+      for (let index = 0; index < parts.length - 1; index += 1) {
+        const part = parts[index];
+        const nextPart = parts[index + 1];
+        if (target[part] === null || typeof target[part] !== "object") {
+          target[part] = /^\d+$/.test(nextPart) ? [] : {};
+        }
+        target = target[part];
+      }
+
+      target[parts[parts.length - 1]] = value;
+      this.dirtyPaths[path] = true;
+    },
+
+    selectGroup(groupId) {
+      const previousItemId = this.activeItemId;
+      this.activeGroup = groupId || "all";
+      const matchingItem = this.filteredItems.find(
+        (item) => item.id === previousItemId,
+      );
+      if (matchingItem) {
+        this.activeItemId = matchingItem.id;
+        return;
+      }
+
+      const first = this.filteredItems[0];
+      if (first) {
+        this.activeItemId = first.id;
+      }
+    },
+
+    selectItem(itemId) {
+      this.activeItemId = itemId || "";
+    },
+
     getFieldValue(item) {
       if (!item) return null;
+      if (item.value_path) {
+        return this.getByPath(item.value_path);
+      }
       return this.editingData?.[item.key];
     },
 
     setFieldValue(item, value) {
       if (!item || !this.editingData) return;
+      if (item.value_path) {
+        this.setByPath(item.value_path, value);
+        return;
+      }
       this.editingData[item.key] = value;
+      this.dirtyPaths[item.key || item.id] = true;
+    },
+
+    updatePromptItem(index, key, value) {
+      const prompts = Array.isArray(this.getByPath("prompts"))
+        ? [...this.getByPath("prompts")]
+        : [];
+      const previousIdentifier = prompts[index]?.identifier;
+      if (key === "identifier") {
+        const nextIdentifier = String(value || "").trim();
+        if (!nextIdentifier && previousIdentifier) {
+          return;
+        }
+        const order = Array.isArray(this.getByPath("prompt_order"))
+          ? [...this.getByPath("prompt_order")]
+          : [];
+        const reservedIdentifiers = new Set(
+          [...prompts.map((prompt) => prompt?.identifier), ...order]
+            .map((identifier) => String(identifier || "").trim())
+            .filter(Boolean),
+        );
+        if (previousIdentifier) {
+          reservedIdentifiers.delete(String(previousIdentifier).trim());
+        }
+        if (nextIdentifier && reservedIdentifiers.has(nextIdentifier)) {
+          return;
+        }
+        value = nextIdentifier;
+      }
+      if (!prompts[index] || typeof prompts[index] !== "object") {
+        prompts[index] = {};
+      }
+      prompts[index] = { ...prompts[index], [key]: value };
+      this.setByPath("prompts", prompts);
+      if (key === "identifier") {
+        const order = Array.isArray(this.getByPath("prompt_order"))
+          ? [...this.getByPath("prompt_order")]
+          : [];
+        this.setByPath(
+          "prompt_order",
+          previousIdentifier
+            ? order.map((entry) =>
+                entry === previousIdentifier ? value : entry,
+              )
+            : value
+              ? [...order, value]
+              : order,
+        );
+      }
+    },
+
+    addPromptItem() {
+      const prompts = Array.isArray(this.getByPath("prompts"))
+        ? [...this.getByPath("prompts")]
+        : [];
+      const order = Array.isArray(this.getByPath("prompt_order"))
+        ? [...this.getByPath("prompt_order")]
+        : [];
+      const existingIdentifiers = new Set(
+        [...prompts.map((prompt) => prompt?.identifier), ...order]
+          .map((identifier) => String(identifier || "").trim())
+          .filter(Boolean),
+      );
+      let nextIndex = prompts.length + 1;
+      let nextIdentifier = `prompt_${nextIndex}`;
+      while (existingIdentifiers.has(nextIdentifier)) {
+        nextIndex += 1;
+        nextIdentifier = `prompt_${nextIndex}`;
+      }
+      const nextPrompt = {
+        identifier: nextIdentifier,
+        name: "",
+        role: "system",
+        content: "",
+        enabled: true,
+        marker: false,
+      };
+      prompts.push(nextPrompt);
+      this.setByPath("prompts", prompts);
+      this.setByPath("prompt_order", [...order, nextPrompt.identifier]);
+    },
+
+    removePromptItem(index) {
+      const prompts = Array.isArray(this.getByPath("prompts"))
+        ? [...this.getByPath("prompts")]
+        : [];
+      if (index < 0 || index >= prompts.length) return;
+      const [removed] = prompts.splice(index, 1);
+      this.setByPath("prompts", prompts);
+      const order = Array.isArray(this.getByPath("prompt_order"))
+        ? this.getByPath("prompt_order")
+        : [];
+      if (removed?.identifier) {
+        this.setByPath(
+          "prompt_order",
+          order.filter((value) => value !== removed.identifier),
+        );
+      }
+    },
+
+    moveListItem(path, fromIndex, toIndex) {
+      if (!path || fromIndex === toIndex) return;
+      const list = Array.isArray(this.getByPath(path))
+        ? [...this.getByPath(path)]
+        : [];
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= list.length ||
+        toIndex >= list.length
+      ) {
+        return;
+      }
+      const [item] = list.splice(fromIndex, 1);
+      list.splice(toIndex, 0, item);
+      this.setByPath(path, list);
+    },
+
+    addStringListItem(path) {
+      if (!path) return;
+      const list = Array.isArray(this.getByPath(path))
+        ? [...this.getByPath(path)]
+        : [];
+      list.push("");
+      this.setByPath(path, list);
+    },
+
+    updateStringListItem(path, index, value) {
+      if (!path) return;
+      const list = Array.isArray(this.getByPath(path))
+        ? [...this.getByPath(path)]
+        : [];
+      if (index < 0 || index >= list.length) return;
+      list[index] = value;
+      this.setByPath(path, list);
+    },
+
+    removeStringListItem(path, index) {
+      if (!path) return;
+      const list = Array.isArray(this.getByPath(path))
+        ? [...this.getByPath(path)]
+        : [];
+      if (index < 0 || index >= list.length) return;
+      list.splice(index, 1);
+      this.setByPath(path, list);
+    },
+
+    addBiasEntry() {
+      const logitBias = Array.isArray(this.getByPath("logit_bias"))
+        ? [...this.getByPath("logit_bias")]
+        : [];
+      logitBias.push({ text: "", value: 0 });
+      this.setByPath("logit_bias", logitBias);
+    },
+
+    removeBiasEntry(index) {
+      const logitBias = Array.isArray(this.getByPath("logit_bias"))
+        ? [...this.getByPath("logit_bias")]
+        : [];
+      if (index < 0 || index >= logitBias.length) return;
+      logitBias.splice(index, 1);
+      this.setByPath("logit_bias", logitBias);
+    },
+
+    updateBiasEntry(index, key, value) {
+      const logitBias = Array.isArray(this.getByPath("logit_bias"))
+        ? [...this.getByPath("logit_bias")]
+        : [];
+      if (!logitBias[index] || typeof logitBias[index] !== "object") {
+        logitBias[index] = {};
+      }
+      const nextValue = key === "value" ? Number(value) : value;
+      const numericValue = Number(value);
+      logitBias[index] = {
+        ...logitBias[index],
+        [key]:
+          key === "value"
+            ? Number.isFinite(numericValue)
+              ? numericValue
+              : 0
+            : nextValue,
+      };
+      this.setByPath("logit_bias", logitBias);
     },
 
     formatValue(value) {
@@ -294,6 +635,16 @@ export default function presetEditor() {
         this.editingData = deepClone(res.preset.raw_data || {});
         this.baseDataJson = JSON.stringify(this.editingData);
         this.activeNav = activeNav || this.navSections[0] || "basic";
+        this.searchTerm = "";
+        this.uiFilter = "all";
+        this.activeGroup = "all";
+        this.activeItemId = "";
+        this.showMobileSidebar = false;
+        this.showRightPanel = true;
+        this.showRawEditor = false;
+        this.removedUnknownFields = [];
+        this.dirtyPaths = {};
+        this.selectGroup("all");
         this.showPresetEditor = true;
         this.leftNavOpen = this.$store.global.deviceType !== "mobile";
         this.rightPanelOpen = this.$store.global.deviceType !== "mobile";
@@ -363,6 +714,7 @@ export default function presetEditor() {
           preset_kind: this.editingPresetFile.preset_kind,
           save_mode: "overwrite",
           source_revision: this.editingPresetFile.source_revision,
+          removed_unknown_fields: this.removedUnknownFields,
           content: this.editingData,
         });
 
@@ -387,6 +739,8 @@ export default function presetEditor() {
           this.editingPresetFile.raw_data || this.editingData,
         );
         this.baseDataJson = JSON.stringify(this.editingData);
+        this.removedUnknownFields = [];
+        this.dirtyPaths = {};
         autoSaver.initBaseline(this.editingData);
         this.clearLocalDraft();
         setActiveRuntimeContext({
@@ -528,6 +882,9 @@ export default function presetEditor() {
           return;
         }
         this.editingData = deepClone(res.default_content || {});
+        this.removedUnknownFields = [];
+        this.dirtyPaths = {};
+        this.markAllReaderItemsDirty();
         this.$store.global.showToast(
           "已载入默认模板，点击保存后才会覆盖磁盘文件",
         );
@@ -616,7 +973,47 @@ export default function presetEditor() {
     },
 
     openRawEditor() {
+      this.showRawEditor = true;
+      this.showRightPanel = true;
       this.activeNav = "raw";
+    },
+
+    get rawUnknownJsonText() {
+      if (!this.unknownFieldList.length || !this.editingData) return "{}";
+      const payload = Object.create(null);
+      this.unknownFieldList.forEach((key) => {
+        payload[key] = this.editingData?.[key];
+      });
+      return JSON.stringify(payload, null, 2);
+    },
+
+    applyRawUnknownJson(text) {
+      try {
+        const parsed = JSON.parse(text || "{}");
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+          throw new Error("Raw unknown JSON must be an object");
+        }
+        this.unknownFieldList.forEach((key) => {
+          if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+            Object.defineProperty(this.editingData, key, {
+              value: parsed[key],
+              enumerable: true,
+              writable: true,
+              configurable: true,
+            });
+          } else {
+            delete this.editingData[key];
+          }
+          this.dirtyPaths[key] = true;
+        });
+        this.removedUnknownFields = this.unknownFieldList.filter(
+          (key) => !Object.prototype.hasOwnProperty.call(parsed, key),
+        );
+        this.showRawEditor = false;
+        this.$store.global.showToast("高级原始编辑区已应用");
+      } catch (error) {
+        this.$store.global.showToast("原始 JSON 格式无效", "error");
+      }
     },
   };
 }
