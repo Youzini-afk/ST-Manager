@@ -131,6 +131,46 @@ def test_preset_detail_reader_js_exposes_prompt_workspace_helpers():
     assert 'getPromptPositionLabel(item) {' in source
 
 
+def test_preset_detail_reader_template_compacts_prompt_list_metadata_row():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    prompt_card_match = re.search(
+        r'@click="selectPrompt\(item\.id\)"[\s\S]*?x-text="getPromptPreview\(item\)"',
+        source,
+    )
+    assert prompt_card_match is not None
+
+    prompt_card_block = prompt_card_match.group(0)
+
+    assert 'class="mt-2 flex items-center gap-2"' not in prompt_card_block
+    assert 'item.summary ||' not in prompt_card_block
+    assert 'x-text="getPromptPositionLabel(item)"' in prompt_card_block
+    assert 'x-text="getPromptPreview(item)"' in prompt_card_block
+    assert 'item.prompt_meta?.is_enabled' in prompt_card_block
+    assert ('sr-only' in prompt_card_block) or ('aria-label=' in prompt_card_block) or ('title=' in prompt_card_block)
+    assert "x-text=\"item.prompt_meta?.is_enabled ? '✓' : '−'\"" in prompt_card_block
+
+
+def test_preset_detail_reader_template_compacts_prompt_state_info_bar():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    prompt_state_match = re.search(
+        r'Prompt State[\s\S]*?x-text="getPromptFullDetail\(activeContextItem\)"',
+        source,
+    )
+    assert prompt_state_match is not None
+
+    prompt_state_block = prompt_state_match.group(0)
+
+    assert '<div class="flex justify-end">' not in prompt_state_block
+    assert 'x-text="getPromptPositionLabel(activeContextItem)"' in prompt_state_block
+    assert 'x-text="getPromptFullDetail(activeContextItem)"' in prompt_state_block
+    assert '@click="copyText(getPromptFullDetail(activeContextItem), \'条目内容\')"' in prompt_state_block or '@click="copyText(getPromptFullDetail(activeContextItem), "条目内容")"' in prompt_state_block
+    assert 'justify-between' in prompt_state_block
+    assert 'class="text-[10px] font-medium"' not in prompt_state_block
+    assert ('sr-only' in prompt_state_block) or ('aria-label=' in prompt_state_block)
+
+
 def test_preset_detail_reader_runtime_initializes_prompt_workspace_and_switches_active_context():
     run_preset_detail_reader_runtime_check(
         """
