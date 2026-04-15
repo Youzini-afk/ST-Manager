@@ -1165,13 +1165,25 @@ def test_preset_editor_template_renders_marker_icons_switches_and_scroll_safe_pr
         assert token in source
     for token in ['flex-1', 'min-h-0', 'overflow-y-auto', 'custom-scrollbar', 'p-3', 'space-y-2']:
         assert token in source
-    assert 'class="peer sr-only"' in source
+    assert 'class="peer prompt-toggle-input"' in source
     assert 'min-h-9' in source
     assert 'min-w-9' in source
     assert 'justify-center' in source
     assert 'peer-focus-visible:ring-2' in source
     assert 'peer-focus-visible:ring-[var(--accent-main)]/60' in source
     assert 'pointer-events-none absolute left-[2px] top-[2px] h-4 w-4 rounded-full transition-transform' in source
+
+
+def test_preset_editor_template_uses_dedicated_prompt_toggle_input_skin_override():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+    css_source = read_project_file('static/css/modules/components.css')
+
+    assert 'class="peer prompt-toggle-input"' in source
+    assert '.prompt-toggle-input[type="checkbox"] {' in css_source
+    for token in ['position: absolute;', 'inset: 0;', 'width: 100%;', 'height: 100%;', 'opacity: 0;']:
+        assert token in css_source
+    assert '.prompt-toggle-input[type="checkbox"]:checked::after {' in css_source
+    assert 'content: none;' in css_source
 
 
 def test_preset_editor_template_keeps_editor_panels_within_width_bounds():

@@ -135,6 +135,26 @@ input[type="checkbox"] {
   accent-color: var(--accent-main);
 }
 
+.prompt-toggle-input[type="checkbox"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  border: 0;
+  background: transparent;
+}
+
+.prompt-toggle-input[type="checkbox"]:checked {
+  background: transparent;
+  border-color: transparent;
+}
+
+.prompt-toggle-input[type="checkbox"]:checked::after {
+  content: none;
+}
+
 input[type="range"] {
   -webkit-appearance: none;
   background: transparent;
@@ -342,10 +362,11 @@ input[type="range"]::-webkit-slider-runnable-track {
   .modal-container {
     width: 100vw;
     max-width: 100vw;
-    height: 100vh;
-    height: 100dvh;
     height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));
-    min-height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));
+    min-height: var(
+      --app-viewport-height-safe,
+      var(--app-viewport-height, 100dvh)
+    );
     border-radius: 0;
   }
 }
