@@ -18,6 +18,13 @@ import {
 
 const PRESET_DRAFT_PREFIX = "st-manager:preset-draft:";
 
+const PROMPT_TRIGGER_OPTIONS = ["normal", "continue", "impersonate", "quiet"];
+
+const PROMPT_POSITION_OPTIONS = [
+  { value: 0, label: "相对位置" },
+  { value: 1, label: "In-Chat 注入" },
+];
+
 const SECTION_LABELS = {
   basic: "基础信息",
   sampling: "采样参数",
@@ -80,7 +87,10 @@ export default function presetEditor() {
     hasConflict: false,
     conflictRevision: "",
     activeNav: "basic",
+    activeWorkspace: "all",
     activeGroup: "all",
+    activePromptId: "",
+    activeGenericItemId: "",
     activeItemId: "",
     searchTerm: "",
     uiFilter: "all",
@@ -92,6 +102,8 @@ export default function presetEditor() {
     baseDataJson: "",
     draftState: { savedAt: "", restored: false },
     sectionLabels: SECTION_LABELS,
+    promptTriggerOptions: PROMPT_TRIGGER_OPTIONS,
+    promptPositionOptions: PROMPT_POSITION_OPTIONS,
     formatDate,
     estimateTokens,
 
@@ -157,10 +169,156 @@ export default function presetEditor() {
     get editorView() {
       return (
         this.editingPresetFile?.reader_view || {
+          family: "generic",
+          family_label: "通用预设",
           groups: [],
           items: [],
           stats: {},
         }
+      );
+    },
+
+    get isPromptWorkspaceEditor() {
+      return this.editorView.family === "prompt_manager";
+    },
+
+    get promptItems() {
+      if (!Array.isArray(this.editingData?.prompts)) return [];
+      return this.editingData.prompts
+        .map((prompt, index) => {
+          if (!prompt || typeof prompt !== "object") {
+            return null;
+          }
+          return {
+            ...prompt,
+            __prompt_index: index,
+          };
+        })
+        .filter(Boolean);
+    },
+
+    normalizePromptOrder() {
+      const promptOrder = this.editingData?.prompt_order;
+      if (!Array.isArray(promptOrder)) return [];
+
+      if (
+        promptOrder.length &&
+        promptOrder.every((entry) => typeof entry === "string")
+      ) {
+        return promptOrder
+          .map((identifier, index) => ({
+            identifier: String(identifier || "").trim(),
+            enabled: null,
+            order_index: index,
+          }))
+          .filter((entry) => entry.identifier);
+      }
+
+      if (
+        promptOrder.length &&
+        promptOrder.every(
+          (entry) =>
+            entry && typeof entry === "object" && "identifier" in entry,
+        )
+      ) {
+        return promptOrder
+          .map((entry, index) => ({
+            identifier: String(entry.identifier || "").trim(),
+            enabled: typeof entry.enabled === "boolean" ? entry.enabled : null,
+            order_index: index,
+          }))
+          .filter((entry) => entry.identifier);
+      }
+
+      const nestedBucket = promptOrder.find(
+        (entry) =>
+          entry && typeof entry === "object" && Array.isArray(entry.order),
+      );
+      if (!nestedBucket) return [];
+
+      return nestedBucket.order
+        .map((entry, index) => ({
+          identifier: String(entry?.identifier || "").trim(),
+          enabled: typeof entry?.enabled === "boolean" ? entry.enabled : null,
+          order_index: index,
+        }))
+        .filter((entry) => entry.identifier);
+    },
+
+    hasUnsupportedNestedPromptOrder() {
+      const promptOrder = Array.isArray(this.editingData?.prompt_order)
+        ? this.editingData.prompt_order
+        : [];
+      const nestedBucketCount = promptOrder.filter(
+        (entry) =>
+          entry && typeof entry === "object" && Array.isArray(entry.order),
+      ).length;
+      return nestedBucketCount > 1;
+    },
+
+    get orderedPromptItems() {
+      const prompts = this.promptItems.map((prompt, index) => ({
+        ...prompt,
+        __prompt_index: Number(prompt.__prompt_index ?? index),
+        __raw_identifier: String(prompt.identifier || "").trim(),
+        __identifier:
+          String(prompt.identifier || `prompt_${index + 1}`).trim() ||
+          `prompt_${index + 1}`,
+      }));
+      const promptMap = new Map(
+        prompts.map((prompt) => [prompt.__identifier, prompt]),
+      );
+      const orderEntries = this.normalizePromptOrder();
+
+      const ordered = orderEntries
+        .map((entry) => {
+          const prompt = promptMap.get(entry.identifier);
+          if (!prompt) return null;
+          promptMap.delete(entry.identifier);
+          return {
+            ...prompt,
+            __enabled:
+              typeof entry.enabled === "boolean"
+                ? entry.enabled
+                : prompt.enabled !== false,
+            __order_index: entry.order_index,
+            __is_orphan: false,
+          };
+        })
+        .filter(Boolean);
+
+      const orphaned = [...promptMap.values()].map((prompt, index) => ({
+        ...prompt,
+        __enabled: prompt.enabled !== false,
+        __order_index: ordered.length + index,
+        __is_orphan: true,
+      }));
+
+      return [...ordered, ...orphaned];
+    },
+
+    get activePromptItem() {
+      return (
+        this.orderedPromptItems.find(
+          (prompt) => prompt.__identifier === this.activePromptId,
+        ) ||
+        this.orderedPromptItems[0] ||
+        null
+      );
+    },
+
+    get genericWorkspaceItems() {
+      if (!this.isPromptWorkspaceEditor) {
+        return this.filteredItems;
+      }
+
+      const workspace = this.activeWorkspace;
+      if (!workspace || workspace === "prompts") {
+        return [];
+      }
+
+      return (this.editorView.items || []).filter(
+        (item) => item.group === workspace,
       );
     },
 
@@ -203,8 +361,12 @@ export default function presetEditor() {
     },
 
     get activeItem() {
+      const activeItemId =
+        this.isPromptWorkspaceEditor && this.activeWorkspace !== "prompts"
+          ? this.activeGenericItemId || this.activeItemId
+          : this.activeItemId;
       return (
-        this.filteredItems.find((item) => item.id === this.activeItemId) ||
+        this.filteredItems.find((item) => item.id === activeItemId) ||
         this.filteredItems[0] ||
         null
       );
@@ -332,6 +494,325 @@ export default function presetEditor() {
       this.dirtyPaths[path] = true;
     },
 
+    syncPromptOrder(nextOrderedPrompts = null) {
+      if (!this.editingData) return;
+      if (this.hasUnsupportedNestedPromptOrder()) return;
+
+      const orderedPrompts = Array.isArray(nextOrderedPrompts)
+        ? nextOrderedPrompts
+        : this.orderedPromptItems;
+      const canPersistOrder = orderedPrompts.every((prompt) =>
+        String(prompt?.__raw_identifier || "").trim(),
+      );
+      const currentPromptOrder = Array.isArray(this.editingData.prompt_order)
+        ? this.editingData.prompt_order
+        : [];
+
+      if (!canPersistOrder) {
+        if (
+          Object.prototype.hasOwnProperty.call(this.editingData, "prompt_order")
+        ) {
+          delete this.editingData.prompt_order;
+          this.dirtyPaths.prompt_order = true;
+        }
+        return;
+      }
+
+      if (
+        currentPromptOrder.some(
+          (entry) =>
+            entry && typeof entry === "object" && Array.isArray(entry.order),
+        )
+      ) {
+        const nextBuckets = [...currentPromptOrder];
+        const bucketIndex = nextBuckets.findIndex(
+          (entry) =>
+            entry && typeof entry === "object" && Array.isArray(entry.order),
+        );
+        if (bucketIndex !== -1) {
+          const existingOrderEntries = new Map(
+            (Array.isArray(nextBuckets[bucketIndex].order)
+              ? nextBuckets[bucketIndex].order
+              : []
+            )
+              .filter((entry) => entry && typeof entry === "object")
+              .map((entry) => [String(entry.identifier || "").trim(), entry]),
+          );
+          nextBuckets[bucketIndex] = {
+            ...nextBuckets[bucketIndex],
+            order: orderedPrompts.map((prompt) => {
+              const existing =
+                existingOrderEntries.get(
+                  prompt.__raw_identifier || prompt.__identifier,
+                ) ||
+                existingOrderEntries.get(prompt.__identifier) ||
+                null;
+              const nextEntry = {
+                ...(existing || {}),
+                identifier: prompt.__raw_identifier || prompt.__identifier,
+              };
+              if (
+                existing &&
+                Object.prototype.hasOwnProperty.call(existing, "enabled")
+              ) {
+                nextEntry.enabled = prompt.__enabled !== false;
+              } else {
+                delete nextEntry.enabled;
+              }
+              return nextEntry;
+            }),
+          };
+          this.setByPath("prompt_order", nextBuckets);
+          return;
+        }
+      }
+
+      if (
+        currentPromptOrder.length &&
+        currentPromptOrder.every(
+          (entry) =>
+            entry && typeof entry === "object" && "identifier" in entry,
+        )
+      ) {
+        const existingEntries = new Map(
+          currentPromptOrder
+            .filter((entry) => entry && typeof entry === "object")
+            .map((entry) => [String(entry.identifier || "").trim(), entry]),
+        );
+
+        this.setByPath(
+          "prompt_order",
+          orderedPrompts.map((prompt) => {
+            const existing =
+              existingEntries.get(
+                prompt.__raw_identifier || prompt.__identifier,
+              ) ||
+              existingEntries.get(prompt.__identifier) ||
+              null;
+            const nextEntry = {
+              ...(existing || {}),
+              identifier: prompt.__raw_identifier || prompt.__identifier,
+            };
+            if (
+              existing &&
+              Object.prototype.hasOwnProperty.call(existing, "enabled")
+            ) {
+              nextEntry.enabled = prompt.__enabled !== false;
+            } else {
+              delete nextEntry.enabled;
+            }
+            return nextEntry;
+          }),
+        );
+        return;
+      }
+
+      this.setByPath(
+        "prompt_order",
+        orderedPrompts.map((prompt) => prompt.__identifier),
+      );
+    },
+
+    getPromptArrayWithMeta() {
+      return this.orderedPromptItems;
+    },
+
+    replacePromptOrder(nextOrderedPrompts) {
+      if (!this.editingData || !Array.isArray(nextOrderedPrompts)) return;
+      if (this.hasUnsupportedNestedPromptOrder()) return;
+
+      const reordered = nextOrderedPrompts
+        .map((entry) => {
+          const promptIndex = Number(entry?.__prompt_index);
+          if (!Number.isInteger(promptIndex)) {
+            return null;
+          }
+          return this.promptItems.find(
+            (prompt) => Number(prompt.__prompt_index) === promptIndex,
+          );
+        })
+        .filter(Boolean)
+        .map((prompt) => {
+          const nextPrompt = { ...prompt };
+          delete nextPrompt.__prompt_index;
+          return nextPrompt;
+        });
+
+      this.setByPath("prompts", reordered);
+      const enriched = nextOrderedPrompts.map((entry) => ({
+        ...entry,
+        __enabled: entry.__enabled !== false,
+      }));
+      this.syncPromptOrder(enriched);
+    },
+
+    movePromptItem(fromIndex, toIndex) {
+      const orderedPrompts = [...this.getPromptArrayWithMeta()];
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= orderedPrompts.length ||
+        toIndex >= orderedPrompts.length ||
+        fromIndex === toIndex
+      ) {
+        return;
+      }
+
+      const [prompt] = orderedPrompts.splice(fromIndex, 1);
+      orderedPrompts.splice(toIndex, 0, prompt);
+      this.replacePromptOrder(orderedPrompts);
+      this.activePromptId = prompt?.__identifier || this.activePromptId;
+    },
+
+    togglePromptEnabled(identifier) {
+      const promptId = String(identifier || "");
+      if (!promptId || !this.editingData) return;
+      if (this.hasUnsupportedNestedPromptOrder()) return;
+
+      const orderedPrompts = this.orderedPromptItems.map((prompt) => {
+        if (prompt.__identifier !== promptId) {
+          return prompt;
+        }
+        return {
+          ...prompt,
+          __enabled: prompt.__enabled === false,
+        };
+      });
+
+      if (
+        Array.isArray(this.editingData.prompt_order) &&
+        this.editingData.prompt_order.some(
+          (entry) =>
+            entry && typeof entry === "object" && Array.isArray(entry.order),
+        )
+      ) {
+        this.syncPromptOrder(orderedPrompts);
+        return;
+      }
+
+      const prompts = Array.isArray(this.editingData.prompts)
+        ? [...this.editingData.prompts]
+        : [];
+      const activeEntry = orderedPrompts.find(
+        (entry) => entry.__identifier === promptId,
+      );
+      const promptIndex = Number(activeEntry?.__prompt_index);
+      if (promptIndex !== -1) {
+        prompts[promptIndex] = {
+          ...prompts[promptIndex],
+          enabled: activeEntry?.__enabled !== false,
+        };
+        this.setByPath("prompts", prompts);
+      }
+
+      this.syncPromptOrder(orderedPrompts);
+    },
+
+    updatePromptField(key, value) {
+      const active = this.activePromptItem;
+      if (!active || !this.editingData) return;
+
+      const previousIdentifier = active.__identifier;
+      const promptIndex = Number(active.__prompt_index);
+      const prompts = Array.isArray(this.editingData.prompts)
+        ? [...this.editingData.prompts]
+        : [];
+      if (!prompts[promptIndex] || typeof prompts[promptIndex] !== "object") {
+        return;
+      }
+      if (key === "content" && prompts[promptIndex].marker) {
+        return;
+      }
+
+      const nextPrompt = {
+        ...prompts[promptIndex],
+        [key]: value,
+      };
+      if (key === "injection_position") {
+        nextPrompt[key] = Number(value);
+      }
+      if (key === "injection_depth" || key === "injection_order") {
+        nextPrompt[key] = Number(value);
+      }
+
+      prompts[promptIndex] = nextPrompt;
+      this.setByPath("prompts", prompts);
+
+      if (key === "identifier") {
+        const nextIdentifier = String(nextPrompt.identifier || "").trim();
+        this.activePromptId = nextIdentifier || this.activePromptId;
+
+        if (Array.isArray(this.editingData.prompt_order)) {
+          const nextPromptOrder = this.editingData.prompt_order.map((entry) => {
+            if (typeof entry === "string") {
+              return entry === previousIdentifier ? nextIdentifier : entry;
+            }
+            if (entry && typeof entry === "object" && "identifier" in entry) {
+              if (
+                String(entry.identifier || "").trim() === previousIdentifier
+              ) {
+                return {
+                  ...entry,
+                  identifier: nextIdentifier,
+                };
+              }
+              return entry;
+            }
+            if (
+              entry &&
+              typeof entry === "object" &&
+              Array.isArray(entry.order)
+            ) {
+              return {
+                ...entry,
+                order: entry.order.map((orderEntry) => {
+                  if (
+                    orderEntry &&
+                    typeof orderEntry === "object" &&
+                    String(orderEntry.identifier || "").trim() ===
+                      previousIdentifier
+                  ) {
+                    return {
+                      ...orderEntry,
+                      identifier: nextIdentifier,
+                    };
+                  }
+                  return orderEntry;
+                }),
+              };
+            }
+            return entry;
+          });
+          this.setByPath("prompt_order", nextPromptOrder);
+        }
+      }
+    },
+
+    updatePromptTriggers(selectedValues) {
+      const active = this.activePromptItem;
+      if (!active || !this.editingData) return;
+
+      const promptIndex = Number(active.__prompt_index);
+      const prompts = Array.isArray(this.editingData.prompts)
+        ? [...this.editingData.prompts]
+        : [];
+      if (!prompts[promptIndex] || typeof prompts[promptIndex] !== "object") {
+        return;
+      }
+
+      prompts[promptIndex] = {
+        ...prompts[promptIndex],
+        injection_trigger: Array.from(selectedValues || [])
+          .map((entry) => String(entry || "").trim())
+          .filter(Boolean),
+      };
+      this.setByPath("prompts", prompts);
+    },
+
+    isPromptContentEditable(prompt) {
+      return Boolean(prompt && !prompt.marker);
+    },
+
     selectGroup(groupId) {
       const previousItemId = this.activeItemId;
       this.activeGroup = groupId || "all";
@@ -340,17 +821,47 @@ export default function presetEditor() {
       );
       if (matchingItem) {
         this.activeItemId = matchingItem.id;
+        this.activeGenericItemId = matchingItem.id;
         return;
       }
 
       const first = this.filteredItems[0];
       if (first) {
         this.activeItemId = first.id;
+        this.activeGenericItemId = first.id;
       }
+    },
+
+    selectWorkspace(workspaceId) {
+      this.activeWorkspace =
+        workspaceId || (this.isPromptWorkspaceEditor ? "prompts" : "all");
+      if (!this.isPromptWorkspaceEditor) {
+        this.selectGroup(this.activeWorkspace);
+        return;
+      }
+
+      if (this.activeWorkspace === "prompts") {
+        this.activePromptId =
+          this.activePromptItem?.__identifier ||
+          this.orderedPromptItems[0]?.__identifier ||
+          "";
+        return;
+      }
+
+      this.activeGroup = this.activeWorkspace;
+      const firstItem = this.genericWorkspaceItems[0] || null;
+      this.activeGenericItemId = firstItem?.id || "";
+      this.activeItemId = firstItem?.id || "";
     },
 
     selectItem(itemId) {
       this.activeItemId = itemId || "";
+      this.activeGenericItemId = itemId || "";
+    },
+
+    selectPrompt(promptId) {
+      this.activeWorkspace = "prompts";
+      this.activePromptId = String(promptId || "");
     },
 
     getFieldValue(item) {
@@ -511,9 +1022,12 @@ export default function presetEditor() {
         this.editingData = deepClone(res.preset.raw_data || {});
         this.baseDataJson = JSON.stringify(this.editingData);
         this.activeNav = activeNav || this.navSections[0] || "basic";
+        this.activeWorkspace = this.isPromptWorkspaceEditor ? "prompts" : "all";
         this.searchTerm = "";
         this.uiFilter = "all";
         this.activeGroup = "all";
+        this.activePromptId = this.orderedPromptItems[0]?.__identifier || "";
+        this.activeGenericItemId = "";
         this.activeItemId = "";
         this.showMobileSidebar = false;
         this.showRightPanel = true;
@@ -568,6 +1082,9 @@ export default function presetEditor() {
       if (this.isDirty) {
         this.persistLocalDraft();
       }
+      this.activeWorkspace = "all";
+      this.activePromptId = "";
+      this.activeGenericItemId = "";
       this.showPresetEditor = false;
     },
 

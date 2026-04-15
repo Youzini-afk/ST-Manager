@@ -20,6 +20,13 @@ const UI_FILTERS = [
   { id: "extension", label: "扩展" },
 ];
 
+const PROMPT_UI_FILTERS = [
+  { id: "all", label: "全部" },
+  { id: "enabled", label: "启用" },
+  { id: "disabled", label: "禁用" },
+  { id: "marker", label: "预留字段" },
+];
+
 const TYPE_LABELS = {
   extension: "扩展",
   field: "字段",
@@ -30,6 +37,11 @@ const GROUP_FALLBACK_LABELS = {
   extensions: "扩展",
   scalar_fields: "基础字段",
   structured_objects: "结构化对象",
+};
+
+const PROMPT_POSITION_LABELS = {
+  0: "相对位置",
+  1: "In-Chat 注入",
 };
 
 function normalizeText(value) {
@@ -43,7 +55,9 @@ export default function presetDetailReader() {
     showModal: false,
     isLoading: false,
     activePresetDetail: null,
+    activeWorkspace: "all",
     activeGroup: "all",
+    activePromptId: "",
     activeItemId: "",
     searchTerm: "",
     uiFilter: "all",
@@ -59,8 +73,14 @@ export default function presetDetailReader() {
 
     get readerView() {
       const view = this.activePresetDetail?.reader_view;
-      if (view && Array.isArray(view.items) && Array.isArray(view.groups)) {
-        return view;
+      if (view && Array.isArray(view.items)) {
+        return {
+          family: view.family || "generic",
+          family_label: view.family_label || "通用预设",
+          groups: Array.isArray(view.groups) ? view.groups : [],
+          items: view.items,
+          stats: view.stats && typeof view.stats === "object" ? view.stats : {},
+        };
       }
       return {
         family: "generic",
@@ -85,6 +105,68 @@ export default function presetDetailReader() {
 
     get readerItems() {
       return Array.isArray(this.readerView.items) ? this.readerView.items : [];
+    },
+
+    get isPromptWorkspaceReader() {
+      return this.readerView.family === "prompt_manager";
+    },
+
+    get promptItems() {
+      return this.readerItems.filter((item) => item.type === "prompt");
+    },
+
+    get orderedPromptItems() {
+      return [...this.promptItems].sort((left, right) => {
+        const leftIndex = Number(
+          left.prompt_meta?.order_index ?? Number.MAX_SAFE_INTEGER,
+        );
+        const rightIndex = Number(
+          right.prompt_meta?.order_index ?? Number.MAX_SAFE_INTEGER,
+        );
+        if (leftIndex !== rightIndex) {
+          return leftIndex - rightIndex;
+        }
+        return String(left.title || "").localeCompare(
+          String(right.title || ""),
+        );
+      });
+    },
+
+    get promptFilteredItems() {
+      const query = normalizeText(this.searchTerm);
+      return this.orderedPromptItems.filter((item) => {
+        if (
+          this.uiFilter === "enabled" &&
+          item.prompt_meta?.is_enabled === false
+        ) {
+          return false;
+        }
+        if (
+          this.uiFilter === "disabled" &&
+          item.prompt_meta?.is_enabled !== false
+        ) {
+          return false;
+        }
+        if (this.uiFilter === "marker" && !item.prompt_meta?.is_marker) {
+          return false;
+        }
+
+        if (!query) {
+          return true;
+        }
+
+        const haystack = [
+          item.title,
+          item.summary,
+          item.payload?.identifier,
+          this.getPromptPreview(item),
+          this.getPromptPositionLabel(item),
+        ]
+          .map(normalizeText)
+          .filter(Boolean)
+          .join(" ");
+        return haystack.includes(query);
+      });
     },
 
     get filteredItems() {
@@ -128,6 +210,10 @@ export default function presetDetailReader() {
         return current;
       }
 
+      if (this.activeGroup !== "all" && !items.length && !this.activeItemId) {
+        return null;
+      }
+
       const anyCurrent = this.readerItems.find(
         (item) => item.id === this.activeItemId,
       );
@@ -138,15 +224,38 @@ export default function presetDetailReader() {
       return items[0] || this.readerItems[0] || null;
     },
 
+    get activePromptItem() {
+      return (
+        this.promptFilteredItems.find(
+          (item) => item.id === this.activePromptId,
+        ) ||
+        this.promptFilteredItems[0] ||
+        null
+      );
+    },
+
+    get activeContextItem() {
+      if (this.isPromptWorkspaceReader && this.activeWorkspace === "prompts") {
+        return this.activePromptItem;
+      }
+      return this.activeItem;
+    },
+
     get readerStats() {
       const stats = this.readerView.stats || {};
       return {
         total_count: Number(stats.total_count) || this.readerItems.length,
-        visible_count: this.filteredItems.length,
+        visible_count:
+          this.isPromptWorkspaceReader && this.activeWorkspace === "prompts"
+            ? this.promptFilteredItems.length
+            : this.filteredItems.length,
       };
     },
 
     get uiFilters() {
+      if (this.isPromptWorkspaceReader && this.activeWorkspace === "prompts") {
+        return PROMPT_UI_FILTERS;
+      }
       return UI_FILTERS;
     },
 
@@ -158,7 +267,9 @@ export default function presetDetailReader() {
       this.showRightPanel = this.$store?.global?.deviceType !== "mobile";
       this.searchTerm = "";
       this.uiFilter = "all";
+      this.activeWorkspace = "all";
       this.activeGroup = "all";
+      this.activePromptId = "";
       this.activeItemId = "";
 
       try {
@@ -189,6 +300,20 @@ export default function presetDetailReader() {
     },
 
     initializeReaderState() {
+      if (this.isPromptWorkspaceReader) {
+        this.activeWorkspace =
+          this.readerGroups.find((group) => group.id === "prompts")?.id ||
+          this.readerGroups[0]?.id ||
+          "prompts";
+        this.activePromptId = this.promptFilteredItems[0]?.id || "";
+        this.activeGroup = "all";
+        this.activeItemId = "";
+        if (this.$store?.global?.deviceType !== "mobile") {
+          this.showRightPanel = true;
+        }
+        return;
+      }
+
       const firstGroup = this.readerGroups[0]?.id || "all";
       this.activeGroup = firstGroup;
       const firstItem = this.filteredItems[0] || this.readerItems[0] || null;
@@ -201,7 +326,9 @@ export default function presetDetailReader() {
     closeModal() {
       this.showModal = false;
       this.activePresetDetail = null;
+      this.activeWorkspace = "all";
       this.activeGroup = "all";
+      this.activePromptId = "";
       this.activeItemId = "";
       this.searchTerm = "";
       this.uiFilter = "all";
@@ -219,8 +346,31 @@ export default function presetDetailReader() {
       }
     },
 
+    selectWorkspace(workspaceId) {
+      this.activeWorkspace = workspaceId || "prompts";
+      if (this.activeWorkspace === "prompts") {
+        this.activePromptId = this.promptFilteredItems[0]?.id || "";
+      } else {
+        this.activeGroup = this.activeWorkspace;
+        this.activeItemId = this.filteredItems[0]?.id || "";
+      }
+      this.showRightPanel = true;
+      if (this.$store?.global?.deviceType === "mobile") {
+        this.showMobileSidebar = false;
+      }
+    },
+
     selectItem(itemId) {
       this.activeItemId = itemId || "";
+      this.showRightPanel = true;
+      if (this.$store?.global?.deviceType === "mobile") {
+        this.showMobileSidebar = false;
+      }
+    },
+
+    selectPrompt(itemId) {
+      this.activeWorkspace = "prompts";
+      this.activePromptId = itemId || "";
       this.showRightPanel = true;
       if (this.$store?.global?.deviceType === "mobile") {
         this.showMobileSidebar = false;
@@ -283,6 +433,25 @@ export default function presetDetailReader() {
     getItemBadge(item) {
       if (!item) return TYPE_LABELS.field;
       return TYPE_LABELS[item.type] || "条目";
+    },
+
+    getPromptPreview(item) {
+      if (!item) return "-";
+      if (item.prompt_meta?.is_marker) {
+        return "占位用预留字段，不承载提示词内容";
+      }
+      const content = String(item.payload?.content || "").trim();
+      return content ? this.formatValue(content) : "暂无提示词内容";
+    },
+
+    getPromptPositionLabel(item) {
+      const position = Number(item?.payload?.injection_position ?? 0);
+      if (position === 1) {
+        const rawDepth = Number(item?.payload?.injection_depth ?? 4);
+        const depth = Number.isFinite(rawDepth) ? rawDepth : 4;
+        return `In-Chat @ ${depth}`;
+      }
+      return PROMPT_POSITION_LABELS[position] || "相对位置";
     },
 
     openFullscreenEditor(options = {}) {

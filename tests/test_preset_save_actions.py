@@ -293,3 +293,143 @@ def test_preset_save_overwrite_persists_logit_bias_list(monkeypatch, tmp_path):
     assert res.status_code == 200
     payload = json.loads(preset_file.read_text(encoding='utf-8'))
     assert payload['logit_bias'] == [{'text': 'forbidden', 'value': -5}]
+
+
+def test_preset_save_overwrite_persists_reordered_prompt_workspace_content(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    preset_file = presets_dir / 'openai-chat.json'
+    _write_json(
+        preset_file,
+        {
+            'name': 'OpenAI Chat',
+            'prompts': [
+                {'identifier': 'main', 'name': 'Main Prompt', 'role': 'system', 'content': 'old main'},
+                {'identifier': 'summary', 'name': 'Summary', 'role': 'assistant', 'content': 'old summary'},
+                {'identifier': 'worldInfoAfter', 'name': 'World Info (after)', 'marker': True},
+            ],
+            'prompt_order': ['main', 'summary'],
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    revision = client.get('/api/presets/detail/global::openai-chat.json').get_json()['preset']['source_revision']
+    res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global::openai-chat.json',
+            'preset_kind': 'textgen',
+            'save_mode': 'overwrite',
+            'source_revision': revision,
+            'content': {
+                'name': 'OpenAI Chat',
+                'prompts': [
+                    {'identifier': 'summary', 'name': 'Summary', 'role': 'assistant', 'content': 'new summary'},
+                    {'identifier': 'main', 'name': 'Main Prompt', 'role': 'system', 'content': 'new main'},
+                    {'identifier': 'worldInfoAfter', 'name': 'World Info (after)', 'marker': True},
+                ],
+                'prompt_order': ['summary', 'main', 'worldInfoAfter'],
+            },
+        },
+    )
+
+    assert res.status_code == 200
+    payload = json.loads(preset_file.read_text(encoding='utf-8'))
+    assert [prompt['identifier'] for prompt in payload['prompts']] == ['summary', 'main', 'worldInfoAfter']
+    assert payload['prompt_order'] == ['summary', 'main', 'worldInfoAfter']
+    assert payload['prompts'][2]['marker'] is True
+    assert 'content' not in payload['prompts'][2]
+
+
+def test_preset_save_overwrite_preserves_nested_st_prompt_order_when_unedited(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    preset_file = presets_dir / 'st-openai.json'
+    _write_json(
+        preset_file,
+        {
+            'name': 'ST OpenAI',
+            'prompts': [
+                {'identifier': 'main', 'name': 'Main Prompt', 'role': 'system', 'content': 'old main'},
+                {'identifier': 'worldInfoBefore', 'name': 'World Info (before)', 'marker': True},
+            ],
+            'prompt_order': [
+                {
+                    'character_id': 100000,
+                    'order': [
+                        {'identifier': 'worldInfoBefore', 'enabled': False},
+                        {'identifier': 'main', 'enabled': True},
+                    ],
+                },
+            ],
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    revision = client.get('/api/presets/detail/global::st-openai.json').get_json()['preset']['source_revision']
+    res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global::st-openai.json',
+            'preset_kind': 'textgen',
+            'save_mode': 'overwrite',
+            'source_revision': revision,
+            'content': {
+                'name': 'ST OpenAI',
+                'prompts': [
+                    {'identifier': 'main', 'name': 'Main Prompt', 'role': 'system', 'content': 'new main'},
+                    {'identifier': 'worldInfoBefore', 'name': 'World Info (before)', 'marker': True},
+                ],
+                'prompt_order': [
+                    {
+                        'character_id': 100000,
+                        'order': [
+                            {'identifier': 'worldInfoBefore', 'enabled': False},
+                            {'identifier': 'main', 'enabled': True},
+                        ],
+                    },
+                ],
+            },
+        },
+    )
+
+    assert res.status_code == 200
+    payload = json.loads(preset_file.read_text(encoding='utf-8'))
+    assert payload['prompt_order'][0]['order'][0] == {'identifier': 'worldInfoBefore', 'enabled': False}
+    assert payload['prompt_order'][0]['order'][1] == {'identifier': 'main', 'enabled': True}
+    assert payload['prompts'][0]['content'] == 'new main'
+
+
+def test_preset_save_overwrite_replaces_malformed_non_dict_root(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    preset_file = presets_dir / 'broken.json'
+    _write_json(preset_file, ['bad', 'root'])
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    revision = client.get('/api/presets/detail/global::broken.json').get_json()['preset']['source_revision']
+    res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global::broken.json',
+            'preset_kind': 'textgen',
+            'save_mode': 'overwrite',
+            'source_revision': revision,
+            'content': {
+                'name': 'Recovered',
+                'temp': 0.8,
+                'extensions': {'regex_scripts': []},
+            },
+        },
+    )
+
+    assert res.status_code == 200
+    payload = json.loads(preset_file.read_text(encoding='utf-8'))
+    assert payload == {
+        'name': 'Recovered',
+        'temp': 0.8,
+        'extensions': {'regex_scripts': []},
+    }

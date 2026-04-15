@@ -139,24 +139,36 @@ def test_preset_detail_identifies_instruct_context_and_reasoning(monkeypatch, tm
     assert 'template' in reasoning['sections']
 
 
-def test_preset_detail_reader_view_uses_generic_groups_without_prompt_order_or_unknown_groups(
-    monkeypatch, tmp_path
-):
+def test_preset_detail_reader_view_uses_prompt_manager_family_for_prompt_presets(monkeypatch, tmp_path):
     presets_dir = tmp_path / 'presets'
     _write_json(
         presets_dir / 'openai-chat.json',
         {
             'name': 'OpenAI Chat',
-            'temp': 0.8,
+            'temperature': 0.8,
             'prompts': [
-                {'identifier': 'main', 'name': 'Main Prompt', 'role': 'system', 'content': '你是助手', 'enabled': True},
-                {'identifier': 'summary', 'role': 'system', 'content': '总结要点'},
+                {
+                    'identifier': 'main',
+                    'name': 'Main Prompt',
+                    'role': 'system',
+                    'content': '你是助手',
+                    'system_prompt': True,
+                },
+                {
+                    'identifier': 'worldInfoAfter',
+                    'name': 'World Info (after)',
+                    'system_prompt': True,
+                    'marker': True,
+                },
+                {
+                    'identifier': 'summary',
+                    'name': 'Summary',
+                    'role': 'assistant',
+                    'content': '总结要点',
+                },
             ],
-            'prompt_order': ['main', 'summary'],
-            'extensions': {
-                'memory': {'enabled': True},
-            },
-            'custom_flag': True,
+            'prompt_order': ['summary', 'main'],
+            'extensions': {'memory': {'enabled': True}},
         },
     )
 
@@ -175,33 +187,191 @@ def test_preset_detail_reader_view_uses_generic_groups_without_prompt_order_or_u
     assert payload['success'] is True
 
     preset = payload['preset']
-    assert preset['preset_kind'] == 'textgen'
     reader_view = preset['reader_view']
-    assert reader_view['family'] == 'generic'
-    assert 'groups' in reader_view
-    assert 'items' in reader_view
-
-    group_ids = [group['id'] for group in reader_view['groups']]
-    assert 'extensions' in group_ids
-    assert 'prompt_order' not in group_ids
-    assert 'unknown_fields' not in group_ids
-
     prompt_items = [item for item in reader_view['items'] if item['type'] == 'prompt']
-    extension_items = [item for item in reader_view['items'] if item['group'] == 'extensions']
-    item_types = [item['type'] for item in reader_view['items']]
 
-    assert len(prompt_items) == 2
-    assert extension_items
-    assert 'prompt_order' not in item_types
-    assert 'unknown' not in item_types
+    assert reader_view['family'] == 'prompt_manager'
+    assert reader_view['family_label'] == 'Prompt Manager 预设'
+    assert [group['id'] for group in reader_view['groups']][0] == 'prompts'
+    assert 'prompt_order' not in [group['id'] for group in reader_view['groups']]
+    assert [item['payload']['identifier'] for item in prompt_items] == ['summary', 'main', 'worldInfoAfter']
+    assert prompt_items[0]['editor']['kind'] == 'prompt-manager-item'
+    assert prompt_items[0]['reorderable'] is True
+    assert prompt_items[0]['prompt_meta']['identifier'] == 'summary'
+    assert prompt_items[0]['prompt_meta']['is_enabled'] is True
+    assert prompt_items[0]['prompt_meta']['content_editable'] is True
+    assert prompt_items[0]['prompt_meta']['uses_prompt_order'] is True
+    assert prompt_items[0]['prompt_meta']['order_index'] == 0
+    assert prompt_items[0]['prompt_meta']['is_orphan'] is False
+    assert '启用' in prompt_items[0]['summary']
+    assert '相对位置' in prompt_items[0]['summary']
+    assert prompt_items[2]['prompt_meta']['is_marker'] is True
+    assert prompt_items[2]['content_editable'] is False
+    assert prompt_items[2]['prompt_meta']['content_editable'] is False
+    assert prompt_items[2]['prompt_meta']['is_orphan'] is True
+    assert '预留字段' in prompt_items[2]['summary']
 
-    first_prompt = prompt_items[0]
-    assert first_prompt['id']
-    assert first_prompt['title'] == 'Main Prompt'
-    assert isinstance(first_prompt['summary'], str)
-    assert first_prompt['payload']['identifier'] == 'main'
-    assert first_prompt['editable'] is False
-    assert first_prompt['editor']['kind'] == 'raw-json'
+
+def test_preset_detail_reader_view_reads_enabled_state_from_nested_st_prompt_order(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'st-openai.json',
+        {
+            'name': 'ST OpenAI',
+            'prompts': [
+                {
+                    'identifier': 'main',
+                    'name': 'Main Prompt',
+                    'role': 'system',
+                    'content': '你是助手',
+                    'system_prompt': True,
+                },
+                {
+                    'identifier': 'worldInfoBefore',
+                    'name': 'World Info (before)',
+                    'system_prompt': True,
+                    'marker': True,
+                },
+            ],
+            'prompt_order': [
+                {
+                    'character_id': 100000,
+                    'order': [
+                        {'identifier': 'worldInfoBefore', 'enabled': False},
+                        {'identifier': 'main', 'enabled': True},
+                    ],
+                },
+            ],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::st-openai.json')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    prompt_items = [item for item in payload['preset']['reader_view']['items'] if item['type'] == 'prompt']
+
+    assert [item['payload']['identifier'] for item in prompt_items] == ['worldInfoBefore', 'main']
+    assert prompt_items[0]['prompt_meta']['is_enabled'] is False
+    assert prompt_items[0]['prompt_meta']['uses_prompt_order'] is True
+    assert prompt_items[0]['content_editable'] is False
+    assert '禁用' in prompt_items[0]['summary']
+
+
+def test_preset_detail_reader_view_uses_prompt_enabled_state_for_simple_prompt_order(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'simple-openai.json',
+        {
+            'name': 'Simple OpenAI',
+            'prompts': [
+                {
+                    'identifier': 'main',
+                    'name': 'Main Prompt',
+                    'role': 'system',
+                    'content': '你是助手',
+                    'enabled': False,
+                },
+                {
+                    'identifier': 'summary',
+                    'name': 'Summary',
+                    'role': 'assistant',
+                    'content': '总结要点',
+                    'enabled': True,
+                },
+            ],
+            'prompt_order': ['main', 'summary'],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::simple-openai.json')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    prompt_items = [item for item in payload['preset']['reader_view']['items'] if item['type'] == 'prompt']
+
+    assert [item['payload']['identifier'] for item in prompt_items] == ['main', 'summary']
+    assert prompt_items[0]['prompt_meta']['uses_prompt_order'] is True
+    assert prompt_items[0]['prompt_meta']['is_enabled'] is False
+    assert '禁用' in prompt_items[0]['summary']
+
+
+def test_preset_detail_reader_view_handles_malformed_prompt_position_values(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'bad-position.json',
+        {
+            'name': 'Bad Position',
+            'prompts': [
+                {
+                    'identifier': 'main',
+                    'name': 'Main Prompt',
+                    'role': 'system',
+                    'content': '你是助手',
+                    'injection_position': 'oops',
+                    'injection_depth': 'NaN',
+                },
+            ],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::bad-position.json')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    prompt_items = [item for item in payload['preset']['reader_view']['items'] if item['type'] == 'prompt']
+
+    assert len(prompt_items) == 1
+    assert '相对位置' in prompt_items[0]['summary']
+
+
+def test_preset_detail_handles_non_dict_json_root(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(presets_dir / 'list-root.json', ['bad', 'root'])
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::list-root.json')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['success'] is True
+
+    preset = payload['preset']
+    assert preset['name'] == 'list-root'
+    assert preset['extensions'] == {}
+    assert preset['reader_view']['family'] == 'generic'
+    assert preset['reader_view']['items'] == []
 
 
 def test_preset_detail_reader_view_has_generic_fallback(monkeypatch, tmp_path):

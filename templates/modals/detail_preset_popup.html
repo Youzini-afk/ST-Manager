@@ -161,58 +161,119 @@
             </div>
 
             <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-              <button
-                @click="selectGroup('all')"
-                class="w-full text-left rounded-xl border px-3 py-3 transition"
-                :class="activeGroup === 'all' ? 'bg-[var(--accent-main)]/15 border-[var(--accent-main)]' : 'bg-[var(--bg-panel)] border-[var(--border-light)]'"
-              >
-                <div class="flex items-center justify-between gap-2">
-                  <div>
-                    <div class="text-sm font-semibold text-[var(--text-main)]">
-                      全部条目
+              <template x-if="!isPromptWorkspaceReader">
+                <div class="space-y-2">
+                  <button
+                    @click="selectGroup('all')"
+                    class="w-full text-left rounded-xl border px-3 py-3 transition"
+                    :class="activeGroup === 'all' ? 'bg-[var(--accent-main)]/15 border-[var(--accent-main)]' : 'bg-[var(--bg-panel)] border-[var(--border-light)]'"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <div>
+                        <div
+                          class="text-sm font-semibold text-[var(--text-main)]"
+                        >
+                          全部条目
+                        </div>
+                        <div class="text-[11px] text-[var(--text-dim)]">
+                          按当前筛选查看
+                        </div>
+                      </div>
+                      <div
+                        class="text-xs font-mono text-[var(--text-sub)]"
+                        x-text="readerStats.total_count"
+                      ></div>
                     </div>
-                    <div class="text-[11px] text-[var(--text-dim)]">
-                      按当前筛选查看
-                    </div>
-                  </div>
-                  <div
-                    class="text-xs font-mono text-[var(--text-sub)]"
-                    x-text="readerStats.total_count"
-                  ></div>
-                </div>
-              </button>
+                  </button>
 
-              <template x-if="readerGroups.length === 0">
-                <div
-                  class="rounded-xl border border-dashed border-[var(--border-light)] p-4 text-sm text-[var(--text-dim)] bg-[var(--bg-panel)]"
-                >
-                  当前预设没有可展示的 reader_view 分组。
+                  <template x-if="readerGroups.length === 0">
+                    <div
+                      class="rounded-xl border border-dashed border-[var(--border-light)] p-4 text-sm text-[var(--text-dim)] bg-[var(--bg-panel)]"
+                    >
+                      当前预设没有可展示的 reader_view 分组。
+                    </div>
+                  </template>
+
+                  <template x-for="group in readerGroups" :key="group.id">
+                    <button
+                      @click="selectGroup(group.id)"
+                      class="w-full text-left rounded-xl border px-3 py-3 transition"
+                      :class="activeGroup === group.id ? 'bg-[var(--accent-main)]/15 border-[var(--accent-main)]' : 'bg-[var(--bg-panel)] border-[var(--border-light)] hover:border-[var(--text-dim)]'"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div>
+                          <div
+                            class="text-sm font-semibold text-[var(--text-main)]"
+                            x-text="group.label"
+                          ></div>
+                          <div
+                            class="text-[11px] text-[var(--text-dim)]"
+                            x-text="group.id"
+                          ></div>
+                        </div>
+                        <div
+                          class="text-xs font-mono text-[var(--text-sub)]"
+                          x-text="group.count"
+                        ></div>
+                      </div>
+                    </button>
+                  </template>
                 </div>
               </template>
 
-              <template x-for="group in readerGroups" :key="group.id">
-                <button
-                  @click="selectGroup(group.id)"
-                  class="w-full text-left rounded-xl border px-3 py-3 transition"
-                  :class="activeGroup === group.id ? 'bg-[var(--accent-main)]/15 border-[var(--accent-main)]' : 'bg-[var(--bg-panel)] border-[var(--border-light)] hover:border-[var(--text-dim)]'"
-                >
-                  <div class="flex items-center justify-between gap-2">
-                    <div>
+              <template x-if="isPromptWorkspaceReader">
+                <div class="space-y-2">
+                  <button
+                    @click="selectWorkspace('prompts')"
+                    class="w-full text-left rounded-xl border px-3 py-3 transition"
+                    :class="activeWorkspace === 'prompts' ? 'bg-[var(--accent-main)]/15 border-[var(--accent-main)]' : 'bg-[var(--bg-panel)] border-[var(--border-light)] hover:border-[var(--text-dim)]'"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <div>
+                        <div
+                          class="text-sm font-semibold text-[var(--text-main)]"
+                        >
+                          Prompt Workspace
+                        </div>
+                        <div class="text-[11px] text-[var(--text-dim)]">
+                          prompts
+                        </div>
+                      </div>
                       <div
-                        class="text-sm font-semibold text-[var(--text-main)]"
-                        x-text="group.label"
-                      ></div>
-                      <div
-                        class="text-[11px] text-[var(--text-dim)]"
-                        x-text="group.id"
+                        class="text-xs font-mono text-[var(--text-sub)]"
+                        x-text="orderedPromptItems.length"
                       ></div>
                     </div>
-                    <div
-                      class="text-xs font-mono text-[var(--text-sub)]"
-                      x-text="group.count"
-                    ></div>
-                  </div>
-                </button>
+                  </button>
+
+                  <template
+                    x-for="group in readerGroups.filter((group) => group.id !== 'prompts')"
+                    :key="group.id"
+                  >
+                    <button
+                      @click="selectWorkspace(group.id)"
+                      class="w-full text-left rounded-xl border px-3 py-3 transition"
+                      :class="activeWorkspace === group.id ? 'bg-[var(--accent-main)]/15 border-[var(--accent-main)]' : 'bg-[var(--bg-panel)] border-[var(--border-light)] hover:border-[var(--text-dim)]'"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div>
+                          <div
+                            class="text-sm font-semibold text-[var(--text-main)]"
+                            x-text="group.label"
+                          ></div>
+                          <div
+                            class="text-[11px] text-[var(--text-dim)]"
+                            x-text="group.id"
+                          ></div>
+                        </div>
+                        <div
+                          class="text-xs font-mono text-[var(--text-sub)]"
+                          x-text="group.count"
+                        ></div>
+                      </div>
+                    </button>
+                  </template>
+                </div>
               </template>
             </div>
           </aside>
@@ -225,15 +286,32 @@
             >
               <div>
                 <div class="text-sm font-bold text-[var(--text-main)]">
-                  内容流
+                  <span x-show="!isPromptWorkspaceReader">内容流</span>
+                  <span
+                    x-show="isPromptWorkspaceReader && activeWorkspace === 'prompts'"
+                    >Prompt 列表</span
+                  >
+                  <span
+                    x-show="isPromptWorkspaceReader && activeWorkspace !== 'prompts'"
+                    >内容流</span
+                  >
                 </div>
                 <div class="text-[11px] text-[var(--text-dim)]">
                   <span
+                    x-show="!isPromptWorkspaceReader"
                     x-text="activeGroup === 'all' ? '全部分组' : getItemGroupLabel({ group: activeGroup })"
+                  ></span>
+                  <span
+                    x-show="isPromptWorkspaceReader && activeWorkspace === 'prompts'"
+                    >按 prompt_order 排序</span
+                  >
+                  <span
+                    x-show="isPromptWorkspaceReader && activeWorkspace !== 'prompts'"
+                    x-text="getItemGroupLabel({ group: activeWorkspace })"
                   ></span>
                   ·
                   <span
-                    x-text="`${readerStats.visible_count} / ${readerStats.total_count}`"
+                    x-text="isPromptWorkspaceReader && activeWorkspace === 'prompts' ? `${orderedPromptItems.length} / ${readerStats.total_count}` : `${filteredItems.length} / ${readerStats.total_count}`"
                   ></span>
                 </div>
               </div>
@@ -258,83 +336,217 @@
                 </div>
               </template>
 
-              <template
-                x-if="readerItems.length > 0 && filteredItems.length === 0"
-              >
-                <div
-                  class="rounded-2xl border border-dashed border-[var(--border-light)] bg-[var(--bg-panel)] p-8 text-center"
-                >
-                  <div class="text-base font-semibold text-[var(--text-main)]">
-                    没有匹配结果
-                  </div>
-                  <div class="mt-2 text-sm text-[var(--text-dim)]">
-                    可以尝试切换分组、清空搜索词或更换 quick filter。
-                  </div>
+              <template x-if="!isPromptWorkspaceReader">
+                <div class="space-y-3">
+                  <template
+                    x-if="readerItems.length > 0 && filteredItems.length === 0"
+                  >
+                    <div
+                      class="rounded-2xl border border-dashed border-[var(--border-light)] bg-[var(--bg-panel)] p-8 text-center"
+                    >
+                      <div
+                        class="text-base font-semibold text-[var(--text-main)]"
+                      >
+                        没有匹配结果
+                      </div>
+                      <div class="mt-2 text-sm text-[var(--text-dim)]">
+                        可以尝试切换分组、清空搜索词或更换 quick filter。
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-for="item in filteredItems" :key="item.id">
+                    <article
+                      @click="selectItem(item.id)"
+                      class="rounded-2xl border p-4 bg-[var(--bg-panel)] cursor-pointer transition"
+                      :class="activeItem?.id === item.id ? 'border-[var(--accent-main)] shadow-[0_0_0_1px_rgba(99,102,241,.25)]' : 'border-[var(--border-light)] hover:border-[var(--text-dim)]'"
+                    >
+                      <div>
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                              <div
+                                class="text-sm font-bold text-[var(--text-main)] break-all"
+                                x-text="item.title"
+                              ></div>
+                              <span
+                                class="px-2 py-0.5 rounded-full text-[10px] border border-[var(--border-light)] text-[var(--text-dim)]"
+                                x-text="getItemBadge(item)"
+                              ></span>
+                              <span
+                                class="px-2 py-0.5 rounded-full text-[10px] border border-[var(--border-light)] text-[var(--text-dim)]"
+                                x-text="getItemGroupLabel(item)"
+                              ></span>
+                            </div>
+                          </div>
+                          <div
+                            class="text-[11px] text-[var(--text-sub)] whitespace-nowrap"
+                            x-text="item.summary || '-' "
+                          ></div>
+                        </div>
+
+                        <div
+                          class="mt-3 text-sm text-[var(--text-sub)] whitespace-pre-wrap break-words line-clamp-3"
+                          x-text="getItemValuePreview(item)"
+                        ></div>
+                      </div>
+
+                      <template x-if="item.type === 'extension'">
+                        <div class="mt-3 text-[11px] text-[var(--text-dim)]">
+                          extension key:
+                          <span
+                            class="font-mono"
+                            x-text="item.payload?.key || item.title"
+                          ></span>
+                        </div>
+                      </template>
+
+                      <template x-if="item.type === 'field'">
+                        <div class="mt-3 text-[11px] text-[var(--text-dim)]">
+                          field key:
+                          <span
+                            class="font-mono"
+                            x-text="item.payload?.key || item.title"
+                          ></span>
+                        </div>
+                      </template>
+
+                      <template x-if="item.type === 'structured'">
+                        <div class="mt-3 text-[11px] text-[var(--text-dim)]">
+                          结构化对象，详情面板可查看完整 payload。
+                        </div>
+                      </template>
+                    </article>
+                  </template>
                 </div>
               </template>
 
-              <template x-for="item in filteredItems" :key="item.id">
-                <article
-                  @click="selectItem(item.id)"
-                  class="rounded-2xl border p-4 bg-[var(--bg-panel)] cursor-pointer transition"
-                  :class="activeItem?.id === item.id ? 'border-[var(--accent-main)] shadow-[0_0_0_1px_rgba(99,102,241,.25)]' : 'border-[var(--border-light)] hover:border-[var(--text-dim)]'"
-                >
-                  <div>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-2 flex-wrap">
+              <template x-if="isPromptWorkspaceReader">
+                <div class="space-y-3">
+                  <template
+                    x-if="activeWorkspace === 'prompts' && orderedPromptItems.length === 0"
+                  >
+                    <div
+                      class="rounded-2xl border border-dashed border-[var(--border-light)] bg-[var(--bg-panel)] p-8 text-center"
+                    >
+                      <div
+                        class="text-base font-semibold text-[var(--text-main)]"
+                      >
+                        当前没有 Prompt 条目
+                      </div>
+                      <div class="mt-2 text-sm text-[var(--text-dim)]">
+                        后端没有返回 prompts 工作区所需的 reader 条目。
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="activeWorkspace === 'prompts'">
+                    <div class="space-y-3">
+                      <template
+                        x-for="item in promptFilteredItems"
+                        :key="item.id"
+                      >
+                        <article
+                          @click="selectPrompt(item.id)"
+                          class="rounded-2xl border p-4 bg-[var(--bg-panel)] cursor-pointer transition"
+                          :class="activePromptItem?.id === item.id ? 'border-[var(--accent-main)] shadow-[0_0_0_1px_rgba(99,102,241,.25)]' : 'border-[var(--border-light)] hover:border-[var(--text-dim)]'"
+                        >
+                          <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0 flex-1">
+                              <div class="flex items-center gap-2 flex-wrap">
+                                <div
+                                  class="text-sm font-bold text-[var(--text-main)] break-all"
+                                  x-text="item.title"
+                                ></div>
+                                <span
+                                  class="px-2 py-0.5 rounded-full text-[10px] border border-[var(--border-light)] text-[var(--text-dim)]"
+                                  x-text="getPromptPositionLabel(item)"
+                                ></span>
+                                <span
+                                  class="px-2 py-0.5 rounded-full text-[10px] border border-[var(--border-light)]"
+                                  :class="item.prompt_meta?.is_enabled ? 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10' : 'text-amber-300 border-amber-400/40 bg-amber-500/10'"
+                                  x-text="item.prompt_meta?.is_enabled ? '启用' : '禁用'"
+                                ></span>
+                                <span
+                                  x-show="item.prompt_meta?.is_marker"
+                                  class="px-2 py-0.5 rounded-full text-[10px] border border-sky-400/40 bg-sky-500/10 text-sky-300"
+                                >
+                                  预留字段
+                                </span>
+                              </div>
+                            </div>
+                            <div
+                              class="text-[11px] text-[var(--text-sub)] whitespace-nowrap"
+                              x-text="item.summary || '-' "
+                            ></div>
+                          </div>
+
                           <div
-                            class="text-sm font-bold text-[var(--text-main)] break-all"
-                            x-text="item.title"
+                            class="mt-3 text-sm text-[var(--text-sub)] whitespace-pre-wrap break-words line-clamp-3"
+                            x-text="getPromptPreview(item)"
                           ></div>
-                          <span
-                            class="px-2 py-0.5 rounded-full text-[10px] border border-[var(--border-light)] text-[var(--text-dim)]"
-                            x-text="getItemBadge(item)"
-                          ></span>
-                          <span
-                            class="px-2 py-0.5 rounded-full text-[10px] border border-[var(--border-light)] text-[var(--text-dim)]"
-                            x-text="getItemGroupLabel(item)"
-                          ></span>
+                        </article>
+                      </template>
+                    </div>
+                  </template>
+
+                  <div x-show="activeWorkspace !== 'prompts'" class="space-y-3">
+                    <template
+                      x-if="readerItems.length > 0 && filteredItems.length === 0"
+                    >
+                      <div
+                        class="rounded-2xl border border-dashed border-[var(--border-light)] bg-[var(--bg-panel)] p-8 text-center"
+                      >
+                        <div
+                          class="text-base font-semibold text-[var(--text-main)]"
+                        >
+                          没有匹配结果
+                        </div>
+                        <div class="mt-2 text-sm text-[var(--text-dim)]">
+                          可以尝试切换工作区、清空搜索词或更换 quick filter。
                         </div>
                       </div>
-                      <div
-                        class="text-[11px] text-[var(--text-sub)] whitespace-nowrap"
-                        x-text="item.summary || '-' "
-                      ></div>
-                    </div>
+                    </template>
 
-                    <div
-                      class="mt-3 text-sm text-[var(--text-sub)] whitespace-pre-wrap break-words line-clamp-3"
-                      x-text="getItemValuePreview(item)"
-                    ></div>
+                    <template x-for="item in filteredItems" :key="item.id">
+                      <article
+                        @click="selectItem(item.id)"
+                        class="rounded-2xl border p-4 bg-[var(--bg-panel)] cursor-pointer transition"
+                        :class="activeContextItem?.id === item.id ? 'border-[var(--accent-main)] shadow-[0_0_0_1px_rgba(99,102,241,.25)]' : 'border-[var(--border-light)] hover:border-[var(--text-dim)]'"
+                      >
+                        <div>
+                          <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0 flex-1">
+                              <div class="flex items-center gap-2 flex-wrap">
+                                <div
+                                  class="text-sm font-bold text-[var(--text-main)] break-all"
+                                  x-text="item.title"
+                                ></div>
+                                <span
+                                  class="px-2 py-0.5 rounded-full text-[10px] border border-[var(--border-light)] text-[var(--text-dim)]"
+                                  x-text="getItemBadge(item)"
+                                ></span>
+                                <span
+                                  class="px-2 py-0.5 rounded-full text-[10px] border border-[var(--border-light)] text-[var(--text-dim)]"
+                                  x-text="getItemGroupLabel(item)"
+                                ></span>
+                              </div>
+                            </div>
+                            <div
+                              class="text-[11px] text-[var(--text-sub)] whitespace-nowrap"
+                              x-text="item.summary || '-' "
+                            ></div>
+                          </div>
+
+                          <div
+                            class="mt-3 text-sm text-[var(--text-sub)] whitespace-pre-wrap break-words line-clamp-3"
+                            x-text="getItemValuePreview(item)"
+                          ></div>
+                        </div>
+                      </article>
+                    </template>
                   </div>
-
-                  <template x-if="item.type === 'extension'">
-                    <div class="mt-3 text-[11px] text-[var(--text-dim)]">
-                      extension key:
-                      <span
-                        class="font-mono"
-                        x-text="item.payload?.key || item.title"
-                      ></span>
-                    </div>
-                  </template>
-
-                  <template x-if="item.type === 'field'">
-                    <div class="mt-3 text-[11px] text-[var(--text-dim)]">
-                      field key:
-                      <span
-                        class="font-mono"
-                        x-text="item.payload?.key || item.title"
-                      ></span>
-                    </div>
-                  </template>
-
-                  <template x-if="item.type === 'structured'">
-                    <div class="mt-3 text-[11px] text-[var(--text-dim)]">
-                      结构化对象，详情面板可查看完整 payload。
-                    </div>
-                  </template>
-                </article>
+                </div>
               </template>
             </div>
           </section>
@@ -354,17 +566,17 @@
                 <div class="min-w-0">
                   <div
                     class="text-lg font-bold text-[var(--text-main)] break-all"
-                    x-text="activeItem?.title || '未选择条目'"
+                    x-text="activeContextItem?.title || '未选择条目'"
                   ></div>
                   <div
                     class="mt-1 flex items-center gap-2 flex-wrap text-[11px] text-[var(--text-dim)]"
                   >
                     <span
                       class="px-2 py-0.5 rounded-full border border-[var(--border-light)]"
-                      x-text="activeItem ? getItemBadge(activeItem) : '空状态'"
+                      x-text="activeContextItem ? getItemBadge(activeContextItem) : '空状态'"
                     ></span>
                     <span
-                      x-text="activeItem ? getItemGroupLabel(activeItem) : '-' "
+                      x-text="activeContextItem ? getItemGroupLabel(activeContextItem) : '-' "
                     ></span>
                   </div>
                 </div>
@@ -400,7 +612,15 @@
             </div>
 
             <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-              <template x-if="!activeItem">
+              <div class="hidden" x-show="!isPromptWorkspaceReader">
+                <span x-text="activeItem?.title || '未选择条目'"></span>
+                <span x-text="getItemFullDetail(activeItem)"></span>
+                <span x-if="activeItem?.type === 'extension'"></span>
+                <span x-if="activeItem?.type === 'field'"></span>
+                <span x-if="activeItem?.type === 'structured'"></span>
+              </div>
+
+              <template x-if="!activeContextItem">
                 <div
                   class="rounded-2xl border border-dashed border-[var(--border-light)] bg-[var(--bg-panel)] p-6 text-center"
                 >
@@ -413,9 +633,48 @@
                 </div>
               </template>
 
-              <template x-if="activeItem">
+              <template x-if="activeContextItem">
                 <div class="space-y-4">
-                  <template x-if="activeItem?.type === 'extension'">
+                  <template x-if="activeContextItem?.group === 'prompts'">
+                    <div
+                      class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
+                    >
+                      <div
+                        class="text-xs uppercase tracking-wide text-[var(--text-dim)]"
+                      >
+                        Prompt State
+                      </div>
+                      <div class="flex flex-wrap gap-2 text-xs">
+                        <span
+                          class="px-2 py-1 rounded-full border"
+                          :class="activeContextItem?.prompt_meta?.is_enabled ? 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10' : 'text-amber-300 border-amber-400/40 bg-amber-500/10'"
+                          x-text="activeContextItem?.prompt_meta?.is_enabled ? '启用' : '禁用'"
+                        ></span>
+                        <span
+                          x-show="activeContextItem?.prompt_meta?.is_marker"
+                          class="px-2 py-1 rounded-full border border-sky-400/40 bg-sky-500/10 text-sky-300"
+                        >
+                          预留字段
+                        </span>
+                        <span
+                          class="px-2 py-1 rounded-full border border-[var(--border-light)] text-[var(--text-dim)]"
+                          x-text="getPromptPositionLabel(activeContextItem)"
+                        ></span>
+                      </div>
+                      <div
+                        class="text-sm text-[var(--text-main)] whitespace-pre-wrap break-words"
+                      >
+                        <span
+                          x-text="getPromptPreview(activeContextItem)"
+                        ></span>
+                        <span class="hidden"
+                          >占位用预留字段，不承载提示词内容</span
+                        >
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="activeContextItem?.type === 'extension'">
                     <div
                       class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
                     >
@@ -427,13 +686,13 @@
                       <div class="text-sm text-[var(--text-main)]">
                         扩展键名：<span
                           class="font-mono"
-                          x-text="activeItem?.payload?.key || activeItem?.title"
+                          x-text="activeContextItem?.payload?.key || activeContextItem?.title"
                         ></span>
                       </div>
                     </div>
                   </template>
 
-                  <template x-if="activeItem?.type === 'field'">
+                  <template x-if="activeContextItem?.type === 'field'">
                     <div
                       class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
                     >
@@ -445,13 +704,13 @@
                       <div class="text-sm text-[var(--text-main)]">
                         字段键名：<span
                           class="font-mono"
-                          x-text="activeItem?.payload?.key || activeItem?.title"
+                          x-text="activeContextItem?.payload?.key || activeContextItem?.title"
                         ></span>
                       </div>
                     </div>
                   </template>
 
-                  <template x-if="activeItem?.type === 'structured'">
+                  <template x-if="activeContextItem?.type === 'structured'">
                     <div
                       class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
                     >
@@ -476,7 +735,7 @@
                         内容
                       </div>
                       <button
-                        @click="copyText(getItemFullDetail(activeItem), '条目内容')"
+                        @click="copyText(activeContextItem?.group === 'prompts' ? getPromptPreview(activeContextItem) : getItemFullDetail(activeContextItem), '条目内容')"
                         class="btn-secondary px-2 py-1 text-xs"
                       >
                         复制
@@ -484,9 +743,20 @@
                     </div>
                     <pre
                       class="text-xs whitespace-pre-wrap break-words text-[var(--text-main)] font-mono max-h-[28rem] overflow-auto custom-scrollbar"
-                      x-text="getItemFullDetail(activeItem)"
+                      x-text="activeContextItem?.group === 'prompts' ? getPromptPreview(activeContextItem) : getItemFullDetail(activeContextItem)"
                     ></pre>
                   </div>
+
+                  <template x-if="activeContextItem?.group !== 'prompts'">
+                    <div class="hidden">
+                      <span
+                        x-text="getItemValuePreview(activeContextItem)"
+                      ></span>
+                      <span
+                        x-text="getItemFullDetail(activeContextItem)"
+                      ></span>
+                    </div>
+                  </template>
                 </div>
               </template>
             </div>

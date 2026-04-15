@@ -524,6 +524,9 @@ def _parse_preset_file(file_path, filename):
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+
+        if not isinstance(data, dict):
+            data = {}
         
         preset_id = os.path.splitext(filename)[0]
         

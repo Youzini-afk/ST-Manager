@@ -116,95 +116,155 @@
             </button>
           </div>
 
-          <div
-            class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
+          <template
+            x-if="!isPromptWorkspaceEditor || activeWorkspace !== 'prompts'"
           >
-            <div class="text-xs text-[var(--text-dim)]">Reader Workspace</div>
             <div
-              class="text-sm font-bold text-[var(--text-main)]"
-              x-text="editingPresetFile?.preset_kind_label || '预设'"
-            ></div>
-            <input
-              x-model="searchTerm"
-              type="search"
-              placeholder="搜索字段标题、路径或摘要"
-              class="form-input"
-            />
-            <div class="flex flex-wrap gap-2">
-              <button
-                @click="uiFilter = 'all'"
-                class="px-3 py-1.5 rounded-full text-xs border transition-colors"
-                :class="uiFilter === 'all' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
-              >
-                全部
-              </button>
-              <button
-                @click="uiFilter = 'editable'"
-                class="px-3 py-1.5 rounded-full text-xs border transition-colors"
-                :class="uiFilter === 'editable' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
-              >
-                可编辑
-              </button>
-              <button
-                @click="uiFilter = 'changed'"
-                class="px-3 py-1.5 rounded-full text-xs border transition-colors"
-                :class="uiFilter === 'changed' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
-              >
-                已修改
-              </button>
-              <button
-                @click="uiFilter = 'collections'"
-                class="px-3 py-1.5 rounded-full text-xs border transition-colors"
-                :class="uiFilter === 'collections' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
-              >
-                集合
-              </button>
-              <button
-                @click="uiFilter = 'longtext'"
-                class="px-3 py-1.5 rounded-full text-xs border transition-colors"
-                :class="uiFilter === 'longtext' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
-              >
-                长文本
-              </button>
-            </div>
-            <div class="text-[11px] text-[var(--text-dim)]">
-              <span x-show="uiFilter === 'all'">显示全部 reader 字段</span>
-              <span x-show="uiFilter === 'editable'"
-                >仅显示可直接编辑的字段</span
-              >
-              <span x-show="uiFilter === 'changed'">聚焦当前已修改内容</span>
-              <span x-show="uiFilter === 'collections'"
-                >聚焦列表与复杂集合编辑器</span
-              >
-              <span x-show="uiFilter === 'longtext'">聚焦长文本字段</span>
-            </div>
-          </div>
-
-          <div
-            class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 space-y-2"
-          >
-            <div class="text-xs text-[var(--text-dim)]">分组</div>
-            <button
-              @click="selectGroup('all')"
-              class="w-full text-left px-3 py-2 rounded-xl text-sm border transition-colors"
-              :class="activeGroup === 'all' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-transparent hover:border-[var(--border-light)] hover:text-[var(--text-main)]'"
+              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
             >
-              全部字段
-            </button>
-            <template x-for="group in editorView.groups" :key="group.id">
+              <div class="text-xs text-[var(--text-dim)]">Reader Workspace</div>
+              <div
+                class="text-sm font-bold text-[var(--text-main)]"
+                x-text="editingPresetFile?.preset_kind_label || '预设'"
+              ></div>
+              <input
+                x-model="searchTerm"
+                type="search"
+                placeholder="搜索字段标题、路径或摘要"
+                class="form-input"
+              />
+              <div class="flex flex-wrap gap-2">
+                <button
+                  @click="uiFilter = 'all'"
+                  class="px-3 py-1.5 rounded-full text-xs border transition-colors"
+                  :class="uiFilter === 'all' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
+                >
+                  全部
+                </button>
+                <button
+                  @click="uiFilter = 'editable'"
+                  class="px-3 py-1.5 rounded-full text-xs border transition-colors"
+                  :class="uiFilter === 'editable' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
+                >
+                  可编辑
+                </button>
+                <button
+                  @click="uiFilter = 'changed'"
+                  class="px-3 py-1.5 rounded-full text-xs border transition-colors"
+                  :class="uiFilter === 'changed' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
+                >
+                  已修改
+                </button>
+                <button
+                  @click="uiFilter = 'collections'"
+                  class="px-3 py-1.5 rounded-full text-xs border transition-colors"
+                  :class="uiFilter === 'collections' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
+                >
+                  集合
+                </button>
+                <button
+                  @click="uiFilter = 'longtext'"
+                  class="px-3 py-1.5 rounded-full text-xs border transition-colors"
+                  :class="uiFilter === 'longtext' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-[var(--border-light)]'"
+                >
+                  长文本
+                </button>
+              </div>
+              <div class="text-[11px] text-[var(--text-dim)]">
+                <span x-show="uiFilter === 'all'">显示全部 reader 字段</span>
+                <span x-show="uiFilter === 'editable'"
+                  >仅显示可直接编辑的字段</span
+                >
+                <span x-show="uiFilter === 'changed'">聚焦当前已修改内容</span>
+                <span x-show="uiFilter === 'collections'"
+                  >聚焦列表与复杂集合编辑器</span
+                >
+                <span x-show="uiFilter === 'longtext'">聚焦长文本字段</span>
+              </div>
+            </div>
+          </template>
+
+          <template
+            x-if="isPromptWorkspaceEditor && activeWorkspace === 'prompts'"
+          >
+            <div
+              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
+            >
+              <div class="text-xs text-[var(--text-dim)]">Prompt Workspace</div>
+              <div class="text-sm font-bold text-[var(--text-main)]">
+                SillyTavern Prompt Manager
+              </div>
+              <div class="text-[11px] text-[var(--text-dim)]">
+                左侧管理顺序与启用状态，中间编辑当前 Prompt，marker
+                条目只保留占位语义。
+              </div>
+            </div>
+          </template>
+
+          <template x-if="!isPromptWorkspaceEditor">
+            <div
+              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 space-y-2"
+            >
+              <div class="text-xs text-[var(--text-dim)]">分组</div>
               <button
-                @click="selectGroup(group.id)"
+                @click="selectGroup('all')"
                 class="w-full text-left px-3 py-2 rounded-xl text-sm border transition-colors"
-                :class="activeGroup === group.id ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-transparent hover:border-[var(--border-light)] hover:text-[var(--text-main)]'"
+                :class="activeGroup === 'all' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-transparent hover:border-[var(--border-light)] hover:text-[var(--text-main)]'"
               >
-                <div class="font-medium" x-text="group.title || group.id"></div>
-                <div
-                  class="text-[11px] text-[var(--text-dim)] truncate"
-                  x-text="group.summary || group.description || '按分组聚焦该类配置项'"
-                ></div>
+                全部字段
               </button>
-            </template>
-          </div>
+              <template x-for="group in editorView.groups" :key="group.id">
+                <button
+                  @click="selectGroup(group.id)"
+                  class="w-full text-left px-3 py-2 rounded-xl text-sm border transition-colors"
+                  :class="activeGroup === group.id ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-transparent hover:border-[var(--border-light)] hover:text-[var(--text-main)]'"
+                >
+                  <div
+                    class="font-medium"
+                    x-text="group.title || group.id"
+                  ></div>
+                  <div
+                    class="text-[11px] text-[var(--text-dim)] truncate"
+                    x-text="group.summary || group.description || '按分组聚焦该类配置项'"
+                  ></div>
+                </button>
+              </template>
+            </div>
+          </template>
+
+          <template x-if="isPromptWorkspaceEditor">
+            <div
+              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 space-y-2"
+            >
+              <div class="text-xs text-[var(--text-dim)]">工作区</div>
+              <button
+                @click="selectWorkspace('prompts')"
+                class="w-full text-left px-3 py-2 rounded-xl text-sm border transition-colors"
+                :class="activeWorkspace === 'prompts' ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-transparent hover:border-[var(--border-light)] hover:text-[var(--text-main)]'"
+              >
+                Prompt 条目
+              </button>
+              <template
+                x-for="group in editorView.groups.filter((group) => group.id !== 'prompts')"
+                :key="`workspace-${group.id}`"
+              >
+                <button
+                  @click="selectWorkspace(group.id)"
+                  class="w-full text-left px-3 py-2 rounded-xl text-sm border transition-colors"
+                  :class="activeWorkspace === group.id ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-transparent hover:border-[var(--border-light)] hover:text-[var(--text-main)]'"
+                >
+                  <div
+                    class="font-medium"
+                    x-text="group.title || group.label || group.id"
+                  ></div>
+                  <div
+                    class="text-[11px] text-[var(--text-dim)] truncate"
+                    x-text="group.summary || group.description || '切换到该工作区继续编辑'"
+                  ></div>
+                </button>
+              </template>
+            </div>
+          </template>
         </div>
       </aside>
 
@@ -225,391 +285,678 @@
             </button>
           </div>
 
-          <div
-            class="grid grid-cols-1 xl:grid-cols-[20rem_minmax(0,1fr)] gap-4 h-full"
+          <template
+            x-if="isPromptWorkspaceEditor && activeWorkspace === 'prompts'"
           >
-            <section
-              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] overflow-hidden min-h-[22rem]"
+            <div
+              class="grid grid-cols-1 xl:grid-cols-[22rem_minmax(0,1fr)] gap-4 h-full"
             >
-              <div
-                class="px-4 py-3 border-b border-[var(--border-light)] flex items-center justify-between gap-3"
+              <section
+                class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] overflow-hidden min-h-[22rem]"
               >
-                <div>
-                  <div class="text-sm font-bold text-[var(--text-main)]">
-                    字段列表
+                <div
+                  class="px-4 py-3 border-b border-[var(--border-light)] flex items-center justify-between gap-3"
+                >
+                  <div>
+                    <div class="text-sm font-bold text-[var(--text-main)]">
+                      Prompt 列表
+                    </div>
+                    <div
+                      class="text-[11px] text-[var(--text-dim)]"
+                      x-text="`${orderedPromptItems.length} 个 Prompt`"
+                    ></div>
+                  </div>
+                  <div class="text-[11px] text-[var(--text-dim)]">
+                    列表即顺序
+                  </div>
+                </div>
+                <div
+                  class="p-3 space-y-2 overflow-y-auto custom-scrollbar max-h-[calc(100vh-12rem)] xl:max-h-none"
+                >
+                  <template x-if="orderedPromptItems.length === 0">
+                    <div
+                      class="rounded-xl border border-dashed border-[var(--border-light)] bg-[var(--bg-body)] p-4 text-sm text-[var(--text-dim)]"
+                    >
+                      当前预设没有可编辑的 Prompt 条目。
+                    </div>
+                  </template>
+                  <template
+                    x-for="(prompt, index) in orderedPromptItems"
+                    :key="prompt.__identifier"
+                  >
+                    <article
+                      @click="selectPrompt(prompt.__identifier)"
+                      class="rounded-xl border p-3 transition-colors cursor-pointer"
+                      :class="activePromptId === prompt.__identifier ? 'border-[var(--accent-main)]/40 bg-[var(--accent-main)]/10' : 'border-[var(--border-light)] bg-[var(--bg-body)] hover:border-[var(--accent-main)]/20'"
+                    >
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <div
+                            class="text-sm font-semibold text-[var(--text-main)] truncate"
+                            x-text="prompt.name || prompt.__identifier"
+                          ></div>
+                          <div
+                            class="text-[11px] text-[var(--text-dim)] truncate"
+                            x-text="prompt.role || prompt.__identifier || 'prompt'"
+                          ></div>
+                        </div>
+                        <span
+                          class="px-2 py-0.5 rounded-full text-[10px] border"
+                          :class="prompt.__enabled !== false ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-400/30 bg-amber-500/10 text-amber-300'"
+                          x-text="prompt.__enabled !== false ? '启用' : '禁用'"
+                        ></span>
+                      </div>
+                      <div class="mt-2 flex flex-wrap gap-2 text-[10px]">
+                        <span
+                          x-show="prompt.marker"
+                          class="px-2 py-0.5 rounded-full border border-sky-400/30 bg-sky-500/10 text-sky-300"
+                        >
+                          预留字段
+                        </span>
+                        <span
+                          class="px-2 py-0.5 rounded-full border border-[var(--border-light)] text-[var(--text-dim)]"
+                          x-text="Number(prompt.injection_position ?? 0) === 1 ? `In-Chat @ ${Number(prompt.injection_depth ?? 4)}` : '相对位置'"
+                        ></span>
+                      </div>
+                      <div class="mt-3 flex items-center gap-2">
+                        <button
+                          @click.stop="movePromptItem(index, index - 1)"
+                          class="btn-secondary px-2 py-1 text-xs rounded"
+                          :disabled="index === 0"
+                        >
+                          上移
+                        </button>
+                        <button
+                          @click.stop="movePromptItem(index, index + 1)"
+                          class="btn-secondary px-2 py-1 text-xs rounded"
+                          :disabled="index === orderedPromptItems.length - 1"
+                        >
+                          下移
+                        </button>
+                        <button
+                          @click.stop="togglePromptEnabled(prompt.__identifier)"
+                          class="btn-secondary px-2 py-1 text-xs rounded"
+                        >
+                          切换启用
+                        </button>
+                      </div>
+                    </article>
+                  </template>
+                </div>
+              </section>
+
+              <section
+                class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] overflow-y-auto custom-scrollbar min-h-[22rem]"
+              >
+                <div
+                  class="px-5 py-4 border-b border-[var(--border-light)] flex items-start justify-between gap-4"
+                >
+                  <div class="min-w-0">
+                    <div class="text-xs text-[var(--text-dim)]">
+                      当前 Prompt
+                    </div>
+                    <div
+                      class="text-lg font-bold text-[var(--text-main)]"
+                      x-text="activePromptItem?.name || activePromptItem?.__identifier || '选择左侧 Prompt 开始编辑'"
+                    ></div>
+                    <div
+                      class="text-[11px] text-[var(--text-dim)] break-all"
+                      x-text="activePromptItem?.__identifier || 'prompts[]'"
+                    ></div>
+                  </div>
+                  <button
+                    @click="showRightPanel = !showRightPanel"
+                    class="btn-secondary px-3 py-1.5 text-xs rounded md:hidden"
+                  >
+                    右侧信息
+                  </button>
+                </div>
+
+                <div class="p-5 space-y-5">
+                  <template x-if="!activePromptItem">
+                    <div
+                      class="rounded-2xl border border-dashed border-[var(--border-light)] bg-[var(--bg-body)] p-6 text-sm text-[var(--text-dim)]"
+                    >
+                      请选择一个 Prompt 条目开始编辑。
+                    </div>
+                  </template>
+
+                  <template x-if="activePromptItem">
+                    <div class="space-y-5">
+                      <div
+                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-2"
+                      >
+                        <div class="text-sm font-bold text-[var(--text-main)]">
+                          Prompt 基础信息
+                        </div>
+                        <div class="text-sm text-[var(--text-dim)]">
+                          名称、角色、注入位置与触发器按 SillyTavern Prompt
+                          Manager 心智编辑。
+                        </div>
+                      </div>
+
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-2"
+                        >
+                          <div class="text-xs text-[var(--text-dim)]">名称</div>
+                          <input
+                            type="text"
+                            class="form-input"
+                            :value="activePromptItem?.name || ''"
+                            @input="updatePromptField('name', $event.target.value)"
+                          />
+                        </label>
+                        <label
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-2"
+                        >
+                          <div class="text-xs text-[var(--text-dim)]">角色</div>
+                          <input
+                            type="text"
+                            class="form-input"
+                            :value="activePromptItem?.role || ''"
+                            @input="updatePromptField('role', $event.target.value)"
+                          />
+                        </label>
+                      </div>
+
+                      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <label
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-2"
+                        >
+                          <div class="text-xs text-[var(--text-dim)]">位置</div>
+                          <select
+                            class="form-input"
+                            :value="Number(activePromptItem?.injection_position ?? 0)"
+                            @change="updatePromptField('injection_position', $event.target.value)"
+                          >
+                            <template
+                              x-for="option in promptPositionOptions"
+                              :key="option.value"
+                            >
+                              <option
+                                :value="option.value"
+                                x-text="option.label"
+                              ></option>
+                            </template>
+                          </select>
+                        </label>
+                        <label
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-2"
+                        >
+                          <div class="text-xs text-[var(--text-dim)]">
+                            In-Chat 深度
+                          </div>
+                          <input
+                            type="number"
+                            class="form-input"
+                            :value="Number(activePromptItem?.injection_depth ?? 4)"
+                            @input="updatePromptField('injection_depth', $event.target.value)"
+                          />
+                        </label>
+                        <label
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-2"
+                        >
+                          <div class="text-xs text-[var(--text-dim)]">
+                            注入顺序
+                          </div>
+                          <input
+                            type="number"
+                            class="form-input"
+                            :value="Number(activePromptItem?.injection_order ?? 100)"
+                            @input="updatePromptField('injection_order', $event.target.value)"
+                          />
+                        </label>
+                      </div>
+
+                      <div
+                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-3"
+                        data-prompt-triggers
+                      >
+                        <div class="text-sm font-bold text-[var(--text-main)]">
+                          触发器
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                          <template
+                            x-for="trigger in promptTriggerOptions"
+                            :key="trigger"
+                          >
+                            <label
+                              class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--border-light)] text-sm text-[var(--text-main)]"
+                            >
+                              <input
+                                type="checkbox"
+                                class="rounded"
+                                :value="trigger"
+                                :checked="Array.isArray(activePromptItem?.injection_trigger) && activePromptItem.injection_trigger.includes(trigger)"
+                                @change="updatePromptTriggers(Array.from($el.closest('[data-prompt-triggers]').querySelectorAll('input:checked')).map((input) => input.value))"
+                              />
+                              <span x-text="trigger"></span>
+                            </label>
+                          </template>
+                        </div>
+                      </div>
+
+                      <div
+                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-3"
+                      >
+                        <div class="text-sm font-bold text-[var(--text-main)]">
+                          提示词内容
+                        </div>
+                        <div
+                          x-show="activePromptItem?.marker"
+                          class="rounded-xl border border-sky-400/30 bg-sky-500/10 p-4 text-sm text-sky-200"
+                        >
+                          占位用预留字段，不承载提示词内容
+                        </div>
+                        <textarea
+                          x-show="!activePromptItem?.marker"
+                          class="form-textarea min-h-[320px] custom-scrollbar"
+                          :disabled="!isPromptContentEditable(activePromptItem)"
+                          :value="activePromptItem?.content || ''"
+                          @input="updatePromptField('content', $event.target.value)"
+                        ></textarea>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </section>
+            </div>
+          </template>
+
+          <template
+            x-if="!isPromptWorkspaceEditor || activeWorkspace !== 'prompts'"
+          >
+            <div
+              class="grid grid-cols-1 xl:grid-cols-[20rem_minmax(0,1fr)] gap-4 h-full"
+            >
+              <section
+                class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] overflow-hidden min-h-[22rem]"
+              >
+                <div
+                  class="px-4 py-3 border-b border-[var(--border-light)] flex items-center justify-between gap-3"
+                >
+                  <div>
+                    <div class="text-sm font-bold text-[var(--text-main)]">
+                      字段列表
+                    </div>
+                    <div
+                      class="text-[11px] text-[var(--text-dim)]"
+                      x-text="`${filteredItems.length} 个结果`"
+                    ></div>
                   </div>
                   <div
                     class="text-[11px] text-[var(--text-dim)]"
-                    x-text="`${filteredItems.length} 个结果`"
+                    x-text="activeGroup === 'all' ? '全部分组' : activeGroup"
                   ></div>
                 </div>
                 <div
-                  class="text-[11px] text-[var(--text-dim)]"
-                  x-text="activeGroup === 'all' ? '全部分组' : activeGroup"
-                ></div>
-              </div>
-              <div
-                class="p-3 space-y-2 overflow-y-auto custom-scrollbar max-h-[calc(100vh-12rem)] xl:max-h-none"
-              >
-                <template x-if="filteredItems.length === 0">
-                  <div
-                    class="rounded-xl border border-dashed border-[var(--border-light)] bg-[var(--bg-body)] p-4 text-sm text-[var(--text-dim)]"
-                  >
-                    没有匹配当前筛选条件的字段。
-                  </div>
-                </template>
-                <template x-for="item in filteredItems" :key="item.id">
-                  <button
-                    @click="selectItem(item.id)"
-                    class="w-full text-left rounded-xl border p-3 transition-colors"
-                    :class="activeItem?.id === item.id ? 'border-[var(--accent-main)]/40 bg-[var(--accent-main)]/10' : 'border-[var(--border-light)] bg-[var(--bg-body)] hover:border-[var(--accent-main)]/20'"
-                  >
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <div
-                          class="text-sm font-semibold text-[var(--text-main)] truncate"
-                          x-text="item.title || item.key || item.id"
-                        ></div>
-                        <div
-                          class="text-[11px] text-[var(--text-dim)] truncate"
-                          x-text="item.summary || item.source_key || item.value_path || '未提供摘要' "
-                        ></div>
-                      </div>
-                      <span
-                        x-show="isItemDirty(item)"
-                        class="px-2 py-0.5 rounded-full text-[10px] border border-amber-500/30 bg-amber-500/10 text-amber-300"
-                      >
-                        已修改
-                      </span>
-                    </div>
-                    <div
-                      class="mt-2 flex flex-wrap gap-2 text-[10px] text-[var(--text-dim)]"
-                    >
-                      <span
-                        class="px-2 py-0.5 rounded-full border border-[var(--border-light)]"
-                        x-text="item.editor?.kind || 'text'"
-                      ></span>
-                      <span
-                        class="px-2 py-0.5 rounded-full border border-[var(--border-light)]"
-                        x-text="item.group || 'ungrouped'"
-                      ></span>
-                    </div>
-                  </button>
-                </template>
-              </div>
-            </section>
-
-            <section
-              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] overflow-y-auto custom-scrollbar min-h-[22rem]"
-            >
-              <div
-                class="px-5 py-4 border-b border-[var(--border-light)] flex items-start justify-between gap-4"
-              >
-                <div class="min-w-0">
-                  <div class="text-xs text-[var(--text-dim)]">当前编辑项</div>
-                  <div
-                    class="text-lg font-bold text-[var(--text-main)]"
-                    x-text="activeItem?.title || '选择左侧字段开始编辑'"
-                  ></div>
-                  <div
-                    class="text-[11px] text-[var(--text-dim)] break-all"
-                    x-text="activeItem?.value_path || activeItem?.source_key || activeItem?.id || 'reader_view.items' "
-                  ></div>
-                </div>
-                <button
-                  @click="showRightPanel = !showRightPanel"
-                  class="btn-secondary px-3 py-1.5 text-xs rounded md:hidden"
+                  class="p-3 space-y-2 overflow-y-auto custom-scrollbar max-h-[calc(100vh-12rem)] xl:max-h-none"
                 >
-                  右侧信息
-                </button>
-              </div>
-
-              <div class="p-5 space-y-5">
-                <template x-if="!activeItem">
-                  <div
-                    class="rounded-2xl border border-dashed border-[var(--border-light)] bg-[var(--bg-body)] p-6 text-sm text-[var(--text-dim)]"
-                  >
-                    请选择一个字段查看 reader 驱动的编辑器内容。
-                  </div>
-                </template>
-
-                <template x-if="activeItem">
-                  <div class="space-y-5">
+                  <template x-if="filteredItems.length === 0">
                     <div
-                      class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-2"
+                      class="rounded-xl border border-dashed border-[var(--border-light)] bg-[var(--bg-body)] p-4 text-sm text-[var(--text-dim)]"
                     >
-                      <div
-                        class="text-sm font-bold text-[var(--text-main)]"
-                        x-text="activeItem?.title || activeItem?.key || '字段详情'"
-                      ></div>
-                      <div
-                        class="text-sm text-[var(--text-dim)]"
-                        x-text="activeItem?.summary || '当前字段由 reader_view 驱动渲染。' "
-                      ></div>
+                      没有匹配当前筛选条件的字段。
                     </div>
-
-                    <template
-                      x-if="activeItem?.editor?.kind === 'sortable-string-list'"
+                  </template>
+                  <template x-for="item in filteredItems" :key="item.id">
+                    <button
+                      @click="selectItem(item.id)"
+                      class="w-full text-left rounded-xl border p-3 transition-colors"
+                      :class="activeItem?.id === item.id ? 'border-[var(--accent-main)]/40 bg-[var(--accent-main)]/10' : 'border-[var(--border-light)] bg-[var(--bg-body)] hover:border-[var(--accent-main)]/20'"
                     >
-                      <div
-                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-4"
-                      >
-                        <div class="flex items-center justify-between gap-3">
-                          <div>
-                            <div
-                              class="text-base font-bold text-[var(--text-main)]"
-                            >
-                              可排序字符串列表
-                            </div>
-                            <div class="text-[11px] text-[var(--text-dim)]">
-                              上下移动顺序，适合 prompt_order 等路径。
-                            </div>
-                          </div>
-                          <button
-                            @click="addStringListItem(activeItem.value_path)"
-                            class="btn-secondary px-3 py-1.5 text-xs rounded"
-                          >
-                            添加项
-                          </button>
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <div
+                            class="text-sm font-semibold text-[var(--text-main)] truncate"
+                            x-text="item.title || item.key || item.id"
+                          ></div>
+                          <div
+                            class="text-[11px] text-[var(--text-dim)] truncate"
+                            x-text="item.summary || item.source_key || item.value_path || '未提供摘要' "
+                          ></div>
                         </div>
-                        <div class="space-y-2">
-                          <template
-                            x-for="(entry, index) in (Array.isArray(getByPath(activeItem.value_path)) ? getByPath(activeItem.value_path) : [])"
-                            :key="`${activeItem.id}-${index}`"
-                          >
-                            <div
-                              class="rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 flex items-center gap-2"
-                            >
-                              <input
-                                class="form-input flex-1"
-                                :value="entry || ''"
-                                @input="updateStringListItem(activeItem.value_path, index, $event.target.value)"
-                              />
-                              <button
-                                @click="moveListItem(activeItem.value_path, index, index - 1)"
-                                class="btn-secondary px-3 py-1.5 text-xs rounded"
-                                :disabled="index === 0"
-                              >
-                                上移
-                              </button>
-                              <button
-                                @click="moveListItem(activeItem.value_path, index, index + 1)"
-                                class="btn-secondary px-3 py-1.5 text-xs rounded"
-                                :disabled="index === ((Array.isArray(getByPath(activeItem.value_path)) ? getByPath(activeItem.value_path).length : 0) - 1)"
-                              >
-                                下移
-                              </button>
-                              <button
-                                @click="removeStringListItem(activeItem.value_path, index)"
-                                class="btn-secondary px-3 py-1.5 text-xs rounded hover:text-red-300"
-                              >
-                                删除
-                              </button>
-                            </div>
-                          </template>
-                        </div>
-                      </div>
-                    </template>
-
-                    <template x-if="activeItem?.editor?.kind === 'string-list'">
-                      <div
-                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-4"
-                      >
-                        <div class="flex items-center justify-between gap-3">
-                          <div>
-                            <div
-                              class="text-base font-bold text-[var(--text-main)]"
-                            >
-                              字符串列表
-                            </div>
-                            <div class="text-[11px] text-[var(--text-dim)]">
-                              追加、编辑或删除普通字符串条目。
-                            </div>
-                          </div>
-                          <button
-                            @click="addStringListItem(activeItem.value_path)"
-                            class="btn-secondary px-3 py-1.5 text-xs rounded"
-                          >
-                            添加项
-                          </button>
-                        </div>
-                        <div class="space-y-2">
-                          <template
-                            x-for="(entry, index) in (Array.isArray(getByPath(activeItem.value_path)) ? getByPath(activeItem.value_path) : [])"
-                            :key="`${activeItem.id}-plain-${index}`"
-                          >
-                            <div
-                              class="rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 flex items-center gap-2"
-                            >
-                              <input
-                                class="form-input flex-1"
-                                :value="entry || ''"
-                                @input="updateStringListItem(activeItem.value_path, index, $event.target.value)"
-                              />
-                              <button
-                                @click="removeStringListItem(activeItem.value_path, index)"
-                                class="btn-secondary px-3 py-1.5 text-xs rounded hover:text-red-300"
-                              >
-                                删除
-                              </button>
-                            </div>
-                          </template>
-                        </div>
-                      </div>
-                    </template>
-
-                    <template
-                      x-if="activeItem?.editor?.kind === 'key-value-list'"
-                    >
-                      <div
-                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-4"
-                      >
-                        <div class="flex items-center justify-between gap-3">
-                          <div>
-                            <div
-                              class="text-base font-bold text-[var(--text-main)]"
-                            >
-                              键值列表
-                            </div>
-                            <div class="text-[11px] text-[var(--text-dim)]">
-                              针对 logit_bias 这类 text/value 结构进行编辑。
-                            </div>
-                          </div>
-                          <button
-                            @click="addBiasEntry()"
-                            class="btn-secondary px-3 py-1.5 text-xs rounded"
-                          >
-                            添加 Bias
-                          </button>
-                        </div>
-                        <div class="space-y-2">
-                          <template
-                            x-for="(entry, index) in (Array.isArray(getByPath(activeItem.value_path)) ? getByPath(activeItem.value_path) : [])"
-                            :key="`${activeItem.id}-bias-${index}`"
-                          >
-                            <div
-                              class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_auto] gap-2 rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3"
-                            >
-                              <input
-                                class="form-input"
-                                :value="entry.text || ''"
-                                @input="updateBiasEntry(index, 'text', $event.target.value)"
-                              />
-                              <input
-                                type="number"
-                                step="0.1"
-                                class="form-input"
-                                :value="entry.value ?? 0"
-                                @input="updateBiasEntry(index, 'value', $event.target.value)"
-                              />
-                              <button
-                                @click="removeBiasEntry(index)"
-                                class="btn-secondary px-3 py-1.5 text-xs rounded hover:text-red-300"
-                              >
-                                删除
-                              </button>
-                            </div>
-                          </template>
-                        </div>
-                      </div>
-                    </template>
-
-                    <template x-if="activeItem?.editor?.kind === 'textarea'">
-                      <div
-                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-3"
-                      >
-                        <textarea
-                          class="form-textarea min-h-[280px] custom-scrollbar"
-                          :value="getFieldValue(activeItem) || ''"
-                          @input="setFieldValue(activeItem, $event.target.value)"
-                        ></textarea>
-                        <div
-                          class="flex items-center justify-between gap-3 text-[11px] text-[var(--text-dim)]"
-                        >
-                          <span>保留换行，适合长提示词、说明和模板段落。</span>
-                          <span
-                            x-text="`约 ${estimateTokens(String(getFieldValue(activeItem) || ''))} tokens`"
-                          ></span>
-                        </div>
-                      </div>
-                    </template>
-
-                    <template x-if="activeItem?.editor?.kind === 'boolean'">
-                      <label
-                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 flex items-center gap-3 text-sm text-[var(--text-main)]"
-                      >
-                        <input
-                          type="checkbox"
-                          class="rounded"
-                          :checked="Boolean(getFieldValue(activeItem))"
-                          @change="setFieldValue(activeItem, $event.target.checked)"
-                        />
                         <span
-                          x-text="Boolean(getFieldValue(activeItem)) ? '当前为启用状态' : '当前为关闭状态'"
+                          x-show="isItemDirty(item)"
+                          class="px-2 py-0.5 rounded-full text-[10px] border border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        >
+                          已修改
+                        </span>
+                      </div>
+                      <div
+                        class="mt-2 flex flex-wrap gap-2 text-[10px] text-[var(--text-dim)]"
+                      >
+                        <span
+                          class="px-2 py-0.5 rounded-full border border-[var(--border-light)]"
+                          x-text="item.editor?.kind || 'text'"
                         ></span>
-                      </label>
-                    </template>
-
-                    <template x-if="activeItem?.editor?.kind === 'number'">
-                      <div
-                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4"
-                      >
-                        <input
-                          type="number"
-                          step="0.01"
-                          class="form-input"
-                          :value="getFieldValue(activeItem) ?? 0"
-                          @input="setFieldValue(activeItem, Number($event.target.value))"
-                        />
+                        <span
+                          class="px-2 py-0.5 rounded-full border border-[var(--border-light)]"
+                          x-text="item.group || 'ungrouped'"
+                        ></span>
                       </div>
-                    </template>
+                    </button>
+                  </template>
+                </div>
+              </section>
 
-                    <template x-if="activeItem?.editor?.kind === 'select'">
-                      <div
-                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4"
-                      >
-                        <input
-                          type="text"
-                          class="form-input"
-                          :value="getFieldValue(activeItem) || ''"
-                          @input="setFieldValue(activeItem, $event.target.value)"
-                        />
-                      </div>
-                    </template>
-
-                    <template x-if="activeItem?.editor?.kind === 'text'">
-                      <div
-                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4"
-                      >
-                        <input
-                          type="text"
-                          class="form-input"
-                          :value="getFieldValue(activeItem) || ''"
-                          @input="setFieldValue(activeItem, $event.target.value)"
-                        />
-                      </div>
-                    </template>
-
-                    <template
-                      x-if="activeItem?.editor?.kind === 'raw-json' || !['sortable-string-list', 'string-list', 'key-value-list', 'textarea', 'boolean', 'number', 'select', 'text'].includes(activeItem?.editor?.kind)"
-                    >
-                      <div
-                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-3"
-                      >
-                        <div class="text-sm text-[var(--text-dim)]">
-                          当前字段适合通过原始 JSON 视图确认结构。
-                        </div>
-                        <pre
-                          class="text-xs font-mono whitespace-pre-wrap break-words rounded-xl border border-[var(--border-light)] bg-black/20 p-4 text-[var(--text-sub)] max-h-[18rem] overflow-auto custom-scrollbar"
-                          x-text="formatValue(getFieldValue(activeItem))"
-                        ></pre>
-                      </div>
-                    </template>
+              <section
+                class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] overflow-y-auto custom-scrollbar min-h-[22rem]"
+              >
+                <div
+                  class="px-5 py-4 border-b border-[var(--border-light)] flex items-start justify-between gap-4"
+                >
+                  <div class="min-w-0">
+                    <div class="text-xs text-[var(--text-dim)]">当前编辑项</div>
+                    <div
+                      class="text-lg font-bold text-[var(--text-main)]"
+                      x-text="activeItem?.title || '选择左侧字段开始编辑'"
+                    ></div>
+                    <div
+                      class="text-[11px] text-[var(--text-dim)] break-all"
+                      x-text="activeItem?.value_path || activeItem?.source_key || activeItem?.id || 'reader_view.items' "
+                    ></div>
                   </div>
-                </template>
-              </div>
-            </section>
-          </div>
+                  <button
+                    @click="showRightPanel = !showRightPanel"
+                    class="btn-secondary px-3 py-1.5 text-xs rounded md:hidden"
+                  >
+                    右侧信息
+                  </button>
+                </div>
+
+                <div class="p-5 space-y-5">
+                  <template x-if="!activeItem">
+                    <div
+                      class="rounded-2xl border border-dashed border-[var(--border-light)] bg-[var(--bg-body)] p-6 text-sm text-[var(--text-dim)]"
+                    >
+                      请选择一个字段查看 reader 驱动的编辑器内容。
+                    </div>
+                  </template>
+
+                  <template x-if="activeItem">
+                    <div class="space-y-5">
+                      <div
+                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-2"
+                      >
+                        <div
+                          class="text-sm font-bold text-[var(--text-main)]"
+                          x-text="activeItem?.title || activeItem?.key || '字段详情'"
+                        ></div>
+                        <div
+                          class="text-sm text-[var(--text-dim)]"
+                          x-text="activeItem?.summary || '当前字段由 reader_view 驱动渲染。' "
+                        ></div>
+                      </div>
+
+                      <template
+                        x-if="activeItem?.editor?.kind === 'sortable-string-list'"
+                      >
+                        <div
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-4"
+                        >
+                          <div class="flex items-center justify-between gap-3">
+                            <div>
+                              <div
+                                class="text-base font-bold text-[var(--text-main)]"
+                              >
+                                可排序字符串列表
+                              </div>
+                              <div class="text-[11px] text-[var(--text-dim)]">
+                                上下移动顺序，适合 prompt_order 等路径。
+                              </div>
+                            </div>
+                            <button
+                              @click="addStringListItem(activeItem.value_path)"
+                              class="btn-secondary px-3 py-1.5 text-xs rounded"
+                            >
+                              添加项
+                            </button>
+                          </div>
+                          <div class="space-y-2">
+                            <template
+                              x-for="(entry, index) in (Array.isArray(getByPath(activeItem.value_path)) ? getByPath(activeItem.value_path) : [])"
+                              :key="`${activeItem.id}-${index}`"
+                            >
+                              <div
+                                class="rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 flex items-center gap-2"
+                              >
+                                <input
+                                  class="form-input flex-1"
+                                  :value="entry || ''"
+                                  @input="updateStringListItem(activeItem.value_path, index, $event.target.value)"
+                                />
+                                <button
+                                  @click="moveListItem(activeItem.value_path, index, index - 1)"
+                                  class="btn-secondary px-3 py-1.5 text-xs rounded"
+                                  :disabled="index === 0"
+                                >
+                                  上移
+                                </button>
+                                <button
+                                  @click="moveListItem(activeItem.value_path, index, index + 1)"
+                                  class="btn-secondary px-3 py-1.5 text-xs rounded"
+                                  :disabled="index === ((Array.isArray(getByPath(activeItem.value_path)) ? getByPath(activeItem.value_path).length : 0) - 1)"
+                                >
+                                  下移
+                                </button>
+                                <button
+                                  @click="removeStringListItem(activeItem.value_path, index)"
+                                  class="btn-secondary px-3 py-1.5 text-xs rounded hover:text-red-300"
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+
+                      <template
+                        x-if="activeItem?.editor?.kind === 'string-list'"
+                      >
+                        <div
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-4"
+                        >
+                          <div class="flex items-center justify-between gap-3">
+                            <div>
+                              <div
+                                class="text-base font-bold text-[var(--text-main)]"
+                              >
+                                字符串列表
+                              </div>
+                              <div class="text-[11px] text-[var(--text-dim)]">
+                                追加、编辑或删除普通字符串条目。
+                              </div>
+                            </div>
+                            <button
+                              @click="addStringListItem(activeItem.value_path)"
+                              class="btn-secondary px-3 py-1.5 text-xs rounded"
+                            >
+                              添加项
+                            </button>
+                          </div>
+                          <div class="space-y-2">
+                            <template
+                              x-for="(entry, index) in (Array.isArray(getByPath(activeItem.value_path)) ? getByPath(activeItem.value_path) : [])"
+                              :key="`${activeItem.id}-plain-${index}`"
+                            >
+                              <div
+                                class="rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 flex items-center gap-2"
+                              >
+                                <input
+                                  class="form-input flex-1"
+                                  :value="entry || ''"
+                                  @input="updateStringListItem(activeItem.value_path, index, $event.target.value)"
+                                />
+                                <button
+                                  @click="removeStringListItem(activeItem.value_path, index)"
+                                  class="btn-secondary px-3 py-1.5 text-xs rounded hover:text-red-300"
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+
+                      <template
+                        x-if="activeItem?.editor?.kind === 'key-value-list'"
+                      >
+                        <div
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-4"
+                        >
+                          <div class="flex items-center justify-between gap-3">
+                            <div>
+                              <div
+                                class="text-base font-bold text-[var(--text-main)]"
+                              >
+                                键值列表
+                              </div>
+                              <div class="text-[11px] text-[var(--text-dim)]">
+                                针对 logit_bias 这类 text/value 结构进行编辑。
+                              </div>
+                            </div>
+                            <button
+                              @click="addBiasEntry()"
+                              class="btn-secondary px-3 py-1.5 text-xs rounded"
+                            >
+                              添加 Bias
+                            </button>
+                          </div>
+                          <div class="space-y-2">
+                            <template
+                              x-for="(entry, index) in (Array.isArray(getByPath(activeItem.value_path)) ? getByPath(activeItem.value_path) : [])"
+                              :key="`${activeItem.id}-bias-${index}`"
+                            >
+                              <div
+                                class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_auto] gap-2 rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3"
+                              >
+                                <input
+                                  class="form-input"
+                                  :value="entry.text || ''"
+                                  @input="updateBiasEntry(index, 'text', $event.target.value)"
+                                />
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  class="form-input"
+                                  :value="entry.value ?? 0"
+                                  @input="updateBiasEntry(index, 'value', $event.target.value)"
+                                />
+                                <button
+                                  @click="removeBiasEntry(index)"
+                                  class="btn-secondary px-3 py-1.5 text-xs rounded hover:text-red-300"
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+
+                      <template x-if="activeItem?.editor?.kind === 'textarea'">
+                        <div
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-3"
+                        >
+                          <textarea
+                            class="form-textarea min-h-[280px] custom-scrollbar"
+                            :value="getFieldValue(activeItem) || ''"
+                            @input="setFieldValue(activeItem, $event.target.value)"
+                          ></textarea>
+                          <div
+                            class="flex items-center justify-between gap-3 text-[11px] text-[var(--text-dim)]"
+                          >
+                            <span
+                              >保留换行，适合长提示词、说明和模板段落。</span
+                            >
+                            <span
+                              x-text="`约 ${estimateTokens(String(getFieldValue(activeItem) || ''))} tokens`"
+                            ></span>
+                          </div>
+                        </div>
+                      </template>
+
+                      <template x-if="activeItem?.editor?.kind === 'boolean'">
+                        <label
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 flex items-center gap-3 text-sm text-[var(--text-main)]"
+                        >
+                          <input
+                            type="checkbox"
+                            class="rounded"
+                            :checked="Boolean(getFieldValue(activeItem))"
+                            @change="setFieldValue(activeItem, $event.target.checked)"
+                          />
+                          <span
+                            x-text="Boolean(getFieldValue(activeItem)) ? '当前为启用状态' : '当前为关闭状态'"
+                          ></span>
+                        </label>
+                      </template>
+
+                      <template x-if="activeItem?.editor?.kind === 'number'">
+                        <div
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4"
+                        >
+                          <input
+                            type="number"
+                            step="0.01"
+                            class="form-input"
+                            :value="getFieldValue(activeItem) ?? 0"
+                            @input="setFieldValue(activeItem, Number($event.target.value))"
+                          />
+                        </div>
+                      </template>
+
+                      <template x-if="activeItem?.editor?.kind === 'select'">
+                        <div
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4"
+                        >
+                          <input
+                            type="text"
+                            class="form-input"
+                            :value="getFieldValue(activeItem) || ''"
+                            @input="setFieldValue(activeItem, $event.target.value)"
+                          />
+                        </div>
+                      </template>
+
+                      <template x-if="activeItem?.editor?.kind === 'text'">
+                        <div
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4"
+                        >
+                          <input
+                            type="text"
+                            class="form-input"
+                            :value="getFieldValue(activeItem) || ''"
+                            @input="setFieldValue(activeItem, $event.target.value)"
+                          />
+                        </div>
+                      </template>
+
+                      <template
+                        x-if="activeItem?.editor?.kind === 'raw-json' || !['sortable-string-list', 'string-list', 'key-value-list', 'textarea', 'boolean', 'number', 'select', 'text'].includes(activeItem?.editor?.kind)"
+                      >
+                        <div
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-3"
+                        >
+                          <div class="text-sm text-[var(--text-dim)]">
+                            当前字段适合通过原始 JSON 视图确认结构。
+                          </div>
+                          <pre
+                            class="text-xs font-mono whitespace-pre-wrap break-words rounded-xl border border-[var(--border-light)] bg-black/20 p-4 text-[var(--text-sub)] max-h-[18rem] overflow-auto custom-scrollbar"
+                            x-text="formatValue(getFieldValue(activeItem))"
+                          ></pre>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </section>
+            </div>
+          </template>
         </div>
       </main>
 
@@ -629,35 +976,79 @@
             </button>
           </div>
 
-          <div
-            class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
+          <template
+            x-if="isPromptWorkspaceEditor && activeWorkspace === 'prompts'"
           >
-            <div class="text-xs text-[var(--text-dim)]">活动项</div>
             <div
-              class="text-base font-bold text-[var(--text-main)]"
-              x-text="activeItem?.title || activeItem?.key || activeItem?.id || '尚未选择字段' "
-            ></div>
-            <div
-              class="text-xs text-[var(--text-dim)]"
-              x-text="activeItem?.summary || '在左侧选择字段后，这里会显示上下文信息。' "
-            ></div>
-            <div class="grid grid-cols-1 gap-2 text-xs">
-              <div>
-                <div class="text-[var(--text-dim)]">字段路径</div>
-                <div
-                  class="font-mono break-all text-[var(--text-main)]"
-                  x-text="activeItem?.value_path || activeItem?.source_key || '-' "
-                ></div>
-              </div>
-              <div>
-                <div class="text-[var(--text-dim)]">编辑器类型</div>
-                <div
-                  class="text-[var(--text-main)]"
-                  x-text="activeItem?.editor?.kind || 'unknown'"
-                ></div>
+              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
+            >
+              <div class="text-xs text-[var(--text-dim)]">活动 Prompt</div>
+              <div
+                class="text-base font-bold text-[var(--text-main)]"
+                x-text="activePromptItem?.name || activePromptItem?.__identifier || '尚未选择 Prompt'"
+              ></div>
+              <div
+                class="text-xs text-[var(--text-dim)]"
+                x-text="activePromptItem?.role || '角色未设置'"
+              ></div>
+              <div class="grid grid-cols-1 gap-2 text-xs">
+                <div>
+                  <div class="text-[var(--text-dim)]">Identifier</div>
+                  <div
+                    class="font-mono break-all text-[var(--text-main)]"
+                    x-text="activePromptItem?.__identifier || '-'"
+                  ></div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    class="px-2 py-0.5 rounded-full border"
+                    :class="activePromptItem?.__enabled !== false ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-400/30 bg-amber-500/10 text-amber-300'"
+                    x-text="activePromptItem?.__enabled !== false ? '启用' : '禁用'"
+                  ></span>
+                  <span
+                    x-show="activePromptItem?.marker"
+                    class="px-2 py-0.5 rounded-full border border-sky-400/30 bg-sky-500/10 text-sky-300"
+                  >
+                    预留字段
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          </template>
+
+          <template
+            x-if="!isPromptWorkspaceEditor || activeWorkspace !== 'prompts'"
+          >
+            <div
+              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
+            >
+              <div class="text-xs text-[var(--text-dim)]">活动项</div>
+              <div
+                class="text-base font-bold text-[var(--text-main)]"
+                x-text="activeItem?.title || activeItem?.key || activeItem?.id || '尚未选择字段' "
+              ></div>
+              <div
+                class="text-xs text-[var(--text-dim)]"
+                x-text="activeItem?.summary || '在左侧选择字段后，这里会显示上下文信息。' "
+              ></div>
+              <div class="grid grid-cols-1 gap-2 text-xs">
+                <div>
+                  <div class="text-[var(--text-dim)]">字段路径</div>
+                  <div
+                    class="font-mono break-all text-[var(--text-main)]"
+                    x-text="activeItem?.value_path || activeItem?.source_key || '-' "
+                  ></div>
+                </div>
+                <div>
+                  <div class="text-[var(--text-dim)]">编辑器类型</div>
+                  <div
+                    class="text-[var(--text-main)]"
+                    x-text="activeItem?.editor?.kind || 'unknown'"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </template>
 
           <div
             class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
