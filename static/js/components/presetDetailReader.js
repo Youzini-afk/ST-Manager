@@ -74,9 +74,6 @@ export default function presetDetailReader() {
     activeItemId: "",
     searchTerm: "",
     uiFilter: "all",
-    _searchTermValue: "",
-    _uiFilterValue: "all",
-    readerControlBindingsReady: false,
     showRightPanel: true,
     showMobileSidebar: false,
     promptItemsCache: [],
@@ -90,41 +87,19 @@ export default function presetDetailReader() {
 
     init() {
       this.showRightPanel = this.$store?.global?.deviceType !== "mobile";
-      this.bindReaderControlCaches();
       window.addEventListener("open-preset-reader", (e) => {
         this.openPreset(e.detail || {});
       });
     },
 
-    bindReaderControlCaches() {
-      if (this.readerControlBindingsReady) {
-        return;
-      }
+    updateSearchTerm(value) {
+      this.searchTerm = value || "";
+      this.refreshReaderCollections();
+    },
 
-      this._searchTermValue = this.searchTerm || "";
-      this._uiFilterValue = this.uiFilter || "all";
-
-      Object.defineProperty(this, "searchTerm", {
-        configurable: true,
-        enumerable: true,
-        get: () => this._searchTermValue,
-        set: (value) => {
-          this._searchTermValue = value || "";
-          this.refreshReaderCollections();
-        },
-      });
-
-      Object.defineProperty(this, "uiFilter", {
-        configurable: true,
-        enumerable: true,
-        get: () => this._uiFilterValue,
-        set: (value) => {
-          this._uiFilterValue = value || "all";
-          this.refreshReaderCollections();
-        },
-      });
-
-      this.readerControlBindingsReady = true;
+    setUiFilter(filterId) {
+      this.uiFilter = filterId || "all";
+      this.refreshReaderCollections();
     },
 
     get readerView() {
@@ -332,7 +307,6 @@ export default function presetDetailReader() {
     },
 
     initializeReaderState() {
-      this.bindReaderControlCaches();
       if (this.isPromptWorkspaceReader) {
         const availableWorkspaces = new Set(
           this.readerGroups.map((group) => group.id).filter(Boolean),

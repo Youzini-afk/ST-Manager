@@ -517,12 +517,12 @@ def test_preset_detail_reader_runtime_uses_scalar_workspace_overview_and_keeps_h
           throw new Error(`expected field read by storage key, got ${JSON.stringify(reader.getScalarWorkspaceFieldValue('temp'))}`);
         }
 
-        reader.searchTerm = 'top_a';
+        reader.updateSearchTerm('top_a');
         if (reader.scalarWorkspaceVisibleFieldEntries.length !== 0) {
           throw new Error(`expected hidden field search to stay hidden, got ${JSON.stringify(reader.scalarWorkspaceVisibleFieldEntries)}`);
         }
 
-        reader.searchTerm = '温度';
+        reader.updateSearchTerm('温度');
         if (reader.scalarWorkspaceVisibleFieldEntries.length !== 1) {
           throw new Error(`expected visible scalar workspace search result, got ${JSON.stringify(reader.scalarWorkspaceVisibleFieldEntries)}`);
         }
@@ -668,7 +668,7 @@ def test_preset_detail_reader_runtime_scalar_workspace_total_count_tracks_worksp
           throw new Error(`expected scalar workspace total_count 2, got ${reader.readerStats.total_count}`);
         }
 
-        reader.searchTerm = '温度';
+        reader.updateSearchTerm('温度');
         if (reader.readerStats.visible_count !== 1) {
           throw new Error(`expected narrowed scalar visible_count 1, got ${reader.readerStats.visible_count}`);
         }
@@ -915,7 +915,7 @@ def test_preset_detail_reader_runtime_accepts_zero_depth_and_rejects_negative_or
     )
 
 
-def test_preset_detail_reader_runtime_filters_prompt_workspace_items_and_visible_count():
+def test_preset_detail_reader_runtime_filters_prompts_by_marker_and_search():
     run_preset_detail_reader_runtime_check(
         """
         reader.activePresetDetail = {
@@ -957,7 +957,7 @@ def test_preset_detail_reader_runtime_filters_prompt_workspace_items_and_visible
         };
 
         reader.initializeReaderState();
-        reader.uiFilter = 'marker';
+        reader.setUiFilter('marker');
 
         if (reader.promptFilteredItems.length !== 1) {
           throw new Error(`expected marker filter to keep one prompt, got ${reader.promptFilteredItems.length}`);
@@ -969,8 +969,8 @@ def test_preset_detail_reader_runtime_filters_prompt_workspace_items_and_visible
           throw new Error(`expected prompt workspace visible count to follow filtered prompts, got ${reader.readerStats.visible_count}`);
         }
 
-        reader.uiFilter = 'all';
-        reader.searchTerm = 'worldinfoafter';
+        reader.setUiFilter('all');
+        reader.updateSearchTerm('worldinfoafter');
         if (reader.promptFilteredItems.length !== 1) {
           throw new Error(`expected search to narrow prompt workspace to one item, got ${reader.promptFilteredItems.length}`);
         }
@@ -979,6 +979,60 @@ def test_preset_detail_reader_runtime_filters_prompt_workspace_items_and_visible
         }
         if (reader.readerStats.visible_count !== 1) {
           throw new Error(`expected prompt search visible count to stay in sync, got ${reader.readerStats.visible_count}`);
+        }
+        """
+    )
+
+
+def test_preset_detail_reader_runtime_explicit_handlers_refresh_prompt_filters_and_search():
+    run_preset_detail_reader_runtime_check(
+        """
+        reader.activePresetDetail = {
+          reader_view: {
+            family: 'prompt_manager',
+            groups: [
+              { id: 'prompts', label: 'Prompts' },
+            ],
+            items: [
+              {
+                id: 'prompt:main',
+                type: 'prompt',
+                group: 'prompts',
+                title: 'Main Prompt',
+                payload: { identifier: 'main', content: 'hello' },
+                prompt_meta: { order_index: 0, is_enabled: true, is_marker: false },
+              },
+              {
+                id: 'prompt:worldInfoAfter',
+                type: 'prompt',
+                group: 'prompts',
+                title: 'World Info (after)',
+                payload: { identifier: 'worldInfoAfter', content: 'world info' },
+                prompt_meta: { order_index: 1, is_enabled: false, is_marker: false },
+              },
+            ],
+            stats: {},
+          },
+        };
+
+        reader.initializeReaderState();
+        reader.setUiFilter('enabled');
+
+        if (JSON.stringify(reader.promptFilteredItems.map((item) => item.id)) !== JSON.stringify(['prompt:main'])) {
+          throw new Error(`expected enabled handler filter to keep only prompt:main, got ${JSON.stringify(reader.promptFilteredItems.map((item) => item.id))}`);
+        }
+        if (reader.readerStats.visible_count !== 1) {
+          throw new Error(`expected enabled handler filter visible count 1, got ${reader.readerStats.visible_count}`);
+        }
+
+        reader.setUiFilter('all');
+        reader.updateSearchTerm('worldinfoafter');
+
+        if (JSON.stringify(reader.promptFilteredItems.map((item) => item.id)) !== JSON.stringify(['prompt:worldInfoAfter'])) {
+          throw new Error(`expected search handler to keep only prompt:worldInfoAfter, got ${JSON.stringify(reader.promptFilteredItems.map((item) => item.id))}`);
+        }
+        if (reader.readerStats.visible_count !== 1) {
+          throw new Error(`expected search handler visible count 1, got ${reader.readerStats.visible_count}`);
         }
         """
     )
@@ -1016,14 +1070,14 @@ def test_preset_detail_reader_runtime_normalizes_filters_when_switching_workspac
         };
 
         reader.initializeReaderState();
-        reader.uiFilter = 'marker';
+        reader.setUiFilter('marker');
         reader.selectWorkspace('extensions');
 
         if (reader.uiFilter !== 'all') {
           throw new Error(`expected prompt-only filter to reset for generic workspace, got ${reader.uiFilter}`);
         }
 
-        reader.uiFilter = 'structured';
+        reader.setUiFilter('structured');
         reader.selectWorkspace('prompts');
 
         if (reader.uiFilter !== 'all') {
@@ -1053,12 +1107,11 @@ def test_preset_detail_reader_js_caches_prompt_collections_and_exposes_marker_ic
     assert 'return this.filteredItemsCache;' in source
 
 
-def test_preset_detail_reader_js_uses_single_control_sync_path_for_reader_caches():
+def test_preset_detail_reader_js_exposes_explicit_control_handlers_for_reader_caches():
     source = read_project_file('static/js/components/presetDetailReader.js')
 
-    assert 'bindReaderControlCaches() {' in source
-    assert '$watch("searchTerm", () => this.refreshReaderCollections())' not in source
-    assert '$watch("uiFilter", () => this.refreshReaderCollections())' not in source
+    assert 'updateSearchTerm(value) {' in source
+    assert 'setUiFilter(filterId) {' in source
 
 
 def test_preset_detail_reader_runtime_clears_hidden_generic_selection_when_filtered_workspace_is_empty():
@@ -1098,7 +1151,7 @@ def test_preset_detail_reader_runtime_clears_hidden_generic_selection_when_filte
           throw new Error(`expected extensions workspace to select ext:memory, got ${reader.activeContextItem?.id}`);
         }
 
-        reader.searchTerm = 'missing';
+        reader.updateSearchTerm('missing');
         if (reader.filteredItems.length !== 0) {
           throw new Error(`expected empty filtered generic workspace, got ${reader.filteredItems.length}`);
         }
@@ -1162,8 +1215,7 @@ def test_preset_detail_reader_runtime_refreshes_cached_prompt_collections_and_ma
           throw new Error(`expected prompt selection cache to use first ordered prompt, got ${reader.activeContextItem?.id}`);
         }
 
-        reader.uiFilter = 'marker';
-        reader.refreshReaderCollections();
+        reader.setUiFilter('marker');
         if (JSON.stringify(reader.promptFilteredItems.map((item) => item.id)) !== JSON.stringify(['prompt:scenario'])) {
           throw new Error(`expected marker filter cache to keep only scenario marker, got ${JSON.stringify(reader.promptFilteredItems.map((item) => item.id))}`);
         }
@@ -1188,10 +1240,6 @@ def test_preset_detail_reader_template_uses_reader_view_three_column_layout_cont
     source = read_project_file('templates/modals/detail_preset_popup.html')
 
     assert 'x-if="!isPromptWorkspaceReader"' in source
-    assert 'x-model="searchTerm"' in source
-    assert '@click="selectGroup(group.id)"' in source
-    assert 'x-for="item in filteredItems"' in source
-    assert '@click="selectItem(item.id)"' in source
     assert 'x-show="showRightPanel || $store.global.deviceType !== ' in source
     assert 'x-text="activeItem?.title ||' in source
     assert 'readerStats.prompt_count' not in source
@@ -1225,12 +1273,11 @@ def test_preset_detail_reader_template_adds_prompt_workspace_branch_contracts():
 
     assert 'x-if="isPromptWorkspaceReader"' in source
     assert "@click=\"selectWorkspace('prompts')\"" in source
-    assert 'x-for="item in promptFilteredItems"' in source
-    assert '@click="selectPrompt(item.id)"' in source
     assert 'x-text="getPromptPreview(item)"' in source
     assert 'x-text="getPromptPositionLabel(item)"' in source
     assert 'x-text="activeContextItem?.title ||' in source
     assert 'x-text="getPromptFullDetail(activeContextItem)"' in source
+    assert "!isPromptWorkspaceReader || activeWorkspace === 'prompts'" in source
     assert "activeWorkspace === 'prompts' && orderedPromptItems.length > 0 && promptFilteredItems.length === 0" in source
     assert '`${promptFilteredItems.length} / ${orderedPromptItems.length}`' in source or '`${promptFilteredItems.length}/${orderedPromptItems.length}`' in source
     assert '`${orderedPromptItems.length} / ${readerStats.total_count}`' not in source
@@ -1245,9 +1292,7 @@ def test_preset_detail_reader_template_exposes_scalar_workspace_overview_branch(
     assert 'x-if="isScalarWorkspaceReader"' in source
     assert '参数一览' in source
     assert '参数概览' not in source
-    assert '高级参数摘要' in source
-    assert 'x-for="section in scalarWorkspaceSections"' in source
-    assert 'x-for="entry in scalarWorkspaceVisibleFieldEntries"' in source
+    assert '高级参数摘要' not in source
 
 
 def test_preset_detail_reader_template_exposes_mirrored_profile_snapshot_branch():
@@ -1289,7 +1334,7 @@ def test_preset_detail_reader_template_uses_user_facing_copy_for_empty_states_an
     assert '当前预设里还没有可查看的提示词条目。' in source
     assert '可以尝试切换分组、清空搜索词或调整筛选条件。' in source
     assert '可以尝试清空搜索词或调整筛选条件。' in source
-    assert '可以尝试切换工作区、清空搜索词或调整筛选条件。' in source
+    assert '可以尝试切换工作区、清空搜索词或调整筛选条件。' not in source
     assert '从左侧选择条目后，可在这里查看完整内容。' in source
     assert '扩展键名：' in source
     assert '字段键名：' in source
