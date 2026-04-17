@@ -423,6 +423,360 @@ def test_preset_detail_reader_view_exposes_scalar_workspace_for_textgen_prompt_m
     assert 'typical_p' in scalar_workspace['hidden_fields']
 
 
+def test_preset_detail_exposes_chat_completion_editor_profile(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'chat-mirror.json',
+        {
+            'name': 'Chat Mirror',
+            'temperature': 0.8,
+            'top_p': 0.92,
+            'frequency_penalty': 0.3,
+            'presence_penalty': 0.2,
+            'openai_max_context': 8192,
+            'openai_max_tokens': 1200,
+            'stream_openai': True,
+            'show_thoughts': True,
+            'reasoning_effort': 'medium',
+            'logit_bias': [{'text': 'foo', 'value': 1}],
+            'prompts': [{'identifier': 'main', 'role': 'system', 'content': '你是助手'}],
+            'prompt_order': ['main'],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::chat-mirror.json')
+
+    assert res.status_code == 200
+    preset = res.get_json()['preset']
+    profile = preset['editor_profile']
+
+    assert profile['id'] == 'st_chat_completion_preset'
+    assert profile['family'] == 'st_mirror'
+    assert profile['supports_prompt_workspace'] is True
+    assert profile['save_target'] == 'st_openai_preset_dir'
+    assert profile['reader_layout'] == 'mirrored_sections'
+    assert [section['id'] for section in profile['sections']] == [
+        'output_and_reasoning',
+        'core_sampling',
+        'penalties',
+        'prompt_manager',
+        'formatting_and_templates',
+        'extensions_and_advanced',
+    ]
+    assert profile['fields']['temperature']['canonical_key'] == 'temperature'
+    assert profile['fields']['temperature']['storage_keys'] == ['temperature', 'temp']
+    assert profile['fields']['temperature']['step'] == 0.01
+    assert profile['fields']['temperature']['preserve_existing_key'] is True
+    assert profile['fields']['openai_max_context']['control'] == 'range_with_number'
+    assert profile['fields']['openai_max_context']['min'] == 512
+    assert profile['fields']['openai_max_context']['max']['type'] == 'dynamic'
+    assert profile['fields']['openai_max_context']['step'] == 1
+    assert profile['fields']['openai_max_tokens']['max'] == 128000
+    assert profile['fields']['reasoning_effort']['options'] == ['auto', 'low', 'medium', 'high', 'min', 'max']
+    assert profile['fields']['prompts']['control'] == 'prompt_workspace'
+    assert profile['fields']['prompt_order']['control'] == 'prompt_workspace'
+    assert profile['fields']['wi_format']['control'] == 'textarea'
+    assert profile['fields']['extensions']['control'] == 'raw_json'
+    assert profile['fields']['logit_bias']['control'] == 'key_value_list'
+
+
+def test_preset_detail_exposes_textgen_editor_profile(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'textgen-mirror.json',
+        {
+            'name': 'Textgen Mirror',
+            'temp': 1.1,
+            'top_p': 0.93,
+            'top_k': 40,
+            'rep_pen': 1.2,
+            'freq_pen': 0.15,
+            'pres_pen': 0.05,
+            'streaming': True,
+            'dynatemp': True,
+            'min_temp': 0.7,
+            'max_temp': 1.4,
+            'mirostat_mode': 2,
+            'sampler_order': ['temperature', 'top_p'],
+            'samplers': ['top_p', 'min_p'],
+            'prompts': [{'identifier': 'main', 'role': 'system', 'content': 'hello'}],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::textgen-mirror.json')
+
+    assert res.status_code == 200
+    preset = res.get_json()['preset']
+    profile = preset['editor_profile']
+
+    assert profile['id'] == 'st_textgen_preset'
+    assert profile['family'] == 'st_mirror'
+    assert profile['supports_prompt_workspace'] is True
+    assert profile['save_target'] == 'st_textgen_preset_dir'
+    assert profile['reader_layout'] == 'mirrored_sections'
+    assert profile['fields']['temp']['control'] == 'range_with_number'
+    assert profile['fields']['temp']['canonical_key'] == 'temp'
+    assert profile['fields']['temp']['min'] == 0
+    assert profile['fields']['temp']['max'] == 5
+    assert profile['fields']['temp']['step'] == 0.01
+    assert profile['fields']['rep_pen']['storage_key'] == 'rep_pen'
+    assert profile['fields']['streaming']['control'] == 'checkbox'
+    assert profile['fields']['mirostat_mode']['control'] == 'number'
+    assert profile['fields']['sampler_order']['control'] == 'sortable_string_list'
+    assert profile['fields']['samplers']['control'] == 'sortable_string_list'
+    assert profile['fields']['prompt_order']['control'] == 'prompt_workspace'
+
+
+def test_preset_detail_editor_profile_fields_use_canonical_keys_and_hide_absent_present_only_fields(
+    monkeypatch, tmp_path
+):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'chat-canonical.json',
+        {
+            'name': 'Chat Canonical',
+            'temp': 0.8,
+            'top_p': 0.92,
+            'openai_max_context': 8192,
+            'openai_max_tokens': 1200,
+            'stream_openai': True,
+            'prompts': [{'identifier': 'main', 'role': 'system', 'content': 'hello'}],
+            'prompt_order': ['main'],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::chat-canonical.json')
+
+    assert res.status_code == 200
+    fields = res.get_json()['preset']['editor_profile']['fields']
+
+    assert 'temperature' in fields
+    assert fields['temperature']['storage_key'] == 'temp'
+    assert fields['temperature']['source_key'] == 'temp'
+    assert 'temp' not in fields
+    assert 'logit_bias' not in fields
+
+
+def test_preset_detail_prefers_textgen_editor_profile_for_mixed_legacy_textgen_shapes(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'legacy-mixed-textgen.json',
+        {
+            'name': 'Legacy Mixed Textgen',
+            'temp': 1.1,
+            'top_p': 0.93,
+            'rep_pen': 1.2,
+            'dynatemp': True,
+            'sampler_order': ['temperature', 'top_p'],
+            'openai_max_tokens': 2048,
+            'prompts': [{'identifier': 'main', 'role': 'system', 'content': 'hello'}],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::legacy-mixed-textgen.json')
+
+    assert res.status_code == 200
+    preset = res.get_json()['preset']
+    assert preset['editor_profile']['id'] == 'st_textgen_preset'
+    assert 'rep_pen' in preset['editor_profile']['fields']
+    assert preset['editor_profile']['fields']['rep_pen']['control'] == 'range_with_number'
+
+
+def test_preset_detail_prefers_textgen_editor_profile_for_temperature_alias_shape(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'temperature-alias-textgen.json',
+        {
+            'name': 'Temperature Alias Textgen',
+            'temperature': 0.8,
+            'top_p': 0.9,
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::temperature-alias-textgen.json')
+
+    assert res.status_code == 200
+    preset = res.get_json()['preset']
+    assert preset['editor_profile']['id'] == 'st_textgen_preset'
+    assert 'temp' in preset['editor_profile']['fields']
+
+
+def test_preset_detail_prefers_chat_completion_editor_profile_when_chat_markers_dominate_alias_overlap(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'chat-alias-overlap.json',
+        {
+            'name': 'Chat Alias Overlap',
+            'temp': 0.8,
+            'freq_pen': 0.2,
+            'pres_pen': 0.1,
+            'openai_max_context': 8192,
+            'openai_max_tokens': 1200,
+            'stream_openai': True,
+            'reasoning_effort': 'medium',
+            'prompts': [{'identifier': 'main', 'role': 'system', 'content': 'hello'}],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::chat-alias-overlap.json')
+
+    assert res.status_code == 200
+    preset = res.get_json()['preset']
+    assert preset['editor_profile']['id'] == 'st_chat_completion_preset'
+    assert 'openai_max_context' in preset['editor_profile']['fields']
+
+
+def test_preset_detail_reader_view_flattens_all_nested_prompt_order_buckets(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'multi-bucket.json',
+        {
+            'name': 'Multi Bucket',
+            'prompts': [
+                {'identifier': 'alpha', 'name': 'Alpha', 'role': 'system', 'content': 'A'},
+                {'identifier': 'beta', 'name': 'Beta', 'role': 'system', 'content': 'B'},
+                {'identifier': 'gamma', 'name': 'Gamma', 'role': 'system', 'content': 'C'},
+            ],
+            'prompt_order': [
+                {
+                    'character_id': 100000,
+                    'order': [
+                        {'identifier': 'beta', 'enabled': False},
+                    ],
+                },
+                {
+                    'character_id': 100001,
+                    'order': [
+                        {'identifier': 'alpha', 'enabled': True},
+                        {'identifier': 'gamma', 'enabled': True},
+                    ],
+                },
+            ],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::multi-bucket.json')
+
+    assert res.status_code == 200
+    payload = res.get_json()['preset']
+    prompt_items = [item for item in payload['reader_view']['items'] if item['type'] == 'prompt']
+
+    assert [item['payload']['identifier'] for item in prompt_items] == ['beta', 'alpha', 'gamma']
+    assert prompt_items[0]['prompt_meta']['is_enabled'] is False
+    assert prompt_items[1]['prompt_meta']['is_enabled'] is True
+    assert prompt_items[2]['prompt_meta']['is_enabled'] is True
+    assert prompt_items[0]['prompt_meta']['is_orphan'] is False
+    assert prompt_items[1]['prompt_meta']['is_orphan'] is False
+    assert prompt_items[2]['prompt_meta']['is_orphan'] is False
+
+
+def test_preset_detail_reader_view_deduplicates_prompt_identifiers_across_nested_prompt_order_buckets(
+    monkeypatch, tmp_path
+):
+    presets_dir = tmp_path / 'presets'
+    _write_json(
+        presets_dir / 'duplicate-buckets.json',
+        {
+            'name': 'Duplicate Buckets',
+            'prompts': [
+                {'identifier': 'alpha', 'name': 'Alpha', 'role': 'system', 'content': 'A'},
+                {'identifier': 'beta', 'name': 'Beta', 'role': 'system', 'content': 'B'},
+            ],
+            'prompt_order': [
+                {
+                    'character_id': 100000,
+                    'order': [
+                        {'identifier': 'beta', 'enabled': False},
+                        {'identifier': 'alpha', 'enabled': True},
+                    ],
+                },
+                {
+                    'character_id': 100001,
+                    'order': [
+                        {'identifier': 'beta', 'enabled': True},
+                    ],
+                },
+            ],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::duplicate-buckets.json')
+
+    assert res.status_code == 200
+    payload = res.get_json()['preset']
+    prompt_items = [item for item in payload['reader_view']['items'] if item['type'] == 'prompt']
+
+    assert [item['payload']['identifier'] for item in prompt_items] == ['beta', 'alpha']
+    assert len(prompt_items) == 2
+    assert prompt_items[0]['prompt_meta']['order_index'] == 0
+    assert prompt_items[1]['prompt_meta']['order_index'] == 1
+    assert prompt_items[0]['prompt_meta']['is_enabled'] is False
+
+
 def test_preset_detail_scalar_workspace_field_map_resolves_aliases_to_canonical_entries(monkeypatch, tmp_path):
     presets_dir = tmp_path / 'presets'
     _write_json(

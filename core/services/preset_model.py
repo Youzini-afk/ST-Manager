@@ -3,6 +3,10 @@
 import copy
 import os
 
+from core.services.preset_editor_schema import build_editor_profile_payload
+from core.services.preset_editor_schema import normalize_preset_content_for_save
+from core.services.preset_editor_schema import resolve_profile_remove_keys
+from core.services.preset_editor_schema import resolve_profile_storage_key
 from core.utils.source_revision import build_file_source_revision
 
 
@@ -619,17 +623,20 @@ def _normalize_prompt_order_entries(prompt_order):
             if str(entry.get('identifier') or '').strip()
         ]
 
+    entries = []
     for bucket in prompt_order:
         if not isinstance(bucket, dict) or not isinstance(bucket.get('order'), list):
             continue
-        return [
+        entries.extend(
             {
                 'identifier': str(entry.get('identifier') or '').strip(),
                 'enabled': entry.get('enabled', True) is not False,
             }
             for entry in bucket['order']
             if isinstance(entry, dict) and str(entry.get('identifier') or '').strip()
-        ]
+        )
+    if entries:
+        return entries
 
     return []
 
@@ -705,20 +712,25 @@ def _build_prompt_manager_prompt_items(data):
         if isinstance(prompt, dict)
     ]
     prompt_order_entries = _normalize_prompt_order_entries(data.get('prompt_order'))
-    order_lookup = {
-        entry['identifier']: {'order_index': index, 'enabled': entry['enabled']}
-        for index, entry in enumerate(prompt_order_entries)
-    }
+    order_lookup = {}
+    for index, entry in enumerate(prompt_order_entries):
+        identifier = entry['identifier']
+        if identifier in order_lookup:
+            continue
+        order_lookup[identifier] = {'order_index': index, 'enabled': entry['enabled']}
     prompt_lookup = {
         str(prompt.get('identifier') or f'prompt_{index + 1}'): (index, prompt)
         for index, prompt in indexed_prompts
     }
 
-    ordered_identifiers = [
-        entry['identifier']
-        for entry in prompt_order_entries
-        if entry['identifier'] in prompt_lookup
-    ]
+    ordered_identifiers = []
+    seen_identifiers = set()
+    for entry in prompt_order_entries:
+        identifier = entry['identifier']
+        if identifier not in prompt_lookup or identifier in seen_identifiers:
+            continue
+        ordered_identifiers.append(identifier)
+        seen_identifiers.add(identifier)
     orphan_identifiers = [
         identifier
         for identifier in prompt_lookup.keys()
@@ -901,10 +913,15 @@ def build_reader_view(raw_data, preset_kind=None):
     }
 
 
-def build_preset_detail(*, preset_id, file_path, filename, source_type, source_folder, raw_data, base_dir):
-    preset_kind = detect_preset_kind(raw_data, source_folder=source_folder, file_path=file_path)
+def build_preset_detail(*, preset_id, file_path, filename, source_type, source_folder, raw_data, base_dir, preset_kind_hint=''):
+    preset_kind = str(preset_kind_hint or '').strip() or detect_preset_kind(
+        raw_data,
+        source_folder=source_folder,
+        file_path=file_path,
+    )
     sections, _unknown_fields = build_sections(raw_data, preset_kind)
     reader_view = build_reader_view(raw_data, preset_kind)
+    editor_profile = build_editor_profile_payload(raw_data, preset_kind)
     data = raw_data if isinstance(raw_data, dict) else {}
 
     try:
@@ -938,6 +955,7 @@ def build_preset_detail(*, preset_id, file_path, filename, source_type, source_f
         'is_default_candidate': source_type == 'global',
         'raw_data': copy.deepcopy(raw_data or {}),
         'sections': sections,
+        'editor_profile': editor_profile,
         'reader_view': reader_view,
         'extensions': copy.deepcopy(data.get('extensions') or {}),
     }
@@ -946,24 +964,26 @@ def build_preset_detail(*, preset_id, file_path, filename, source_type, source_f
 def merge_preset_content(raw_data, preset_kind, content):
     source_data = raw_data if isinstance(raw_data, dict) else {}
     merged = copy.deepcopy(source_data)
-    content = copy.deepcopy(content or {})
+    remove_keys = resolve_profile_remove_keys(source_data, preset_kind, content)
+    content = normalize_preset_content_for_save(source_data, preset_kind, content)
 
-    for canonical_key, aliases in FIELD_ALIAS_MAP.items():
-        if canonical_key not in content:
-            continue
-        for alias in aliases[1:]:
-            if alias in merged and alias != canonical_key:
-                merged.pop(alias, None)
-        merged[canonical_key] = content[canonical_key]
+    for key in remove_keys:
+        merged.pop(key, None)
 
+    normalized_content = {}
     for key, value in content.items():
+        normalized_content[resolve_profile_storage_key(source_data, preset_kind, key)] = value
+
+    for key, value in normalized_content.items():
         if key == 'extensions':
             continue
         merged[key] = value
 
-    if 'extensions' in source_data or 'extensions' in content:
+    if 'extensions' in source_data or 'extensions' in normalized_content:
         merged['extensions'] = copy.deepcopy(
-            source_data.get('extensions') if 'extensions' not in content else content.get('extensions')
+            source_data.get('extensions')
+            if 'extensions' not in normalized_content
+            else normalized_content.get('extensions')
         ) or {}
 
     return merged

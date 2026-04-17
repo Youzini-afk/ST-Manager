@@ -1,894 +1,1658 @@
 <!-- 设置模态框 (Refactored) -->
-<div x-show="showSettingsModal" x-data="settingsModal" x-cloak class="modal-overlay z-modal-std">
-    <div class="settings-modal-container" @click.away="showSettingsModal=false">
-
-        <!-- 1. 顶部栏 -->
-        <div class="settings-header">
-            <div class="flex items-center gap-2">
-                <span class="text-2xl">⚙️</span>
-                <h3 class="font-bold text-xl">系统设置</h3>
-            </div>
-            <div class="flex items-center gap-2">
-                <!-- 帮助按钮 (无边框) -->
-                <button @click="showSettingsHelpModal=true"
-                    class="text-gray-400 hover:text-blue-400 transition text-xl px-2 font-bold"
-                    title="查看帮助指南">?</button>
-                <button @click="showSettingsModal=false"
-                    class="text-gray-400 hover:text-red-500 transition text-xl">✕</button>
-            </div>
-        </div>
-
-        <!-- 2. 主体区域 -->
-        <div class="settings-body">
-
-            <!-- 左侧侧边栏导航 -->
-            <aside class="settings-sidebar custom-scrollbar">
-                <button @click="activeSettingTab='general'" class="settings-nav-item"
-                    :class="activeSettingTab==='general' ? 'active' : ''">
-                    <span class="nav-icon">📂</span>
-                    <span class="nav-text">常规路径</span>
-                </button>
-                <button @click="activeSettingTab='appearance'" class="settings-nav-item"
-                    :class="activeSettingTab==='appearance' ? 'active' : ''">
-                    <span class="nav-icon">🎨</span>
-                    <span class="nav-text">外观显示</span>
-                </button>
-                <button @click="activeSettingTab='connection'" class="settings-nav-item"
-                    :class="activeSettingTab==='connection' ? 'active' : ''">
-                    <span class="nav-icon">🔌</span>
-                    <span class="nav-text">连接与服务</span>
-                </button>
-                <button @click="activeSettingTab='maintenance'" class="settings-nav-item"
-                    :class="activeSettingTab==='maintenance' ? 'active' : ''">
-                    <span class="nav-icon">🛠️</span>
-                    <span class="nav-text">维护与高级</span>
-                </button>
-            </aside>
-
-            <!-- 右侧内容滚动区 -->
-            <main class="settings-content custom-scrollbar">
-
-                <!-- TAB 1: 常规路径 (General) -->
-                <div x-show="activeSettingTab==='general'" x-transition:enter="transition ease-out duration-200"
-                    x-transition:enter-start="opacity-0 translate-x-2">
-                    <div class="settings-group-title">文件与路径设置</div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-blue-400">角色卡存储路径 (Cards)</label>
-                        <div class="settings-desc">存放角色图片和 JSON 的文件夹 (支持相对路径)</div>
-                        <div class="flex gap-2 mt-2">
-                            <input type="text" x-model="settingsForm.cards_dir" class="form-input" placeholder="cards">
-                            <button @click="systemAction('open_folder')" title="在资源管理器中打开"
-                                class="btn-secondary px-3">📂</button>
-                        </div>
-                    </div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-yellow-400">世界书存储路径 (Lorebooks)</label>
-                        <div class="settings-desc">存放全局共享世界书 (.json) 的目录</div>
-                        <input type="text" x-model="settingsForm.world_info_dir" class="form-input mt-2"
-                            placeholder="lorebooks">
-                    </div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-emerald-400">聊天记录路径 (Chats)</label>
-                        <div class="settings-desc">存放 SillyTavern 聊天记录 (.jsonl) 的目录</div>
-                        <input type="text" x-model="settingsForm.chats_dir" class="form-input mt-2"
-                            placeholder="data/library/chats">
-                    </div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-purple-400">正则脚本路径 (Regex)</label>
-                        <div class="settings-desc">存放全局正则脚本 (.json) 的目录</div>
-                        <input type="text" x-model="settingsForm.regex_dir" class="form-input mt-2"
-                            placeholder="extensions/regex">
-                    </div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-indigo-400">ST 脚本路径 (Scripts)</label>
-                        <div class="settings-desc">存放全局 Tavern Helper 脚本 (.json) 的目录</div>
-                        <input type="text" x-model="settingsForm.scripts_dir" class="form-input mt-2"
-                            placeholder="extensions/tavern_helper">
-                    </div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-yellow-500">快速回复路径 (Quick Replies)</label>
-                        <div class="settings-desc">存放全局快速回复 (.json) 的目录</div>
-                        <input type="text" x-model="settingsForm.quick_replies_dir" class="form-input mt-2"
-                            placeholder="extensions/quick-replies">
-                    </div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-orange-400">预设路径 (Presets)</label>
-                        <div class="settings-desc">存放 AI 生成参数预设 (.json) 的目录</div>
-                        <input type="text" x-model="settingsForm.presets_dir" class="form-input mt-2"
-                            placeholder="data/library/presets">
-                    </div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-green-400">资源文件夹路径 (Resources)</label>
-                        <div class="settings-desc">存放角色附件、背景图、聊天记录备份的根目录</div>
-                        <input type="text" x-model="settingsForm.resources_dir" class="form-input mt-2"
-                            placeholder="resources">
-                    </div>
-
-                </div>
-
-                <!-- TAB 2: 外观显示 (Appearance) -->
-                <div x-show="activeSettingTab==='appearance'" x-transition:enter="transition ease-out duration-200"
-                    x-transition:enter-start="opacity-0 translate-x-2">
-                    <div class="settings-group-title">主题与视觉</div>
-
-                    <!-- 深色模式 -->
-                    <div
-                        class="settings-row flex justify-between items-center p-3 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]">
-                        <div>
-                            <div class="settings-label">深色模式 (Dark Mode)</div>
-                            <div class="settings-desc">切换日间/夜间配色方案</div>
-                        </div>
-                        <button @click="toggleDarkMode()" class="btn-secondary px-3 py-1">
-                            <span x-text="isDarkMode ? '🌙 已开启' : '☀️ 已关闭'"></span>
-                        </button>
-                    </div>
-
-                    <!-- 主题强调色 -->
-                    <div class="settings-row">
-                        <div class="settings-label mb-2">主题强调色 (Accent Color)</div>
-                        <div class="flex gap-4">
-                            <button @click="applyTheme('blue')" class="theme-dot" style="background-color: #2563eb;"
-                                :class="settingsForm.theme_accent==='blue'?'active':''" title="Blue"></button>
-                            <button @click="applyTheme('purple')" class="theme-dot" style="background-color: #7c3aed;"
-                                :class="settingsForm.theme_accent==='purple'?'active':''" title="Purple"></button>
-                            <button @click="applyTheme('green')" class="theme-dot" style="background-color: #059669;"
-                                :class="settingsForm.theme_accent==='green'?'active':''" title="Green"></button>
-                            <button @click="applyTheme('red')" class="theme-dot" style="background-color: #dc2626;"
-                                :class="settingsForm.theme_accent==='red'?'active':''" title="Red"></button>
-                            <button @click="applyTheme('orange')" class="theme-dot" style="background-color: #ea580c;"
-                                :class="settingsForm.theme_accent==='orange'?'active':''" title="Orange"></button>
-                            <button @click="applyTheme('pink')" class="theme-dot" style="background-color: #db2777;"
-                                :class="settingsForm.theme_accent==='pink'?'active':''" title="Pink"></button>
-                        </div>
-                    </div>
-
-                    <!-- 字体风格 -->
-                    <div class="settings-row">
-                        <div class="settings-label mb-2">字体风格 (Typography)</div>
-                        <div class="grid grid-cols-3 gap-3">
-                            <button @click="applyFont('sans')"
-                                class="py-3 border border-[var(--border-light)] rounded hover:bg-[var(--bg-hover)] transition"
-                                :class="settingsForm.font_style === 'sans' ? 'bg-[var(--accent-main)] text-white border-transparent' : 'bg-[var(--bg-sub)]'">
-                                <span class="font-sans text-sm">无衬线 (Sans)</span>
-                            </button>
-                            <button @click="applyFont('serif')"
-                                class="py-3 border border-[var(--border-light)] rounded hover:bg-[var(--bg-hover)] transition"
-                                :class="settingsForm.font_style === 'serif' ? 'bg-[var(--accent-main)] text-white border-transparent' : 'bg-[var(--bg-sub)]'">
-                                <span class="font-serif text-sm">衬线体 (Serif)</span>
-                            </button>
-                            <button @click="applyFont('mono')"
-                                class="py-3 border border-[var(--border-light)] rounded hover:bg-[var(--bg-hover)] transition"
-                                :class="settingsForm.font_style === 'mono' ? 'bg-[var(--accent-main)] text-white border-transparent' : 'bg-[var(--bg-sub)]'">
-                                <span class="font-mono text-sm">等宽 (Mono)</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- 布局密度 -->
-                    <div class="settings-group-title mt-8">布局与列表</div>
-                    <div class="settings-row">
-                        <div class="settings-row-header">
-                            <div class="settings-label">卡片尺寸基准</div>
-                            <span class="text-xs text-accent" x-text="settingsForm.card_width + 'px'"></span>
-                        </div>
-                        <input type="range" min="150" max="400" step="10" x-model="settingsForm.card_width"
-                            @input="updateCssVariable('--card-min-width', $event.target.value + 'px')"
-                            class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="settings-label text-sm">角色卡每页数量</label>
-                            <select x-model.number="settingsForm.items_per_page" class="form-input mt-1">
-                                <option value="0">✨ 自动 (Auto)</option>
-                                <option value="20">20 张</option>
-                                <option value="40">40 张</option>
-                                <option value="100">100 张</option>
-                                <option value="200">200 张</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="settings-label text-sm">世界书每页数量</label>
-                            <select x-model.number="settingsForm.items_per_page_wi" class="form-input mt-1">
-                                <option value="0">✨ 自动 (Auto)</option>
-                                <option value="20">20 本</option>
-                                <option value="50">50 本</option>
-                                <option value="100">100 本</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="settings-row mt-4">
-                        <label class="settings-label text-sm">默认排序方式</label>
-                        <select x-model="settingsForm.default_sort" class="form-input mt-1">
-                            <option value="date_desc">修改日期 (新 ➜ 旧)</option>
-                            <option value="date_asc">修改日期 (旧 ➜ 新)</option>
-                            <option value="import_desc">导入日期 (新 ➜ 旧)</option>
-                            <option value="import_asc">导入日期 (旧 ➜ 新)</option>
-                            <option value="name_asc">名称 (A ➜ Z)</option>
-                            <option value="name_desc">名称 (Z ➜ A)</option>
-                            <option value="token_desc">Token 量 (大 ➜ 小)</option>
-                            <option value="token_asc">Token 量 (小 ➜ 大)</option>
-                        </select>
-                        <div class="settings-desc mt-2">仅作为初始排序；主界面可临时切换，不会改写此默认值。</div>
-                    </div>
-
-                    <div
-                        class="settings-row flex justify-between items-center py-2 border-b border-[var(--border-light)]">
-                        <div>
-                            <div class="settings-label">主界面显示排序选项</div>
-                            <div class="settings-desc">在搜索框旁显示“当前列表排序”下拉菜单（仅角色卡管理界面）</div>
-                        </div>
-                        <input type="checkbox" x-model="settingsForm.show_header_sort"
-                            class="w-5 h-5 accent-[var(--accent-main)]">
-                    </div>
-
-                    <div class="settings-group-title mt-8">隔离分类</div>
-                    <div class="settings-row">
-                        <div class="settings-desc">这些分类在其上级目录视图中不会显示，也不会被上级搜索命中；进入分类自身后可正常浏览和搜索。</div>
-                        <div class="settings-isolated-list mt-3" x-show="isolatedCategories.length > 0">
-                            <template x-for="path in isolatedCategories" :key="path">
-                                <div class="settings-isolated-item">
-                                    <span class="settings-isolated-path" x-text="path"></span>
-                                    <button type="button" class="settings-isolated-remove" @click="removeIsolatedCategory(path)">取消</button>
-                                </div>
-                            </template>
-                        </div>
-                        <div x-show="isolatedCategories.length === 0" class="settings-desc mt-3">当前没有隔离分类，可在左侧目录树右键或移动端三点菜单中快速添加。</div>
-                        <div class="mt-3" x-show="isolatedCategories.length > 0">
-                            <button type="button" class="btn-secondary px-3 py-2 text-sm" @click="clearIsolatedCategories()">清空隔离分类</button>
-                        </div>
-                    </div>
-
-                    <!-- 个性化背景 -->
-                    <div class="settings-group-title mt-8">个性化壁纸 (Wallpaper)</div>
-                    <div class="settings-row">
-                        <div class="flex gap-2 mb-2">
-                            <input type="text" x-model="settingsForm.bg_url"
-                                @change="updateBackgroundImage(settingsForm.bg_url)" class="form-input text-sm"
-                                placeholder="输入图片 URL 或上传 ->">
-                            <button @click="triggerBackgroundUpload()" class="btn-secondary px-3 whitespace-nowrap">📂
-                                上传</button>
-                            <input type="file" x-ref="bgUploadInput" @change="handleBackgroundUpload" accept="image/*"
-                                style="display: none;">
-                            <button @click="settingsForm.bg_url=''; updateBackgroundImage('')"
-                                class="btn-secondary px-3" title="清除">✕</button>
-                        </div>
-
-                        <div x-show="settingsForm.bg_url" x-transition
-                            class="bg-[var(--bg-sub)] p-3 rounded border border-[var(--border-light)] mt-2">
-                            <div class="mb-3">
-                                <div class="flex justify-between text-xs mb-1">
-                                    <span>遮罩浓度 (Overlay Opacity)</span>
-                                    <span x-text="Math.round(settingsForm.bg_opacity * 100) + '%'"></span>
-                                </div>
-                                <input type="range" min="0.2" max="1" step="0.05" x-model="settingsForm.bg_opacity"
-                                    @input="updateCssVariable('--bg-overlay-opacity', $event.target.value)"
-                                    class="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer">
-                            </div>
-                            <div>
-                                <div class="flex justify-between text-xs mb-1">
-                                    <span>背景模糊 (Blur)</span>
-                                    <span x-text="settingsForm.bg_blur + 'px'"></span>
-                                </div>
-                                <input type="range" min="0" max="20" step="1" x-model="settingsForm.bg_blur"
-                                    @input="updateCssVariable('--bg-blur', $event.target.value + 'px')"
-                                    class="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer">
-                            </div>
-                        </div>
-                    </div>
-                    <div
-                        class="settings-row flex justify-between items-center py-2 border-b border-[var(--border-light)]">
-                        <div>
-                            <div class="settings-label">收藏卡片前置 (Pin Favorites)</div>
-                            <div class="settings-desc">总是将收藏的卡片排在列表最前面</div>
-                        </div>
-                        <input type="checkbox" x-model="settingsForm.favorites_first"
-                            class="w-5 h-5 accent-[var(--accent-main)]">
-                    </div>
-                </div>
-
-                <!-- TAB 3: 连接与服务 (Connection) -->
-                <div x-show="activeSettingTab==='connection'" x-transition:enter="transition ease-out duration-200"
-                    x-transition:enter-start="opacity-0 translate-x-2">
-                    <div class="settings-group-title">SillyTavern 本地目录</div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-cyan-400">ST 安装目录</label>
-                        <div class="settings-desc">请输入 SillyTavern 安装根目录（包含 data/public/server.js）。若填入 data 或
-                            default-user，将自动转换为根目录。</div>
-                        <div class="flex gap-2 mt-2">
-                            <input type="text" x-model="settingsForm.st_data_dir" class="form-input flex-1"
-                                placeholder="留空自动探测，如 D:\SillyTavern">
-                            <button @click="detectSTPath()" class="btn-secondary px-3" title="自动探测">🔍</button>
-                            <button @click="validateSTPath()" class="btn-secondary px-3" title="验证路径">✓</button>
-                        </div>
-                        <div x-show="stPathStatus" x-transition class="mt-2 text-sm"
-                            :class="stPathValid ? 'text-green-400' : 'text-red-400'" x-text="stPathStatus"></div>
-                    </div>
-
-                    <div x-show="stResources && Object.keys(stResources).length > 0" x-transition
-                        class="settings-row p-3 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]">
-                        <div class="text-sm font-bold mb-2">📊 检测到的资源</div>
-                        <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                            <template x-for="(info, type) in stResources" :key="type">
-                                <div class="flex justify-between p-2 rounded bg-[var(--bg-main)]">
-                                    <span x-text="getResourceLabel(type)"></span>
-                                    <span class="text-accent" x-text="info.count + ' 个'"></span>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
-
-                    <div class="settings-row">
-                        <div class="text-sm font-bold mb-2">🔄 从 SillyTavern 同步资源</div>
-                        <div class="settings-desc mb-3">将 SillyTavern 中的资源复制到 ST-Manager 管理的目录</div>
-                        <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
-                            <button @click="syncFromST('characters')" class="btn-secondary py-2 text-sm"
-                                :disabled="syncing">🎴 同步角色卡</button>
-                            <button @click="syncFromST('chats')" class="btn-secondary py-2 text-sm"
-                                :disabled="syncing">💬 同步聊天</button>
-                            <button @click="syncFromST('worlds')" class="btn-secondary py-2 text-sm"
-                                :disabled="syncing">📚 同步世界书</button>
-                            <button @click="syncFromST('presets')" class="btn-secondary py-2 text-sm"
-                                :disabled="syncing">📝 同步预设</button>
-                            <button @click="syncFromST('regex')" class="btn-secondary py-2 text-sm"
-                                :disabled="syncing">🔧 同步正则</button>
-                            <button @click="syncFromST('quick_replies')" class="btn-secondary py-2 text-sm"
-                                :disabled="syncing">💬 同步快速回复</button>
-                            <button @click="syncAllFromST()" class="btn-primary py-2 text-sm" :disabled="syncing">⚡
-                                全部同步</button>
-                        </div>
-                        <div x-show="syncStatus" x-transition class="mt-3 p-2 rounded text-sm"
-                            :class="syncSuccess ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'"
-                            x-text="syncStatus"></div>
-                    </div>
-
-                    <div class="settings-group-title mt-8">SillyTavern API 连接</div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-pink-400">ST 服务地址</label>
-                        <input type="text" x-model="settingsForm.st_url" class="form-input mt-1"
-                            placeholder="http://127.0.0.1:8000">
-                    </div>
-
-                    <div class="settings-row">
-                        <label class="settings-label text-gray-400">请求代理 (Proxy)</label>
-                        <div class="settings-desc">
-                            可选。若连接 ST 需经由代理，请在此填写 (如 http://127.0.0.1:7890)。<br>
-                            <span class="text-yellow-500 text-xs">留空则强制直连 (忽略系统代理)。</span>
-                        </div>
-                        <input type="text" x-model="settingsForm.st_proxy" class="form-input mt-1"
-                            placeholder="http://127.0.0.1:7890">
-                    </div>
-
-                    <div class="settings-row p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]">
-                        <label class="settings-label mb-2 block">认证方式</label>
-                        <div class="flex gap-4 mb-4">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" name="auth_type" value="basic" x-model="settingsForm.st_auth_type"
-                                    class="w-4 h-4">
-                                <span class="text-sm">Basic Auth (API Key / 旧版)</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" name="auth_type" value="web" x-model="settingsForm.st_auth_type"
-                                    class="w-4 h-4">
-                                <span class="text-sm">Web Login (新版登录)</span>
-                            </label>
-                        </div>
-
-                        <label class="flex items-center gap-2 cursor-pointer mb-4">
-                            <input type="radio" name="auth_type" value="auth_web" x-model="settingsForm.st_auth_type"
-                                class="w-4 h-4">
-                            <span class="text-sm">Basic Auth + Web Login</span>
-                        </label>
-
-                        <div class="text-xs text-[var(--text-dim)] mb-4 leading-5">
-                            <div>`basicAuthMode: true` 时使用 Basic/Auth；`enableUserAccounts: true` 时使用 Web Login。</div>
-                            <div>`basicAuthMode: true` 且两者同时开启时，请选择 <span class="text-[var(--accent-main)] font-semibold">Basic Auth + Web Login</span>。</div>
-                        </div>
-
-                        <div x-show="settingsForm.st_auth_type === 'basic' || settingsForm.st_auth_type === 'auth_web'" x-transition class="mb-4">
-                            <div class="rounded border border-[var(--border-light)] bg-[var(--bg-panel)] p-3">
-                                <div class="text-xs uppercase tracking-wide text-[var(--text-dim)] mb-2">Basic/Auth</div>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="text-xs text-[var(--text-dim)] uppercase">Auth 用户名</label>
-                                        <input type="text" x-model="settingsForm.st_basic_username" class="form-input mt-1"
-                                            placeholder="basicAuthUser.username">
-                                    </div>
-                                    <div>
-                                        <label class="text-xs text-[var(--text-dim)] uppercase">Auth 密码</label>
-                                        <input type="password" x-model="settingsForm.st_basic_password" class="form-input mt-1"
-                                            placeholder="basicAuthUser.password">
-                                    </div>
-                                </div>
-                                <div class="mt-2 text-xs text-[var(--text-dim)]">
-                                    `perUserBasicAuth: true` 时，这里可以直接填写 Web 用户的 handle/password。
-                                </div>
-                            </div>
-                        </div>
-
-                        <div x-show="settingsForm.st_auth_type === 'web' || settingsForm.st_auth_type === 'auth_web'" x-transition class="mb-4">
-                            <div class="rounded border border-[var(--border-light)] bg-[var(--bg-panel)] p-3">
-                                <div class="text-xs uppercase tracking-wide text-[var(--text-dim)] mb-2">Web/Login</div>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="text-xs text-[var(--text-dim)] uppercase">Web 用户名</label>
-                                        <input type="text" x-model="settingsForm.st_web_username" class="form-input mt-1"
-                                            placeholder="handle，例如 default-user">
-                                    </div>
-                                    <div>
-                                        <label class="text-xs text-[var(--text-dim)] uppercase">Web 密码</label>
-                                        <input type="password" x-model="settingsForm.st_web_password" class="form-input mt-1"
-                                            placeholder="SillyTavern 用户密码">
-                                    </div>
-                                </div>
-                                <div class="mt-2 text-xs text-[var(--text-dim)]">
-                                    Web handle 可在 Account / Manage Users 中查看；密码无法直接查询，只能验证、修改或重置。
-                                </div>
-                            </div>
-                        </div>
-
-                        <div x-show="false" class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-xs text-[var(--text-dim)] uppercase">用户名</label>
-                                <input type="text" x-model="settingsForm.st_username" class="form-input mt-1">
-                            </div>
-                            <div>
-                                <label class="text-xs text-[var(--text-dim)] uppercase">密码</label>
-                                <input type="password" x-model="settingsForm.st_password" class="form-input mt-1">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="settings-group-title mt-8">ST Manager 服务</div>
-                    <div class="settings-row">
-                        <div class="flex gap-4">
-                            <div class="flex-1">
-                                <label class="settings-label text-orange-400">监听地址 (Host)</label>
-                                <div class="settings-desc">默认 127.0.0.1，如需局域网访问请设为 0.0.0.0</div>
-                                <input type="text" x-model="settingsForm.host" class="form-input mt-1"
-                                    placeholder="127.0.0.1">
-                            </div>
-                            <div class="w-32">
-                                <label class="settings-label text-orange-400">端口 (Port)</label>
-                                <div class="settings-desc">重启生效</div>
-                                <input type="number" x-model.number="settingsForm.port" class="form-input mt-1"
-                                    placeholder="5000">
-                            </div>
-                        </div>
-                        <div class="text-xs text-red-400 mt-2">⚠️ 修改 Host 或 Port 需要手动重启程序才能生效。</div>
-                    </div>
-
-                    <div class="settings-row p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]">
-                        <label class="settings-label text-red-400 mb-2 block">🔐 外网访问身份验证</label>
-                        <div class="settings-desc mb-4">
-                            启用后，不在白名单内的来源访问时需要登录验证。<br>
-                            <span class="text-yellow-400 text-xs">⚠️ 默认仅 127.0.0.1 (本机) 免登录，局域网 IP 也需要登录。</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-xs text-[var(--text-dim)] uppercase">用户名</label>
-                                <input type="text" x-model="settingsForm.auth_username" class="form-input mt-1"
-                                    placeholder="留空则不启用认证">
-                            </div>
-                            <div>
-                                <label class="text-xs text-[var(--text-dim)] uppercase">密码</label>
-                                <input type="password" x-model="settingsForm.auth_password" class="form-input mt-1"
-                                    placeholder="留空则不启用认证">
-                            </div>
-                        </div>
-
-                        <!-- IP/域名 白名单 -->
-                        <div class="mt-4 pt-4 border-t border-[var(--border-light)]">
-                            <label class="text-xs text-[var(--text-dim)] uppercase mb-2 block">白名单 (IP/域名, 免登录)</label>
-                            <div class="settings-desc mb-2">
-                                添加信任的 IP 或域名，这些来源无需登录即可访问。<br>
-                                <span class="text-xs opacity-70">
-                                    支持格式：单个 IP (192.168.1.100)、网段 (192.168.1.0/24)、通配符 (192.168.*.*)、域名
-                                    (your-ddns.example.com)
-                                </span>
-                            </div>
-
-                            <!-- 白名单列表 -->
-                            <div class="space-y-2 mb-3">
-                                <div
-                                    class="flex items-center gap-2 px-2 py-1 rounded bg-[var(--bg-panel)] text-sm text-green-400">
-                                    <span class="flex-1 font-mono">127.0.0.1, ::1</span>
-                                    <span class="text-xs opacity-50">(本机 - 固定)</span>
-                                </div>
-                                <template x-for="(ip, index) in (settingsForm.auth_trusted_ips || [])" :key="index">
-                                    <div class="flex items-center gap-2 px-2 py-1 rounded bg-[var(--bg-panel)]">
-                                        <input type="text" x-model="settingsForm.auth_trusted_ips[index]"
-                                            class="flex-1 bg-transparent border-none text-sm font-mono focus:outline-none"
-                                            placeholder="192.168.1.0/24 或 your-ddns.example.com">
-                                        <button @click="settingsForm.auth_trusted_ips.splice(index, 1)"
-                                            class="text-red-400 hover:text-red-300 text-sm px-2">✕</button>
-                                    </div>
-                                </template>
-                            </div>
-
-                            <!-- 添加按钮 -->
-                            <button
-                                @click="if(!settingsForm.auth_trusted_ips) settingsForm.auth_trusted_ips = []; settingsForm.auth_trusted_ips.push('')"
-                                class="btn-secondary text-sm py-1 px-3">
-                                + 添加条目
-                            </button>
-
-                            <!-- 快捷添加 -->
-                            <div class="mt-3 flex flex-wrap gap-2">
-                                <span class="text-xs text-[var(--text-dim)]">快捷添加：</span>
-                                <button
-                                    @click="if(!settingsForm.auth_trusted_ips) settingsForm.auth_trusted_ips = []; if(!settingsForm.auth_trusted_ips.includes('192.168.*.*')) settingsForm.auth_trusted_ips.push('192.168.*.*')"
-                                    class="text-xs px-2 py-0.5 rounded bg-blue-900/30 text-blue-400 hover:bg-blue-900/50">
-                                    192.168.*.* (局域网 C 类)
-                                </button>
-                                <button
-                                    @click="if(!settingsForm.auth_trusted_ips) settingsForm.auth_trusted_ips = []; if(!settingsForm.auth_trusted_ips.includes('10.*.*.*')) settingsForm.auth_trusted_ips.push('10.*.*.*')"
-                                    class="text-xs px-2 py-0.5 rounded bg-blue-900/30 text-blue-400 hover:bg-blue-900/50">
-                                    10.*.*.* (局域网 A 类)
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="text-xs text-yellow-400 mt-3">
-                            ⚠️ 仅当用户名和密码都设置时才会启用认证。修改后保存即可生效。
-                        </div>
-                    </div>
-
-                    <div class="settings-group-title mt-8">Discord 论坛标签抓取 (类脑)</div>
-                    <div class="settings-row p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]">
-                        <div class="settings-label text-indigo-400 mb-2 block">🔌 Discord 认证</div>
-                        <div class="settings-desc mb-4">
-                            配置Discord认证以抓取类脑论坛帖子的标签。<br>
-                            <span class="text-xs opacity-70">
-                                • Bot Token: 从 <a href="https://discord.com/developers/applications" target="_blank"
-                                    class="text-blue-400 hover:underline">Discord Developer Portal</a> 获取<br>
-                                • Cookie: 从浏览器开发者工具复制完整Cookie字符串
-                            </span>
-                        </div>
-
-                        <!-- 认证方式选择 -->
-                        <div class="flex gap-4 mb-4">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" name="discord_auth_type" value="token"
-                                    x-model="settingsForm.discord_auth_type" class="w-4 h-4">
-                                <span class="text-sm">Token (推荐)</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" name="discord_auth_type" value="cookie"
-                                    x-model="settingsForm.discord_auth_type" class="w-4 h-4">
-                                <span class="text-sm">Cookie</span>
-                            </label>
-                        </div>
-
-                        <!-- Token 输入 -->
-                        <div x-show="settingsForm.discord_auth_type === 'token'" x-transition>
-                            <label class="text-xs text-[var(--text-dim)] uppercase">Token (推荐)</label>
-                            <div class="flex gap-2 mt-1">
-                                <div class="flex-1 relative">
-                                    <input :type="showDiscordToken ? 'text' : 'password'"
-                                        x-model="settingsForm.discord_bot_token" class="form-input w-full pr-10"
-                                        placeholder="粘贴浏览器开发者工具中的authorization值">
-                                    <button @click="showDiscordToken = !showDiscordToken"
-                                        class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
-                                        type="button">
-                                        <span x-text="showDiscordToken ? '🙈' : '👁️'"></span>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="text-xs text-[var(--text-dim)] mt-2 space-y-1">
-                                <p><strong>获取方法（参考实现）：</strong></p>
-                                <p>1. 浏览器打开Discord并进入类脑论坛帖子</p>
-                                <p>2. F12打开开发者工具 → Network面板</p>
-                                <p>3. 刷新页面，找到任意 <code>channels/</code> 或 <code>threads/</code> 请求</p>
-                                <p>4. 复制Request Headers中的 <code>authorization</code> 值（以Bearer开头或长字符串）</p>
-                            </div>
-                        </div>
-
-                        <!-- Cookie 输入 -->
-                        <div x-show="settingsForm.discord_auth_type === 'cookie'" x-transition>
-                            <label class="text-xs text-[var(--text-dim)] uppercase">Cookie</label>
-                            <div class="flex gap-2 mt-1">
-                                <div class="flex-1 relative">
-                                    <textarea :type="showDiscordCookie ? 'text' : 'password'"
-                                        x-model="settingsForm.discord_user_cookie" class="form-input w-full pr-10"
-                                        rows="3" placeholder="粘贴浏览器Cookie字符串"></textarea>
-                                    <button @click="showDiscordCookie = !showDiscordCookie"
-                                        class="absolute right-2 top-2 text-gray-400 hover:text-gray-200" type="button">
-                                        <span x-text="showDiscordCookie ? '🙈' : '👁️'"></span>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="text-xs text-[var(--text-dim)] mt-1">
-                                从浏览器开发者工具 Network 面板复制请求中的完整Cookie
-                            </div>
-                        </div>
-
-                        <div class="text-xs text-yellow-400 mt-4">
-                            ⚠️ 认证信息仅保存在本地，不会上传到任何服务器。
-                        </div>
-                    </div>
-
-                </div>
-
-                <!-- TAB 4: 维护与高级 (Maintenance) -->
-                <div x-show="activeSettingTab==='maintenance'" x-transition:enter="transition ease-out duration-200"
-                    x-transition:enter-start="opacity-0 translate-x-2">
-                    <div class="settings-group-title">数据维护</div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <!-- 扫描 -->
-                        <div
-                            class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between">
-                            <div>
-                                <div class="font-bold mb-1">🔄 同步扫描</div>
-                                <div class="text-xs text-[var(--text-dim)] mb-3">强制扫描 cards
-                                    目录并修复数据库索引。如果手动修改了文件，请执行此操作。</div>
-                            </div>
-                            <button @click="scanNow()" class="btn-secondary w-full py-2">立即扫描</button>
-                        </div>
-
-                        <!-- 备份 -->
-                        <div
-                            class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between">
-                            <div>
-                                <div class="font-bold mb-1">💾 备份数据</div>
-                                <div class="text-xs text-[var(--text-dim)] mb-3">备份 ui_data.json 到根目录。建议定期执行。</div>
-                            </div>
-                            <button @click="systemAction('backup_data')" class="btn-secondary w-full py-2">执行备份</button>
-                        </div>
-
-                        <!-- 资源管理 -->
-                        <div
-                            class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between">
-                            <div>
-                                <div class="font-bold mb-1">📂 资源文件夹</div>
-                                <div class="text-xs text-[var(--text-dim)] mb-3">打开存放图片、Markdown附件的目录。</div>
-                            </div>
-                            <button @click="systemAction('open_notes')" class="btn-secondary w-full py-2">打开目录</button>
-                        </div>
-
-                        <!-- 回收站 -->
-                        <div
-                            class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between">
-                            <div>
-                                <div class="font-bold mb-1">🗑️ 文件回收站</div>
-                                <div class="text-xs text-[var(--text-dim)] mb-3">管理已删除的卡片。</div>
-                            </div>
-                            <div class="flex gap-2">
-                                <button @click="openTrashFolder()" class="btn-secondary flex-1 py-2">📂 打开</button>
-                                <button @click="emptyTrash()"
-                                    class="btn-secondary flex-1 py-2 text-red-400 hover:text-red-500">⚠ 清空</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="settings-group-title">高级选项</div>
-
-                    <div class="settings-row border-b border-[var(--border-light)] py-3">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="settings-label text-emerald-400">将斜杠 / 视为标签分隔符</div>
-                                <div class="settings-desc">关闭时仅支持 | 分隔，保留标签中的 /；开启后，| 和 / 都会拆分为多个标签。</div>
-                            </div>
-                            <input type="checkbox" x-model="settingsForm.automation_slash_is_tag_separator"
-                                class="w-5 h-5 accent-[var(--accent-main)]">
-                        </div>
-                    </div>
-
-                    <div class="settings-row border-b border-[var(--border-light)] py-3">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="settings-label">导入时自动重命名为角色名</div>
-                                <div class="settings-desc">关闭后将保留原始文件名（仅在冲突时添加序号）</div>
-                            </div>
-                            <input type="checkbox" x-model="settingsForm.auto_rename_on_import"
-                                class="w-5 h-5 accent-[var(--accent-main)]">
-                        </div>
-                    </div>
-
-                    <div class="settings-row border-b border-[var(--border-light)] py-3">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="settings-label">PNG 元数据确定性排序</div>
-                                <div class="settings-desc">关闭可避免改变外部工具的字节级行为（建议保持关闭）</div>
-                            </div>
-                            <input type="checkbox" x-model="settingsForm.png_deterministic_sort"
-                                class="w-5 h-5 accent-[var(--accent-main)]">
-                        </div>
-                    </div>
-
-                    <div class="settings-row border-b border-[var(--border-light)] py-3">
-                        <div class="settings-label">世界书预览限制</div>
-                        <div class="settings-desc">控制详情弹窗的预览条目数与单条内容最大字符数</div>
-                        <div class="grid grid-cols-2 gap-4 mt-2">
-                            <div>
-                                <label class="text-xs text-[var(--text-dim)]">预览最大条目数</label>
-                                <input type="number" x-model.number="settingsForm.wi_preview_limit"
-                                    class="form-input mt-1" min="0">
-                            </div>
-                            <div>
-                                <label class="text-xs text-[var(--text-dim)]">单条最大字符数</label>
-                                <input type="number" x-model.number="settingsForm.wi_preview_entry_max_chars"
-                                    class="form-input mt-1" min="0">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="settings-row border-b border-[var(--border-light)] py-3">
-                        <div class="settings-label">资源目录绝对路径白名单</div>
-                        <div class="settings-desc">一行一个路径，用于允许资源文件列表接口访问绝对路径</div>
-                        <textarea x-model="allowedAbsRootsText" class="form-input mt-2" rows="3"
-                            placeholder="D:\\SillyTavern\\assets&#10;E:\\resources"></textarea>
-                    </div>
-
-                    <!-- 自动保存设置行 -->
-                    <div class="settings-row border-b border-[var(--border-light)] py-3">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="settings-label">快照保留数量 (Snapshot Limits)</div>
-                                <div class="settings-desc">超过限制时自动删除最旧的快照</div>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4 mt-2">
-                            <div>
-                                <label class="text-xs text-[var(--text-dim)]">手动快照 (Manual) (上限200)</label>
-                                <input type="number" x-model.number="settingsForm.snapshot_limit_manual"
-                                    class="form-input mt-1" min="1" max="200">
-                            </div>
-                            <div>
-                                <label class="text-xs text-[var(--text-dim)]">自动快照 (Auto) (上限50)</label>
-                                <input type="number" x-model.number="settingsForm.snapshot_limit_auto"
-                                    class="form-input mt-1" min="1" max="50">
-                            </div>
-                        </div>
-                        <div class="mt-3">
-                            <label class="text-xs text-[var(--text-dim)]">世界书条目历史保留数 (每条目)</label>
-                            <input type="number" x-model.number="settingsForm.wi_entry_history_limit"
-                                class="form-input mt-1 max-w-[240px]" min="1" max="100">
-                            <div class="text-[11px] text-[var(--text-dim)] mt-1">默认 7，保存时会自动清理更旧版本</div>
-                        </div>
-                        <div class="flex justify-between items-center mb-2">
-                            <div>
-                                <div class="settings-label">智能自动快照 (Smart Auto Snapshot)</div>
-                                <div class="settings-desc">定时检查变更并创建备份（仅当内容变化且历史备份中不存在时创建）</div>
-                            </div>
-                            <!-- 开关 -->
-                            <input type="checkbox" name="toggle" id="auto-save-toggle"
-                                x-model="settingsForm.auto_save_enabled" class="w-5 h-5 accent-[var(--accent-main)]" />
-                        </div>
-
-                        <!-- 时间间隔滑块 (仅开启时显示) -->
-                        <div x-show="settingsForm.auto_save_enabled" x-transition
-                            class="bg-[var(--bg-sub)] p-3 rounded border border-[var(--border-light)] mt-2 flex items-center gap-4">
-                            <span class="text-sm whitespace-nowrap">⏱️ 保存间隔:</span>
-                            <input type="range" min="1" max="60" step="1"
-                                x-model.number="settingsForm.auto_save_interval"
-                                class="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
-                            <span class="text-sm font-mono w-16 text-right">
-                                <span x-text="settingsForm.auto_save_interval"></span> min
-                            </span>
-                        </div>
-                    </div>
-
-                    <div
-                        class="settings-row flex items-center justify-between py-2 border-b border-[var(--border-light)]">
-                        <div>
-                            <div class="settings-label">静默快照 (Silent Snapshot)</div>
-                            <div class="settings-desc">创建备份快照时不弹出确认提示框</div>
-                        </div>
-                        <input type="checkbox" x-model="settingsForm.silent_snapshot"
-                            class="w-5 h-5 accent-[var(--accent-main)]">
-                    </div>
-                </div>
-
-            </main>
-        </div>
-
-        <!-- 3. 底部操作栏 -->
-        <div class="settings-footer">
-            <button @click="saveSettings()" class="btn-primary px-6 py-2 rounded-lg font-bold shadow-lg">
-                💾 保存并应用
-            </button>
-        </div>
+<div
+  x-show="showSettingsModal"
+  x-data="settingsModal"
+  x-cloak
+  class="modal-overlay z-modal-std"
+>
+  <div class="settings-modal-container" @click.away="showSettingsModal=false">
+    <!-- 1. 顶部栏 -->
+    <div class="settings-header">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">⚙️</span>
+        <h3 class="font-bold text-xl">系统设置</h3>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- 帮助按钮 (无边框) -->
+        <button
+          @click="showSettingsHelpModal=true"
+          class="text-gray-400 hover:text-blue-400 transition text-xl px-2 font-bold"
+          title="查看帮助指南"
+        >
+          ?
+        </button>
+        <button
+          @click="showSettingsModal=false"
+          class="text-gray-400 hover:text-red-500 transition text-xl"
+        >
+          ✕
+        </button>
+      </div>
     </div>
 
-    <!-- 设置帮助模态框 -->
-    <div x-show="showSettingsHelpModal" x-cloak x-transition:enter="transition ease-out duration-200"
-        x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
-        x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 scale-100"
-        x-transition:leave-end="opacity-0 scale-95"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-        @click.self="showSettingsHelpModal = false"
-        @click.stop>
+    <!-- 2. 主体区域 -->
+    <div class="settings-body">
+      <!-- 左侧侧边栏导航 -->
+      <aside class="settings-sidebar custom-scrollbar">
+        <button
+          @click="activeSettingTab='general'"
+          class="settings-nav-item"
+          :class="activeSettingTab==='general' ? 'active' : ''"
+        >
+          <span class="nav-icon">📂</span>
+          <span class="nav-text">常规路径</span>
+        </button>
+        <button
+          @click="activeSettingTab='appearance'"
+          class="settings-nav-item"
+          :class="activeSettingTab==='appearance' ? 'active' : ''"
+        >
+          <span class="nav-icon">🎨</span>
+          <span class="nav-text">外观显示</span>
+        </button>
+        <button
+          @click="activeSettingTab='connection'"
+          class="settings-nav-item"
+          :class="activeSettingTab==='connection' ? 'active' : ''"
+        >
+          <span class="nav-icon">🔌</span>
+          <span class="nav-text">连接与服务</span>
+        </button>
+        <button
+          @click="activeSettingTab='maintenance'"
+          class="settings-nav-item"
+          :class="activeSettingTab==='maintenance' ? 'active' : ''"
+        >
+          <span class="nav-icon">🛠️</span>
+          <span class="nav-text">维护与高级</span>
+        </button>
+      </aside>
 
+      <!-- 右侧内容滚动区 -->
+      <main class="settings-content custom-scrollbar">
+        <!-- TAB 1: 常规路径 (General) -->
         <div
-            class="bg-[var(--bg-panel)] border border-[var(--border-light)] rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[85vh]">
-            <!-- 弹窗标题 -->
+          x-show="activeSettingTab==='general'"
+          x-transition:enter="transition ease-out duration-200"
+          x-transition:enter-start="opacity-0 translate-x-2"
+        >
+          <div class="settings-group-title">文件与路径设置</div>
+
+          <div class="settings-row">
+            <label class="settings-label text-blue-400"
+              >角色卡存储路径 (Cards)</label
+            >
+            <div class="settings-desc">
+              存放角色图片和 JSON 的文件夹 (支持相对路径)
+            </div>
+            <div class="flex gap-2 mt-2">
+              <input
+                type="text"
+                x-model="settingsForm.cards_dir"
+                class="form-input"
+                placeholder="cards"
+              />
+              <button
+                @click="systemAction('open_folder')"
+                title="在资源管理器中打开"
+                class="btn-secondary px-3"
+              >
+                📂
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-yellow-400"
+              >世界书存储路径 (Lorebooks)</label
+            >
+            <div class="settings-desc">存放全局共享世界书 (.json) 的目录</div>
+            <input
+              type="text"
+              x-model="settingsForm.world_info_dir"
+              class="form-input mt-2"
+              placeholder="lorebooks"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-emerald-400"
+              >聊天记录路径 (Chats)</label
+            >
+            <div class="settings-desc">
+              存放 SillyTavern 聊天记录 (.jsonl) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.chats_dir"
+              class="form-input mt-2"
+              placeholder="data/library/chats"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-purple-400"
+              >正则脚本路径 (Regex)</label
+            >
+            <div class="settings-desc">存放全局正则脚本 (.json) 的目录</div>
+            <input
+              type="text"
+              x-model="settingsForm.regex_dir"
+              class="form-input mt-2"
+              placeholder="extensions/regex"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-indigo-400"
+              >ST 脚本路径 (Scripts)</label
+            >
+            <div class="settings-desc">
+              存放全局 Tavern Helper 脚本 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.scripts_dir"
+              class="form-input mt-2"
+              placeholder="extensions/tavern_helper"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-yellow-500"
+              >快速回复路径 (Quick Replies)</label
+            >
+            <div class="settings-desc">存放全局快速回复 (.json) 的目录</div>
+            <input
+              type="text"
+              x-model="settingsForm.quick_replies_dir"
+              class="form-input mt-2"
+              placeholder="extensions/quick-replies"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >预设路径 (Presets)</label
+            >
+            <div class="settings-desc">存放 AI 生成参数预设 (.json) 的目录</div>
+            <input
+              type="text"
+              x-model="settingsForm.presets_dir"
+              class="form-input mt-2"
+              placeholder="data/library/presets"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Chat Completion 预设目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Chat Completion 预设 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_openai_preset_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/openai"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST TextGen 预设目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST TextGen 预设 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_textgen_preset_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/textgen"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Instruct 模板目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Instruct 模板 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_instruct_preset_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/instruct"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Context 模板目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Context 模板 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_context_preset_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/context"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Sysprompt 模板目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Sysprompt 模板 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_sysprompt_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/sysprompt"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Reasoning 模板目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Reasoning 模板 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_reasoning_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/reasoning"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-green-400"
+              >资源文件夹路径 (Resources)</label
+            >
+            <div class="settings-desc">
+              存放角色附件、背景图、聊天记录备份的根目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.resources_dir"
+              class="form-input mt-2"
+              placeholder="resources"
+            />
+          </div>
+        </div>
+
+        <!-- TAB 2: 外观显示 (Appearance) -->
+        <div
+          x-show="activeSettingTab==='appearance'"
+          x-transition:enter="transition ease-out duration-200"
+          x-transition:enter-start="opacity-0 translate-x-2"
+        >
+          <div class="settings-group-title">主题与视觉</div>
+
+          <!-- 深色模式 -->
+          <div
+            class="settings-row flex justify-between items-center p-3 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]"
+          >
+            <div>
+              <div class="settings-label">深色模式 (Dark Mode)</div>
+              <div class="settings-desc">切换日间/夜间配色方案</div>
+            </div>
+            <button @click="toggleDarkMode()" class="btn-secondary px-3 py-1">
+              <span x-text="isDarkMode ? '🌙 已开启' : '☀️ 已关闭'"></span>
+            </button>
+          </div>
+
+          <!-- 主题强调色 -->
+          <div class="settings-row">
+            <div class="settings-label mb-2">主题强调色 (Accent Color)</div>
+            <div class="flex gap-4">
+              <button
+                @click="applyTheme('blue')"
+                class="theme-dot"
+                style="background-color: #2563eb"
+                :class="settingsForm.theme_accent==='blue'?'active':''"
+                title="Blue"
+              ></button>
+              <button
+                @click="applyTheme('purple')"
+                class="theme-dot"
+                style="background-color: #7c3aed"
+                :class="settingsForm.theme_accent==='purple'?'active':''"
+                title="Purple"
+              ></button>
+              <button
+                @click="applyTheme('green')"
+                class="theme-dot"
+                style="background-color: #059669"
+                :class="settingsForm.theme_accent==='green'?'active':''"
+                title="Green"
+              ></button>
+              <button
+                @click="applyTheme('red')"
+                class="theme-dot"
+                style="background-color: #dc2626"
+                :class="settingsForm.theme_accent==='red'?'active':''"
+                title="Red"
+              ></button>
+              <button
+                @click="applyTheme('orange')"
+                class="theme-dot"
+                style="background-color: #ea580c"
+                :class="settingsForm.theme_accent==='orange'?'active':''"
+                title="Orange"
+              ></button>
+              <button
+                @click="applyTheme('pink')"
+                class="theme-dot"
+                style="background-color: #db2777"
+                :class="settingsForm.theme_accent==='pink'?'active':''"
+                title="Pink"
+              ></button>
+            </div>
+          </div>
+
+          <!-- 字体风格 -->
+          <div class="settings-row">
+            <div class="settings-label mb-2">字体风格 (Typography)</div>
+            <div class="grid grid-cols-3 gap-3">
+              <button
+                @click="applyFont('sans')"
+                class="py-3 border border-[var(--border-light)] rounded hover:bg-[var(--bg-hover)] transition"
+                :class="settingsForm.font_style === 'sans' ? 'bg-[var(--accent-main)] text-white border-transparent' : 'bg-[var(--bg-sub)]'"
+              >
+                <span class="font-sans text-sm">无衬线 (Sans)</span>
+              </button>
+              <button
+                @click="applyFont('serif')"
+                class="py-3 border border-[var(--border-light)] rounded hover:bg-[var(--bg-hover)] transition"
+                :class="settingsForm.font_style === 'serif' ? 'bg-[var(--accent-main)] text-white border-transparent' : 'bg-[var(--bg-sub)]'"
+              >
+                <span class="font-serif text-sm">衬线体 (Serif)</span>
+              </button>
+              <button
+                @click="applyFont('mono')"
+                class="py-3 border border-[var(--border-light)] rounded hover:bg-[var(--bg-hover)] transition"
+                :class="settingsForm.font_style === 'mono' ? 'bg-[var(--accent-main)] text-white border-transparent' : 'bg-[var(--bg-sub)]'"
+              >
+                <span class="font-mono text-sm">等宽 (Mono)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 布局密度 -->
+          <div class="settings-group-title mt-8">布局与列表</div>
+          <div class="settings-row">
+            <div class="settings-row-header">
+              <div class="settings-label">卡片尺寸基准</div>
+              <span
+                class="text-xs text-accent"
+                x-text="settingsForm.card_width + 'px'"
+              ></span>
+            </div>
+            <input
+              type="range"
+              min="150"
+              max="400"
+              step="10"
+              x-model="settingsForm.card_width"
+              @input="updateCssVariable('--card-min-width', $event.target.value + 'px')"
+              class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="settings-label text-sm">角色卡每页数量</label>
+              <select
+                x-model.number="settingsForm.items_per_page"
+                class="form-input mt-1"
+              >
+                <option value="0">✨ 自动 (Auto)</option>
+                <option value="20">20 张</option>
+                <option value="40">40 张</option>
+                <option value="100">100 张</option>
+                <option value="200">200 张</option>
+              </select>
+            </div>
+            <div>
+              <label class="settings-label text-sm">世界书每页数量</label>
+              <select
+                x-model.number="settingsForm.items_per_page_wi"
+                class="form-input mt-1"
+              >
+                <option value="0">✨ 自动 (Auto)</option>
+                <option value="20">20 本</option>
+                <option value="50">50 本</option>
+                <option value="100">100 本</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-row mt-4">
+            <label class="settings-label text-sm">默认排序方式</label>
+            <select x-model="settingsForm.default_sort" class="form-input mt-1">
+              <option value="date_desc">修改日期 (新 ➜ 旧)</option>
+              <option value="date_asc">修改日期 (旧 ➜ 新)</option>
+              <option value="import_desc">导入日期 (新 ➜ 旧)</option>
+              <option value="import_asc">导入日期 (旧 ➜ 新)</option>
+              <option value="name_asc">名称 (A ➜ Z)</option>
+              <option value="name_desc">名称 (Z ➜ A)</option>
+              <option value="token_desc">Token 量 (大 ➜ 小)</option>
+              <option value="token_asc">Token 量 (小 ➜ 大)</option>
+            </select>
+            <div class="settings-desc mt-2">
+              仅作为初始排序；主界面可临时切换，不会改写此默认值。
+            </div>
+          </div>
+
+          <div
+            class="settings-row flex justify-between items-center py-2 border-b border-[var(--border-light)]"
+          >
+            <div>
+              <div class="settings-label">主界面显示排序选项</div>
+              <div class="settings-desc">
+                在搜索框旁显示“当前列表排序”下拉菜单（仅角色卡管理界面）
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              x-model="settingsForm.show_header_sort"
+              class="w-5 h-5 accent-[var(--accent-main)]"
+            />
+          </div>
+
+          <div class="settings-group-title mt-8">隔离分类</div>
+          <div class="settings-row">
+            <div class="settings-desc">
+              这些分类在其上级目录视图中不会显示，也不会被上级搜索命中；进入分类自身后可正常浏览和搜索。
+            </div>
             <div
-                class="px-6 py-4 border-b border-[var(--border-light)] bg-[var(--bg-sub)] flex justify-between items-center">
-                <h3 class="font-bold text-lg text-[var(--text-main)] flex items-center gap-2">
-                    <span>📖</span>
-                    <span x-text="settingsHelpContent[activeSettingTab]?.title || '帮助指南'"></span>
-                </h3>
-                <button @click.stop="showSettingsHelpModal = false"
-                    class="text-gray-500 hover:text-red-400 px-2 text-xl">✕</button>
+              class="settings-isolated-list mt-3"
+              x-show="isolatedCategories.length > 0"
+            >
+              <template x-for="path in isolatedCategories" :key="path">
+                <div class="settings-isolated-item">
+                  <span class="settings-isolated-path" x-text="path"></span>
+                  <button
+                    type="button"
+                    class="settings-isolated-remove"
+                    @click="removeIsolatedCategory(path)"
+                  >
+                    取消
+                  </button>
+                </div>
+              </template>
+            </div>
+            <div
+              x-show="isolatedCategories.length === 0"
+              class="settings-desc mt-3"
+            >
+              当前没有隔离分类，可在左侧目录树右键或移动端三点菜单中快速添加。
+            </div>
+            <div class="mt-3" x-show="isolatedCategories.length > 0">
+              <button
+                type="button"
+                class="btn-secondary px-3 py-2 text-sm"
+                @click="clearIsolatedCategories()"
+              >
+                清空隔离分类
+              </button>
+            </div>
+          </div>
+
+          <!-- 个性化背景 -->
+          <div class="settings-group-title mt-8">个性化壁纸 (Wallpaper)</div>
+          <div class="settings-row">
+            <div class="flex gap-2 mb-2">
+              <input
+                type="text"
+                x-model="settingsForm.bg_url"
+                @change="updateBackgroundImage(settingsForm.bg_url)"
+                class="form-input text-sm"
+                placeholder="输入图片 URL 或上传 ->"
+              />
+              <button
+                @click="triggerBackgroundUpload()"
+                class="btn-secondary px-3 whitespace-nowrap"
+              >
+                📂 上传
+              </button>
+              <input
+                type="file"
+                x-ref="bgUploadInput"
+                @change="handleBackgroundUpload"
+                accept="image/*"
+                style="display: none"
+              />
+              <button
+                @click="settingsForm.bg_url=''; updateBackgroundImage('')"
+                class="btn-secondary px-3"
+                title="清除"
+              >
+                ✕
+              </button>
             </div>
 
-            <!-- 弹窗内容 -->
-            <div class="p-6 overflow-y-auto custom-scrollbar text-sm text-[var(--text-main)] space-y-6">
-
-                <!-- 常规路径帮助 -->
-                <div x-show="activeSettingTab === 'general'" x-transition>
-                    <div class="space-y-4">
-                        <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4">
-                            <h4 class="font-bold text-[var(--accent-main)] mb-2">📂 路径配置说明</h4>
-                            <p class="text-[var(--text-dim)] mb-3">
-                                各路径支持相对路径（相对于程序根目录）或绝对路径。
-                            </p>
-                            <ul class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs">
-                                <li><strong>角色卡路径：</strong>存放PNG/JSON格式角色卡的目录</li>
-                                <li><strong>世界书路径：</strong>存放全局共享世界书的目录</li>
-                                <li><strong>预设路径：</strong>存放AI生成参数预设的目录</li>
-                                <li><strong>资源路径：</strong>存放角色附件、背景图等资源的根目录</li>
-                            </ul>
-                        </div>
-                        <div
-                            class="bg-[var(--accent-faint)] border border-[var(--accent-light)] rounded p-3 text-xs text-[var(--text-main)]">
-                            💡 提示：修改路径后，建议执行"同步扫描"以重新索引文件。
-                        </div>
-                    </div>
+            <div
+              x-show="settingsForm.bg_url"
+              x-transition
+              class="bg-[var(--bg-sub)] p-3 rounded border border-[var(--border-light)] mt-2"
+            >
+              <div class="mb-3">
+                <div class="flex justify-between text-xs mb-1">
+                  <span>遮罩浓度 (Overlay Opacity)</span>
+                  <span
+                    x-text="Math.round(settingsForm.bg_opacity * 100) + '%'"
+                  ></span>
                 </div>
-
-                <!-- 外观显示帮助 -->
-                <div x-show="activeSettingTab === 'appearance'" x-transition>
-                    <div class="space-y-4">
-                        <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4">
-                            <h4 class="font-bold text-[var(--accent-main)] mb-2">🎨 外观设置说明</h4>
-                            <ul class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs">
-                                <li><strong>深色模式：</strong>切换日间/夜间配色方案</li>
-                                <li><strong>主题强调色：</strong>界面主色调，影响按钮、选中状态等</li>
-                                <li><strong>字体风格：</strong>界面字体类型（无衬线/衬线/等宽）</li>
-                                <li><strong>卡片宽度：</strong>网格视图中卡片的基础宽度</li>
-                                <li><strong>每页数量：</strong>设置为0时自动根据屏幕尺寸计算</li>
-                            </ul>
-                        </div>
-                        <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4">
-                            <h4 class="font-bold text-purple-400 mb-2">🖼️ 个性化壁纸</h4>
-                            <p class="text-[var(--text-dim)] text-xs">
-                                支持上传自定义背景图片，可调整遮罩浓度和模糊度以适应文字阅读。
-                            </p>
-                        </div>
-                    </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="1"
+                  step="0.05"
+                  x-model="settingsForm.bg_opacity"
+                  @input="updateCssVariable('--bg-overlay-opacity', $event.target.value)"
+                  class="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span>背景模糊 (Blur)</span>
+                  <span x-text="settingsForm.bg_blur + 'px'"></span>
                 </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="20"
+                  step="1"
+                  x-model="settingsForm.bg_blur"
+                  @input="updateCssVariable('--bg-blur', $event.target.value + 'px')"
+                  class="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+          <div
+            class="settings-row flex justify-between items-center py-2 border-b border-[var(--border-light)]"
+          >
+            <div>
+              <div class="settings-label">收藏卡片前置 (Pin Favorites)</div>
+              <div class="settings-desc">总是将收藏的卡片排在列表最前面</div>
+            </div>
+            <input
+              type="checkbox"
+              x-model="settingsForm.favorites_first"
+              class="w-5 h-5 accent-[var(--accent-main)]"
+            />
+          </div>
+        </div>
 
-                <!-- 连接与服务帮助 -->
-                <div x-show="activeSettingTab === 'connection'" x-transition>
-                    <div class="space-y-4">
-                        <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4">
-                            <h4 class="font-bold text-emerald-400 mb-2">ST 认证模式排查</h4>
-                            <div class="space-y-3 text-xs text-[var(--text-dim)]">
-                                <p>先打开 SillyTavern 根目录下的 <code class="font-mono">config.yaml</code>，重点检查 <code class="font-mono">basicAuthMode</code>、<code class="font-mono">enableUserAccounts</code>、<code class="font-mono">perUserBasicAuth</code>、<code class="font-mono">basicAuthUser</code>。</p>
-                                <ul class="list-disc list-inside space-y-1">
-                                    <li><strong>Basic/Auth</strong>：适合 <code class="font-mono">basicAuthMode: true</code> 且未使用 Web 账号登录。</li>
-                                    <li><strong>Web/Login</strong>：适合 <code class="font-mono">basicAuthMode: false</code> 且 <code class="font-mono">enableUserAccounts: true</code>。</li>
-                                    <li><strong>Basic Auth + Web Login</strong>：适合两者同时开启。</li>
-                                    <li><code class="font-mono">perUserBasicAuth: true</code> 时，Basic/Auth 直接复用 Web 账号的 handle/password。</li>
-                                    <li><code class="font-mono">perUserBasicAuth: false</code> 时，Basic/Auth 必须填写 <code class="font-mono">basicAuthUser.username/password</code>。</li>
-                                </ul>
-                                <div class="rounded bg-[var(--bg-code)] p-3 space-y-2">
-                                    <div class="text-[var(--text-main)] font-semibold">三种常见配置示例</div>
-                                    <pre class="overflow-x-auto text-[10px]"># Basic/Auth
+        <!-- TAB 3: 连接与服务 (Connection) -->
+        <div
+          x-show="activeSettingTab==='connection'"
+          x-transition:enter="transition ease-out duration-200"
+          x-transition:enter-start="opacity-0 translate-x-2"
+        >
+          <div class="settings-group-title">SillyTavern 本地目录</div>
+
+          <div class="settings-row">
+            <label class="settings-label text-cyan-400">ST 安装目录</label>
+            <div class="settings-desc">
+              请输入 SillyTavern 安装根目录（包含
+              data/public/server.js）。若填入 data 或
+              default-user，将自动转换为根目录。
+            </div>
+            <div class="flex gap-2 mt-2">
+              <input
+                type="text"
+                x-model="settingsForm.st_data_dir"
+                class="form-input flex-1"
+                placeholder="留空自动探测，如 D:\SillyTavern"
+              />
+              <button
+                @click="detectSTPath()"
+                class="btn-secondary px-3"
+                title="自动探测"
+              >
+                🔍
+              </button>
+              <button
+                @click="validateSTPath()"
+                class="btn-secondary px-3"
+                title="验证路径"
+              >
+                ✓
+              </button>
+            </div>
+            <div
+              x-show="stPathStatus"
+              x-transition
+              class="mt-2 text-sm"
+              :class="stPathValid ? 'text-green-400' : 'text-red-400'"
+              x-text="stPathStatus"
+            ></div>
+          </div>
+
+          <div
+            x-show="stResources && Object.keys(stResources).length > 0"
+            x-transition
+            class="settings-row p-3 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]"
+          >
+            <div class="text-sm font-bold mb-2">📊 检测到的资源</div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+              <template x-for="(info, type) in stResources" :key="type">
+                <div
+                  class="flex justify-between p-2 rounded bg-[var(--bg-main)]"
+                >
+                  <span x-text="getResourceLabel(type)"></span>
+                  <span class="text-accent" x-text="info.count + ' 个'"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div class="settings-row">
+            <div class="text-sm font-bold mb-2">🔄 从 SillyTavern 同步资源</div>
+            <div class="settings-desc mb-3">
+              将 SillyTavern 中的资源复制到 ST-Manager 管理的目录
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <button
+                @click="syncFromST('characters')"
+                class="btn-secondary py-2 text-sm"
+                :disabled="syncing"
+              >
+                🎴 同步角色卡
+              </button>
+              <button
+                @click="syncFromST('chats')"
+                class="btn-secondary py-2 text-sm"
+                :disabled="syncing"
+              >
+                💬 同步聊天
+              </button>
+              <button
+                @click="syncFromST('worlds')"
+                class="btn-secondary py-2 text-sm"
+                :disabled="syncing"
+              >
+                📚 同步世界书
+              </button>
+              <button
+                @click="syncFromST('presets')"
+                class="btn-secondary py-2 text-sm"
+                :disabled="syncing"
+              >
+                📝 同步预设
+              </button>
+              <button
+                @click="syncFromST('regex')"
+                class="btn-secondary py-2 text-sm"
+                :disabled="syncing"
+              >
+                🔧 同步正则
+              </button>
+              <button
+                @click="syncFromST('quick_replies')"
+                class="btn-secondary py-2 text-sm"
+                :disabled="syncing"
+              >
+                💬 同步快速回复
+              </button>
+              <button
+                @click="syncAllFromST()"
+                class="btn-primary py-2 text-sm"
+                :disabled="syncing"
+              >
+                ⚡ 全部同步
+              </button>
+            </div>
+            <div
+              x-show="syncStatus"
+              x-transition
+              class="mt-3 p-2 rounded text-sm"
+              :class="syncSuccess ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'"
+              x-text="syncStatus"
+            ></div>
+          </div>
+
+          <div class="settings-group-title mt-8">SillyTavern API 连接</div>
+
+          <div class="settings-row">
+            <label class="settings-label text-pink-400">ST 服务地址</label>
+            <input
+              type="text"
+              x-model="settingsForm.st_url"
+              class="form-input mt-1"
+              placeholder="http://127.0.0.1:8000"
+            />
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-gray-400">请求代理 (Proxy)</label>
+            <div class="settings-desc">
+              可选。若连接 ST 需经由代理，请在此填写 (如
+              http://127.0.0.1:7890)。<br />
+              <span class="text-yellow-500 text-xs"
+                >留空则强制直连 (忽略系统代理)。</span
+              >
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_proxy"
+              class="form-input mt-1"
+              placeholder="http://127.0.0.1:7890"
+            />
+          </div>
+
+          <div
+            class="settings-row p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]"
+          >
+            <label class="settings-label mb-2 block">认证方式</label>
+            <div class="flex gap-4 mb-4">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="auth_type"
+                  value="basic"
+                  x-model="settingsForm.st_auth_type"
+                  class="w-4 h-4"
+                />
+                <span class="text-sm">Basic Auth (API Key / 旧版)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="auth_type"
+                  value="web"
+                  x-model="settingsForm.st_auth_type"
+                  class="w-4 h-4"
+                />
+                <span class="text-sm">Web Login (新版登录)</span>
+              </label>
+            </div>
+
+            <label class="flex items-center gap-2 cursor-pointer mb-4">
+              <input
+                type="radio"
+                name="auth_type"
+                value="auth_web"
+                x-model="settingsForm.st_auth_type"
+                class="w-4 h-4"
+              />
+              <span class="text-sm">Basic Auth + Web Login</span>
+            </label>
+
+            <div class="text-xs text-[var(--text-dim)] mb-4 leading-5">
+              <div>
+                `basicAuthMode: true` 时使用 Basic/Auth；`enableUserAccounts:
+                true` 时使用 Web Login。
+              </div>
+              <div>
+                `basicAuthMode: true` 且两者同时开启时，请选择
+                <span class="text-[var(--accent-main)] font-semibold"
+                  >Basic Auth + Web Login</span
+                >。
+              </div>
+            </div>
+
+            <div
+              x-show="settingsForm.st_auth_type === 'basic' || settingsForm.st_auth_type === 'auth_web'"
+              x-transition
+              class="mb-4"
+            >
+              <div
+                class="rounded border border-[var(--border-light)] bg-[var(--bg-panel)] p-3"
+              >
+                <div
+                  class="text-xs uppercase tracking-wide text-[var(--text-dim)] mb-2"
+                >
+                  Basic/Auth
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="text-xs text-[var(--text-dim)] uppercase"
+                      >Auth 用户名</label
+                    >
+                    <input
+                      type="text"
+                      x-model="settingsForm.st_basic_username"
+                      class="form-input mt-1"
+                      placeholder="basicAuthUser.username"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-xs text-[var(--text-dim)] uppercase"
+                      >Auth 密码</label
+                    >
+                    <input
+                      type="password"
+                      x-model="settingsForm.st_basic_password"
+                      class="form-input mt-1"
+                      placeholder="basicAuthUser.password"
+                    />
+                  </div>
+                </div>
+                <div class="mt-2 text-xs text-[var(--text-dim)]">
+                  `perUserBasicAuth: true` 时，这里可以直接填写 Web 用户的
+                  handle/password。
+                </div>
+              </div>
+            </div>
+
+            <div
+              x-show="settingsForm.st_auth_type === 'web' || settingsForm.st_auth_type === 'auth_web'"
+              x-transition
+              class="mb-4"
+            >
+              <div
+                class="rounded border border-[var(--border-light)] bg-[var(--bg-panel)] p-3"
+              >
+                <div
+                  class="text-xs uppercase tracking-wide text-[var(--text-dim)] mb-2"
+                >
+                  Web/Login
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="text-xs text-[var(--text-dim)] uppercase"
+                      >Web 用户名</label
+                    >
+                    <input
+                      type="text"
+                      x-model="settingsForm.st_web_username"
+                      class="form-input mt-1"
+                      placeholder="handle，例如 default-user"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-xs text-[var(--text-dim)] uppercase"
+                      >Web 密码</label
+                    >
+                    <input
+                      type="password"
+                      x-model="settingsForm.st_web_password"
+                      class="form-input mt-1"
+                      placeholder="SillyTavern 用户密码"
+                    />
+                  </div>
+                </div>
+                <div class="mt-2 text-xs text-[var(--text-dim)]">
+                  Web handle 可在 Account / Manage Users
+                  中查看；密码无法直接查询，只能验证、修改或重置。
+                </div>
+              </div>
+            </div>
+
+            <div x-show="false" class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="text-xs text-[var(--text-dim)] uppercase"
+                  >用户名</label
+                >
+                <input
+                  type="text"
+                  x-model="settingsForm.st_username"
+                  class="form-input mt-1"
+                />
+              </div>
+              <div>
+                <label class="text-xs text-[var(--text-dim)] uppercase"
+                  >密码</label
+                >
+                <input
+                  type="password"
+                  x-model="settingsForm.st_password"
+                  class="form-input mt-1"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-group-title mt-8">ST Manager 服务</div>
+          <div class="settings-row">
+            <div class="flex gap-4">
+              <div class="flex-1">
+                <label class="settings-label text-orange-400"
+                  >监听地址 (Host)</label
+                >
+                <div class="settings-desc">
+                  默认 127.0.0.1，如需局域网访问请设为 0.0.0.0
+                </div>
+                <input
+                  type="text"
+                  x-model="settingsForm.host"
+                  class="form-input mt-1"
+                  placeholder="127.0.0.1"
+                />
+              </div>
+              <div class="w-32">
+                <label class="settings-label text-orange-400"
+                  >端口 (Port)</label
+                >
+                <div class="settings-desc">重启生效</div>
+                <input
+                  type="number"
+                  x-model.number="settingsForm.port"
+                  class="form-input mt-1"
+                  placeholder="5000"
+                />
+              </div>
+            </div>
+            <div class="text-xs text-red-400 mt-2">
+              ⚠️ 修改 Host 或 Port 需要手动重启程序才能生效。
+            </div>
+          </div>
+
+          <div
+            class="settings-row p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]"
+          >
+            <label class="settings-label text-red-400 mb-2 block"
+              >🔐 外网访问身份验证</label
+            >
+            <div class="settings-desc mb-4">
+              启用后，不在白名单内的来源访问时需要登录验证。<br />
+              <span class="text-yellow-400 text-xs"
+                >⚠️ 默认仅 127.0.0.1 (本机) 免登录，局域网 IP 也需要登录。</span
+              >
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="text-xs text-[var(--text-dim)] uppercase"
+                  >用户名</label
+                >
+                <input
+                  type="text"
+                  x-model="settingsForm.auth_username"
+                  class="form-input mt-1"
+                  placeholder="留空则不启用认证"
+                />
+              </div>
+              <div>
+                <label class="text-xs text-[var(--text-dim)] uppercase"
+                  >密码</label
+                >
+                <input
+                  type="password"
+                  x-model="settingsForm.auth_password"
+                  class="form-input mt-1"
+                  placeholder="留空则不启用认证"
+                />
+              </div>
+            </div>
+
+            <!-- IP/域名 白名单 -->
+            <div class="mt-4 pt-4 border-t border-[var(--border-light)]">
+              <label class="text-xs text-[var(--text-dim)] uppercase mb-2 block"
+                >白名单 (IP/域名, 免登录)</label
+              >
+              <div class="settings-desc mb-2">
+                添加信任的 IP 或域名，这些来源无需登录即可访问。<br />
+                <span class="text-xs opacity-70">
+                  支持格式：单个 IP (192.168.1.100)、网段
+                  (192.168.1.0/24)、通配符 (192.168.*.*)、域名
+                  (your-ddns.example.com)
+                </span>
+              </div>
+
+              <!-- 白名单列表 -->
+              <div class="space-y-2 mb-3">
+                <div
+                  class="flex items-center gap-2 px-2 py-1 rounded bg-[var(--bg-panel)] text-sm text-green-400"
+                >
+                  <span class="flex-1 font-mono">127.0.0.1, ::1</span>
+                  <span class="text-xs opacity-50">(本机 - 固定)</span>
+                </div>
+                <template
+                  x-for="(ip, index) in (settingsForm.auth_trusted_ips || [])"
+                  :key="index"
+                >
+                  <div
+                    class="flex items-center gap-2 px-2 py-1 rounded bg-[var(--bg-panel)]"
+                  >
+                    <input
+                      type="text"
+                      x-model="settingsForm.auth_trusted_ips[index]"
+                      class="flex-1 bg-transparent border-none text-sm font-mono focus:outline-none"
+                      placeholder="192.168.1.0/24 或 your-ddns.example.com"
+                    />
+                    <button
+                      @click="settingsForm.auth_trusted_ips.splice(index, 1)"
+                      class="text-red-400 hover:text-red-300 text-sm px-2"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </template>
+              </div>
+
+              <!-- 添加按钮 -->
+              <button
+                @click="if(!settingsForm.auth_trusted_ips) settingsForm.auth_trusted_ips = []; settingsForm.auth_trusted_ips.push('')"
+                class="btn-secondary text-sm py-1 px-3"
+              >
+                + 添加条目
+              </button>
+
+              <!-- 快捷添加 -->
+              <div class="mt-3 flex flex-wrap gap-2">
+                <span class="text-xs text-[var(--text-dim)]">快捷添加：</span>
+                <button
+                  @click="if(!settingsForm.auth_trusted_ips) settingsForm.auth_trusted_ips = []; if(!settingsForm.auth_trusted_ips.includes('192.168.*.*')) settingsForm.auth_trusted_ips.push('192.168.*.*')"
+                  class="text-xs px-2 py-0.5 rounded bg-blue-900/30 text-blue-400 hover:bg-blue-900/50"
+                >
+                  192.168.*.* (局域网 C 类)
+                </button>
+                <button
+                  @click="if(!settingsForm.auth_trusted_ips) settingsForm.auth_trusted_ips = []; if(!settingsForm.auth_trusted_ips.includes('10.*.*.*')) settingsForm.auth_trusted_ips.push('10.*.*.*')"
+                  class="text-xs px-2 py-0.5 rounded bg-blue-900/30 text-blue-400 hover:bg-blue-900/50"
+                >
+                  10.*.*.* (局域网 A 类)
+                </button>
+              </div>
+            </div>
+
+            <div class="text-xs text-yellow-400 mt-3">
+              ⚠️ 仅当用户名和密码都设置时才会启用认证。修改后保存即可生效。
+            </div>
+          </div>
+
+          <div class="settings-group-title mt-8">
+            Discord 论坛标签抓取 (类脑)
+          </div>
+          <div
+            class="settings-row p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]"
+          >
+            <div class="settings-label text-indigo-400 mb-2 block">
+              🔌 Discord 认证
+            </div>
+            <div class="settings-desc mb-4">
+              配置Discord认证以抓取类脑论坛帖子的标签。<br />
+              <span class="text-xs opacity-70">
+                • Bot Token: 从
+                <a
+                  href="https://discord.com/developers/applications"
+                  target="_blank"
+                  class="text-blue-400 hover:underline"
+                  >Discord Developer Portal</a
+                >
+                获取<br />
+                • Cookie: 从浏览器开发者工具复制完整Cookie字符串
+              </span>
+            </div>
+
+            <!-- 认证方式选择 -->
+            <div class="flex gap-4 mb-4">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="discord_auth_type"
+                  value="token"
+                  x-model="settingsForm.discord_auth_type"
+                  class="w-4 h-4"
+                />
+                <span class="text-sm">Token (推荐)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="discord_auth_type"
+                  value="cookie"
+                  x-model="settingsForm.discord_auth_type"
+                  class="w-4 h-4"
+                />
+                <span class="text-sm">Cookie</span>
+              </label>
+            </div>
+
+            <!-- Token 输入 -->
+            <div
+              x-show="settingsForm.discord_auth_type === 'token'"
+              x-transition
+            >
+              <label class="text-xs text-[var(--text-dim)] uppercase"
+                >Token (推荐)</label
+              >
+              <div class="flex gap-2 mt-1">
+                <div class="flex-1 relative">
+                  <input
+                    :type="showDiscordToken ? 'text' : 'password'"
+                    x-model="settingsForm.discord_bot_token"
+                    class="form-input w-full pr-10"
+                    placeholder="粘贴浏览器开发者工具中的authorization值"
+                  />
+                  <button
+                    @click="showDiscordToken = !showDiscordToken"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
+                    type="button"
+                  >
+                    <span x-text="showDiscordToken ? '🙈' : '👁️'"></span>
+                  </button>
+                </div>
+              </div>
+              <div class="text-xs text-[var(--text-dim)] mt-2 space-y-1">
+                <p><strong>获取方法（参考实现）：</strong></p>
+                <p>1. 浏览器打开Discord并进入类脑论坛帖子</p>
+                <p>2. F12打开开发者工具 → Network面板</p>
+                <p>
+                  3. 刷新页面，找到任意 <code>channels/</code> 或
+                  <code>threads/</code> 请求
+                </p>
+                <p>
+                  4. 复制Request Headers中的
+                  <code>authorization</code> 值（以Bearer开头或长字符串）
+                </p>
+              </div>
+            </div>
+
+            <!-- Cookie 输入 -->
+            <div
+              x-show="settingsForm.discord_auth_type === 'cookie'"
+              x-transition
+            >
+              <label class="text-xs text-[var(--text-dim)] uppercase"
+                >Cookie</label
+              >
+              <div class="flex gap-2 mt-1">
+                <div class="flex-1 relative">
+                  <textarea
+                    :type="showDiscordCookie ? 'text' : 'password'"
+                    x-model="settingsForm.discord_user_cookie"
+                    class="form-input w-full pr-10"
+                    rows="3"
+                    placeholder="粘贴浏览器Cookie字符串"
+                  ></textarea>
+                  <button
+                    @click="showDiscordCookie = !showDiscordCookie"
+                    class="absolute right-2 top-2 text-gray-400 hover:text-gray-200"
+                    type="button"
+                  >
+                    <span x-text="showDiscordCookie ? '🙈' : '👁️'"></span>
+                  </button>
+                </div>
+              </div>
+              <div class="text-xs text-[var(--text-dim)] mt-1">
+                从浏览器开发者工具 Network 面板复制请求中的完整Cookie
+              </div>
+            </div>
+
+            <div class="text-xs text-yellow-400 mt-4">
+              ⚠️ 认证信息仅保存在本地，不会上传到任何服务器。
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: 维护与高级 (Maintenance) -->
+        <div
+          x-show="activeSettingTab==='maintenance'"
+          x-transition:enter="transition ease-out duration-200"
+          x-transition:enter-start="opacity-0 translate-x-2"
+        >
+          <div class="settings-group-title">数据维护</div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <!-- 扫描 -->
+            <div
+              class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between"
+            >
+              <div>
+                <div class="font-bold mb-1">🔄 同步扫描</div>
+                <div class="text-xs text-[var(--text-dim)] mb-3">
+                  强制扫描 cards
+                  目录并修复数据库索引。如果手动修改了文件，请执行此操作。
+                </div>
+              </div>
+              <button @click="scanNow()" class="btn-secondary w-full py-2">
+                立即扫描
+              </button>
+            </div>
+
+            <!-- 备份 -->
+            <div
+              class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between"
+            >
+              <div>
+                <div class="font-bold mb-1">💾 备份数据</div>
+                <div class="text-xs text-[var(--text-dim)] mb-3">
+                  备份 ui_data.json 到根目录。建议定期执行。
+                </div>
+              </div>
+              <button
+                @click="systemAction('backup_data')"
+                class="btn-secondary w-full py-2"
+              >
+                执行备份
+              </button>
+            </div>
+
+            <!-- 资源管理 -->
+            <div
+              class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between"
+            >
+              <div>
+                <div class="font-bold mb-1">📂 资源文件夹</div>
+                <div class="text-xs text-[var(--text-dim)] mb-3">
+                  打开存放图片、Markdown附件的目录。
+                </div>
+              </div>
+              <button
+                @click="systemAction('open_notes')"
+                class="btn-secondary w-full py-2"
+              >
+                打开目录
+              </button>
+            </div>
+
+            <!-- 回收站 -->
+            <div
+              class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between"
+            >
+              <div>
+                <div class="font-bold mb-1">🗑️ 文件回收站</div>
+                <div class="text-xs text-[var(--text-dim)] mb-3">
+                  管理已删除的卡片。
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button
+                  @click="openTrashFolder()"
+                  class="btn-secondary flex-1 py-2"
+                >
+                  📂 打开
+                </button>
+                <button
+                  @click="emptyTrash()"
+                  class="btn-secondary flex-1 py-2 text-red-400 hover:text-red-500"
+                >
+                  ⚠ 清空
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-group-title">高级选项</div>
+
+          <div class="settings-row border-b border-[var(--border-light)] py-3">
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="settings-label text-emerald-400">
+                  将斜杠 / 视为标签分隔符
+                </div>
+                <div class="settings-desc">
+                  关闭时仅支持 | 分隔，保留标签中的 /；开启后，| 和 /
+                  都会拆分为多个标签。
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                x-model="settingsForm.automation_slash_is_tag_separator"
+                class="w-5 h-5 accent-[var(--accent-main)]"
+              />
+            </div>
+          </div>
+
+          <div class="settings-row border-b border-[var(--border-light)] py-3">
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="settings-label">导入时自动重命名为角色名</div>
+                <div class="settings-desc">
+                  关闭后将保留原始文件名（仅在冲突时添加序号）
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                x-model="settingsForm.auto_rename_on_import"
+                class="w-5 h-5 accent-[var(--accent-main)]"
+              />
+            </div>
+          </div>
+
+          <div class="settings-row border-b border-[var(--border-light)] py-3">
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="settings-label">PNG 元数据确定性排序</div>
+                <div class="settings-desc">
+                  关闭可避免改变外部工具的字节级行为（建议保持关闭）
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                x-model="settingsForm.png_deterministic_sort"
+                class="w-5 h-5 accent-[var(--accent-main)]"
+              />
+            </div>
+          </div>
+
+          <div class="settings-row border-b border-[var(--border-light)] py-3">
+            <div class="settings-label">世界书预览限制</div>
+            <div class="settings-desc">
+              控制详情弹窗的预览条目数与单条内容最大字符数
+            </div>
+            <div class="grid grid-cols-2 gap-4 mt-2">
+              <div>
+                <label class="text-xs text-[var(--text-dim)]"
+                  >预览最大条目数</label
+                >
+                <input
+                  type="number"
+                  x-model.number="settingsForm.wi_preview_limit"
+                  class="form-input mt-1"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label class="text-xs text-[var(--text-dim)]"
+                  >单条最大字符数</label
+                >
+                <input
+                  type="number"
+                  x-model.number="settingsForm.wi_preview_entry_max_chars"
+                  class="form-input mt-1"
+                  min="0"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-row border-b border-[var(--border-light)] py-3">
+            <div class="settings-label">资源目录绝对路径白名单</div>
+            <div class="settings-desc">
+              一行一个路径，用于允许资源文件列表接口访问绝对路径
+            </div>
+            <textarea
+              x-model="allowedAbsRootsText"
+              class="form-input mt-2"
+              rows="3"
+              placeholder="D:\\SillyTavern\\assets&#10;E:\\resources"
+            ></textarea>
+          </div>
+
+          <!-- 自动保存设置行 -->
+          <div class="settings-row border-b border-[var(--border-light)] py-3">
+            <div class="flex justify-between items-center">
+              <div>
+                <div class="settings-label">快照保留数量 (Snapshot Limits)</div>
+                <div class="settings-desc">超过限制时自动删除最旧的快照</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mt-2">
+              <div>
+                <label class="text-xs text-[var(--text-dim)]"
+                  >手动快照 (Manual) (上限200)</label
+                >
+                <input
+                  type="number"
+                  x-model.number="settingsForm.snapshot_limit_manual"
+                  class="form-input mt-1"
+                  min="1"
+                  max="200"
+                />
+              </div>
+              <div>
+                <label class="text-xs text-[var(--text-dim)]"
+                  >自动快照 (Auto) (上限50)</label
+                >
+                <input
+                  type="number"
+                  x-model.number="settingsForm.snapshot_limit_auto"
+                  class="form-input mt-1"
+                  min="1"
+                  max="50"
+                />
+              </div>
+            </div>
+            <div class="mt-3">
+              <label class="text-xs text-[var(--text-dim)]"
+                >世界书条目历史保留数 (每条目)</label
+              >
+              <input
+                type="number"
+                x-model.number="settingsForm.wi_entry_history_limit"
+                class="form-input mt-1 max-w-[240px]"
+                min="1"
+                max="100"
+              />
+              <div class="text-[11px] text-[var(--text-dim)] mt-1">
+                默认 7，保存时会自动清理更旧版本
+              </div>
+            </div>
+            <div class="flex justify-between items-center mb-2">
+              <div>
+                <div class="settings-label">
+                  智能自动快照 (Smart Auto Snapshot)
+                </div>
+                <div class="settings-desc">
+                  定时检查变更并创建备份（仅当内容变化且历史备份中不存在时创建）
+                </div>
+              </div>
+              <!-- 开关 -->
+              <input
+                type="checkbox"
+                name="toggle"
+                id="auto-save-toggle"
+                x-model="settingsForm.auto_save_enabled"
+                class="w-5 h-5 accent-[var(--accent-main)]"
+              />
+            </div>
+
+            <!-- 时间间隔滑块 (仅开启时显示) -->
+            <div
+              x-show="settingsForm.auto_save_enabled"
+              x-transition
+              class="bg-[var(--bg-sub)] p-3 rounded border border-[var(--border-light)] mt-2 flex items-center gap-4"
+            >
+              <span class="text-sm whitespace-nowrap">⏱️ 保存间隔:</span>
+              <input
+                type="range"
+                min="1"
+                max="60"
+                step="1"
+                x-model.number="settingsForm.auto_save_interval"
+                class="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+              />
+              <span class="text-sm font-mono w-16 text-right">
+                <span x-text="settingsForm.auto_save_interval"></span> min
+              </span>
+            </div>
+          </div>
+
+          <div
+            class="settings-row flex items-center justify-between py-2 border-b border-[var(--border-light)]"
+          >
+            <div>
+              <div class="settings-label">静默快照 (Silent Snapshot)</div>
+              <div class="settings-desc">创建备份快照时不弹出确认提示框</div>
+            </div>
+            <input
+              type="checkbox"
+              x-model="settingsForm.silent_snapshot"
+              class="w-5 h-5 accent-[var(--accent-main)]"
+            />
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- 3. 底部操作栏 -->
+    <div class="settings-footer">
+      <button
+        @click="saveSettings()"
+        class="btn-primary px-6 py-2 rounded-lg font-bold shadow-lg"
+      >
+        💾 保存并应用
+      </button>
+    </div>
+  </div>
+
+  <!-- 设置帮助模态框 -->
+  <div
+    x-show="showSettingsHelpModal"
+    x-cloak
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 scale-95"
+    x-transition:enter-end="opacity-100 scale-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 scale-100"
+    x-transition:leave-end="opacity-0 scale-95"
+    class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+    @click.self="showSettingsHelpModal = false"
+    @click.stop
+  >
+    <div
+      class="bg-[var(--bg-panel)] border border-[var(--border-light)] rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[85vh]"
+    >
+      <!-- 弹窗标题 -->
+      <div
+        class="px-6 py-4 border-b border-[var(--border-light)] bg-[var(--bg-sub)] flex justify-between items-center"
+      >
+        <h3
+          class="font-bold text-lg text-[var(--text-main)] flex items-center gap-2"
+        >
+          <span>📖</span>
+          <span
+            x-text="settingsHelpContent[activeSettingTab]?.title || '帮助指南'"
+          ></span>
+        </h3>
+        <button
+          @click.stop="showSettingsHelpModal = false"
+          class="text-gray-500 hover:text-red-400 px-2 text-xl"
+        >
+          ✕
+        </button>
+      </div>
+
+      <!-- 弹窗内容 -->
+      <div
+        class="p-6 overflow-y-auto custom-scrollbar text-sm text-[var(--text-main)] space-y-6"
+      >
+        <!-- 常规路径帮助 -->
+        <div x-show="activeSettingTab === 'general'" x-transition>
+          <div class="space-y-4">
+            <div
+              class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4"
+            >
+              <h4 class="font-bold text-[var(--accent-main)] mb-2">
+                📂 路径配置说明
+              </h4>
+              <p class="text-[var(--text-dim)] mb-3">
+                各路径支持相对路径（相对于程序根目录）或绝对路径。
+              </p>
+              <ul
+                class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs"
+              >
+                <li>
+                  <strong>角色卡路径：</strong>存放PNG/JSON格式角色卡的目录
+                </li>
+                <li><strong>世界书路径：</strong>存放全局共享世界书的目录</li>
+                <li><strong>预设路径：</strong>存放AI生成参数预设的目录</li>
+                <li>
+                  <strong>资源路径：</strong>存放角色附件、背景图等资源的根目录
+                </li>
+              </ul>
+            </div>
+            <div
+              class="bg-[var(--accent-faint)] border border-[var(--accent-light)] rounded p-3 text-xs text-[var(--text-main)]"
+            >
+              💡 提示：修改路径后，建议执行"同步扫描"以重新索引文件。
+            </div>
+          </div>
+        </div>
+
+        <!-- 外观显示帮助 -->
+        <div x-show="activeSettingTab === 'appearance'" x-transition>
+          <div class="space-y-4">
+            <div
+              class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4"
+            >
+              <h4 class="font-bold text-[var(--accent-main)] mb-2">
+                🎨 外观设置说明
+              </h4>
+              <ul
+                class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs"
+              >
+                <li><strong>深色模式：</strong>切换日间/夜间配色方案</li>
+                <li>
+                  <strong>主题强调色：</strong>界面主色调，影响按钮、选中状态等
+                </li>
+                <li>
+                  <strong>字体风格：</strong>界面字体类型（无衬线/衬线/等宽）
+                </li>
+                <li><strong>卡片宽度：</strong>网格视图中卡片的基础宽度</li>
+                <li>
+                  <strong>每页数量：</strong>设置为0时自动根据屏幕尺寸计算
+                </li>
+              </ul>
+            </div>
+            <div
+              class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4"
+            >
+              <h4 class="font-bold text-purple-400 mb-2">🖼️ 个性化壁纸</h4>
+              <p class="text-[var(--text-dim)] text-xs">
+                支持上传自定义背景图片，可调整遮罩浓度和模糊度以适应文字阅读。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 连接与服务帮助 -->
+        <div x-show="activeSettingTab === 'connection'" x-transition>
+          <div class="space-y-4">
+            <div
+              class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4"
+            >
+              <h4 class="font-bold text-emerald-400 mb-2">ST 认证模式排查</h4>
+              <div class="space-y-3 text-xs text-[var(--text-dim)]">
+                <p>
+                  先打开 SillyTavern 根目录下的
+                  <code class="font-mono">config.yaml</code>，重点检查
+                  <code class="font-mono">basicAuthMode</code>、<code
+                    class="font-mono"
+                    >enableUserAccounts</code
+                  >、<code class="font-mono">perUserBasicAuth</code>、<code
+                    class="font-mono"
+                    >basicAuthUser</code
+                  >。
+                </p>
+                <ul class="list-disc list-inside space-y-1">
+                  <li>
+                    <strong>Basic/Auth</strong>：适合
+                    <code class="font-mono">basicAuthMode: true</code> 且未使用
+                    Web 账号登录。
+                  </li>
+                  <li>
+                    <strong>Web/Login</strong>：适合
+                    <code class="font-mono">basicAuthMode: false</code> 且
+                    <code class="font-mono">enableUserAccounts: true</code>。
+                  </li>
+                  <li>
+                    <strong>Basic Auth + Web Login</strong>：适合两者同时开启。
+                  </li>
+                  <li>
+                    <code class="font-mono">perUserBasicAuth: true</code>
+                    时，Basic/Auth 直接复用 Web 账号的 handle/password。
+                  </li>
+                  <li>
+                    <code class="font-mono">perUserBasicAuth: false</code>
+                    时，Basic/Auth 必须填写
+                    <code class="font-mono"
+                      >basicAuthUser.username/password</code
+                    >。
+                  </li>
+                </ul>
+                <div class="rounded bg-[var(--bg-code)] p-3 space-y-2">
+                  <div class="text-[var(--text-main)] font-semibold">
+                    三种常见配置示例
+                  </div>
+                  <pre class="overflow-x-auto text-[10px]">
+# Basic/Auth
 basicAuthMode: true
 enableUserAccounts: false
 perUserBasicAuth: false
@@ -906,94 +1670,154 @@ enableUserAccounts: true
 perUserBasicAuth: false
 basicAuthUser:
   username: admin
-  password: change-me</pre>
-                                </div>
-                                <div class="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">
-                                    Web 用户名是账号 handle，可在 Account / Manage Users 中查看；Web 密码无法直接查询，只能验证、修改，忘记时请使用官方 <code class="font-mono">recover.js</code> 流程重置。
-                                </div>
-                            </div>
-                        </div>
-                        <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4">
-                            <h4 class="font-bold text-[var(--accent-main)] mb-2">🔗 SillyTavern 集成</h4>
-                            <p class="text-[var(--text-dim)] text-xs mb-3">
-                                配置本地SillyTavern目录后，可同步角色卡、世界书、预设等资源。
-                            </p>
-                            <ul class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs">
-                                <li>点击"自动探测路径"尝试自动查找安装目录</li>
-                                <li>支持Windows（D:/SillyTavern、E:/SillyTavern等）常见路径</li>
-                                <li>验证路径后显示各资源类型数量</li>
-                            </ul>
-                        </div>
+  password: change-me</pre
+                  >
+                </div>
+                <div
+                  class="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200"
+                >
+                  Web 用户名是账号 handle，可在 Account / Manage Users
+                  中查看；Web 密码无法直接查询，只能验证、修改，忘记时请使用官方
+                  <code class="font-mono">recover.js</code> 流程重置。
+                </div>
+              </div>
+            </div>
+            <div
+              class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4"
+            >
+              <h4 class="font-bold text-[var(--accent-main)] mb-2">
+                🔗 SillyTavern 集成
+              </h4>
+              <p class="text-[var(--text-dim)] text-xs mb-3">
+                配置本地SillyTavern目录后，可同步角色卡、世界书、预设等资源。
+              </p>
+              <ul
+                class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs"
+              >
+                <li>点击"自动探测路径"尝试自动查找安装目录</li>
+                <li>支持Windows（D:/SillyTavern、E:/SillyTavern等）常见路径</li>
+                <li>验证路径后显示各资源类型数量</li>
+              </ul>
+            </div>
 
-                        <!-- Discord认证帮助 -->
-                        <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4">
-                            <h4 class="font-bold text-indigo-400 mb-2">🔌 Discord 论坛标签抓取</h4>
-                            <p class="text-[var(--text-dim)] text-xs mb-3">
-                                配置Discord认证后，自动化规则可从类脑论坛帖子抓取标签。
-                            </p>
+            <!-- Discord认证帮助 -->
+            <div
+              class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4"
+            >
+              <h4 class="font-bold text-indigo-400 mb-2">
+                🔌 Discord 论坛标签抓取
+              </h4>
+              <p class="text-[var(--text-dim)] text-xs mb-3">
+                配置Discord认证后，自动化规则可从类脑论坛帖子抓取标签。
+              </p>
 
-                            <div class="bg-[var(--bg-code)] rounded p-3 mb-3">
-                                <div class="font-bold text-xs text-green-400 mb-2">获取 Discord Token 的步骤：</div>
-                                <ol class="list-decimal list-inside space-y-1 text-[var(--text-dim)] text-xs">
-                                    <li>浏览器打开 Discord 网页版并登录</li>
-                                    <li>按 <code class="bg-[var(--bg-sub)] px-1 rounded">F12</code> 打开开发者工具</li>
-                                    <li>按 <code class="bg-[var(--bg-sub)] px-1 rounded">Ctrl + Shift + M</code> 启用移动设备模拟
-                                    </li>
-                                    <li>切换到 <strong>Console（控制台）</strong> 标签</li>
-                                    <li class="text-yellow-400">⚠️ Chrome新版：如提示无法粘贴，输入 <code
-                                            class="bg-[var(--bg-sub)] px-1 rounded">allow pasting</code> 解锁</li>
-                                    <li>粘贴以下代码并回车：
-                                        <pre class="bg-[var(--bg-sub)] p-2 rounded mt-1 overflow-x-auto text-[10px]">const iframe = document.createElement('iframe');
+              <div class="bg-[var(--bg-code)] rounded p-3 mb-3">
+                <div class="font-bold text-xs text-green-400 mb-2">
+                  获取 Discord Token 的步骤：
+                </div>
+                <ol
+                  class="list-decimal list-inside space-y-1 text-[var(--text-dim)] text-xs"
+                >
+                  <li>浏览器打开 Discord 网页版并登录</li>
+                  <li>
+                    按
+                    <code class="bg-[var(--bg-sub)] px-1 rounded">F12</code>
+                    打开开发者工具
+                  </li>
+                  <li>
+                    按
+                    <code class="bg-[var(--bg-sub)] px-1 rounded"
+                      >Ctrl + Shift + M</code
+                    >
+                    启用移动设备模拟
+                  </li>
+                  <li>切换到 <strong>Console（控制台）</strong> 标签</li>
+                  <li class="text-yellow-400">
+                    ⚠️ Chrome新版：如提示无法粘贴，输入
+                    <code class="bg-[var(--bg-sub)] px-1 rounded"
+                      >allow pasting</code
+                    >
+                    解锁
+                  </li>
+                  <li>
+                    粘贴以下代码并回车：
+                    <pre
+                      class="bg-[var(--bg-sub)] p-2 rounded mt-1 overflow-x-auto text-[10px]"
+                    >
+const iframe = document.createElement('iframe');
 console.log(
   'Token: %c%s',
   'font-size:16px;',
   JSON.parse(document.body.appendChild(iframe).contentWindow.localStorage.token)
 );
-iframe.remove();</pre>
-                                    </li>
-                                    <li>控制台显示 <code class="text-green-400">Token: xxx</code>，复制该值</li>
-                                    <li>在下方 Discord Token 输入框中粘贴保存</li>
-                                </ol>
-                            </div>
+iframe.remove();</pre
+                    >
+                  </li>
+                  <li>
+                    控制台显示
+                    <code class="text-green-400">Token: xxx</code>，复制该值
+                  </li>
+                  <li>在下方 Discord Token 输入框中粘贴保存</li>
+                </ol>
+              </div>
 
-                            <div class="bg-amber-100 border border-amber-300 rounded p-3 text-xs">
-                                <div class="text-amber-800 font-bold mb-1">⚠️ 注意事项：</div>
-                                <ul class="list-disc list-inside space-y-1 text-amber-700">
-                                    <li>Token 有过期时间，通常几小时到几天不等</li>
-                                    <li>如遇 401 错误，请重新获取 Token</li>
-                                    <li>Token 仅保存在本地，不会上传到任何服务器</li>
-                                    <li>需要 Discord 账号已加入类脑服务器并有访问权限</li>
-                                </ul>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-
-                <!-- 维护与高级帮助 -->
-                <div x-show="activeSettingTab === 'maintenance'" x-transition>
-                    <div class="space-y-4">
-                        <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4">
-                            <h4 class="font-bold text-[var(--accent-main)] mb-2">🛠️ 维护功能说明</h4>
-                            <ul class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs">
-                                <li><strong>同步扫描：</strong>强制扫描所有目录并修复数据库索引</li>
-                                <li><strong>备份数据：</strong>备份 ui_data.json 到根目录</li>
-                                <li><strong>回收站：</strong>管理已删除的卡片，可恢复或彻底删除</li>
-                            </ul>
-                        </div>
-                        <div class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4">
-                            <h4 class="font-bold text-orange-400 mb-2">⚙️ 高级选项</h4>
-                            <ul class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs">
-                                <li><strong>自动化标签分隔符：</strong>控制是否将 <code class="font-mono">/</code> 作为标签分隔符</li>
-                                <li><strong>智能自动快照：</strong>定时检查变更并创建备份</li>
-                                <li><strong>PNG确定性排序：</strong>避免改变外部工具的字节级行为</li>
-                                <li><strong>世界书预览限制：</strong>防止大型世界书卡死界面</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
+              <div
+                class="bg-amber-100 border border-amber-300 rounded p-3 text-xs"
+              >
+                <div class="text-amber-800 font-bold mb-1">⚠️ 注意事项：</div>
+                <ul class="list-disc list-inside space-y-1 text-amber-700">
+                  <li>Token 有过期时间，通常几小时到几天不等</li>
+                  <li>如遇 401 错误，请重新获取 Token</li>
+                  <li>Token 仅保存在本地，不会上传到任何服务器</li>
+                  <li>需要 Discord 账号已加入类脑服务器并有访问权限</li>
+                </ul>
+              </div>
             </div>
+          </div>
         </div>
+
+        <!-- 维护与高级帮助 -->
+        <div x-show="activeSettingTab === 'maintenance'" x-transition>
+          <div class="space-y-4">
+            <div
+              class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4"
+            >
+              <h4 class="font-bold text-[var(--accent-main)] mb-2">
+                🛠️ 维护功能说明
+              </h4>
+              <ul
+                class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs"
+              >
+                <li>
+                  <strong>同步扫描：</strong>强制扫描所有目录并修复数据库索引
+                </li>
+                <li><strong>备份数据：</strong>备份 ui_data.json 到根目录</li>
+                <li>
+                  <strong>回收站：</strong>管理已删除的卡片，可恢复或彻底删除
+                </li>
+              </ul>
+            </div>
+            <div
+              class="bg-[var(--bg-sub)] rounded border border-[var(--border-light)] p-4"
+            >
+              <h4 class="font-bold text-orange-400 mb-2">⚙️ 高级选项</h4>
+              <ul
+                class="list-disc list-inside space-y-2 text-[var(--text-dim)] text-xs"
+              >
+                <li>
+                  <strong>自动化标签分隔符：</strong>控制是否将
+                  <code class="font-mono">/</code> 作为标签分隔符
+                </li>
+                <li><strong>智能自动快照：</strong>定时检查变更并创建备份</li>
+                <li>
+                  <strong>PNG确定性排序：</strong>避免改变外部工具的字节级行为
+                </li>
+                <li><strong>世界书预览限制：</strong>防止大型世界书卡死界面</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
 </div>

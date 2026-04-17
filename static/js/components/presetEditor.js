@@ -257,6 +257,51 @@ export default function presetEditor() {
         : [];
     },
 
+    get editorProfile() {
+      return this.editingPresetFile?.editor_profile || null;
+    },
+
+    get isMirroredProfileEditor() {
+      return Boolean(
+        this.editorProfile?.id && this.editorProfile?.family === "st_mirror",
+      );
+    },
+
+    get mirroredProfileSections() {
+      return Array.isArray(this.editorProfile?.sections)
+        ? this.editorProfile.sections
+        : [];
+    },
+
+    get activeMirroredSection() {
+      if (!this.isMirroredProfileEditor) return null;
+      if (this.activeWorkspace === "prompts") {
+        return (
+          this.mirroredProfileSections.find(
+            (section) => section.id === "prompt_manager",
+          ) || null
+        );
+      }
+      return (
+        this.mirroredProfileSections.find(
+          (section) => section.id === this.activeWorkspace,
+        ) ||
+        this.mirroredProfileSections[0] ||
+        null
+      );
+    },
+
+    getMirroredSectionFieldCount(sectionId) {
+      return this.getProfileSectionFields(sectionId).length;
+    },
+
+    get activeMirroredField() {
+      if (!this.activeMirroredSection) return null;
+      return (
+        this.getProfileSectionFields(this.activeMirroredSection.id)[0] || null
+      );
+    },
+
     get promptItems() {
       this.ensureEditorCollections();
       return this.promptItemsCache;
@@ -1168,6 +1213,124 @@ export default function presetEditor() {
           canonical_key: meta?.canonical_key || fieldKey,
           ...meta,
         }));
+    },
+
+    getProfileField(fieldKey) {
+      const fields = Object.values(this.editorProfile?.fields || {});
+      return (
+        fields.find(
+          (field) =>
+            field?.canonical_key === fieldKey ||
+            field?.storage_key === fieldKey ||
+            field?.id === fieldKey,
+        ) || null
+      );
+    },
+
+    getProfileSectionFields(sectionId) {
+      return Object.values(this.editorProfile?.fields || {}).filter(
+        (field) => field.section === sectionId,
+      );
+    },
+
+    getProfileFieldValue(fieldKey) {
+      const field = this.getProfileField(fieldKey);
+      if (!field) return null;
+      return this.getByPath(field.storage_key || fieldKey);
+    },
+
+    resolveProfileFieldMax(field) {
+      const maxValue = field?.max;
+      const fieldKey = field?.id || field?.canonical_key || field?.storage_key;
+      if (
+        maxValue &&
+        typeof maxValue === "object" &&
+        maxValue.type === "dynamic"
+      ) {
+        const currentValue = Number(this.getProfileFieldValue(fieldKey));
+        const fallback = Number(maxValue.fallback ?? 4095);
+        return Math.max(
+          Number.isFinite(currentValue) ? currentValue : 0,
+          fallback,
+        );
+      }
+      const numeric = Number(maxValue);
+      return Number.isFinite(numeric) ? numeric : null;
+    },
+
+    normalizeProfileFieldValue(field, value) {
+      if (!field) return value;
+      if (field.control === "checkbox") {
+        return (
+          value === true || value === "true" || value === 1 || value === "1"
+        );
+      }
+      if (field.control === "select") {
+        const options = Array.isArray(field.options) ? field.options : [];
+        const normalizedRawValue = String(value ?? "");
+        const matchedOption = options.find(
+          (option) => String(option ?? "") === normalizedRawValue,
+        );
+        if (matchedOption !== undefined) return matchedOption;
+        const currentValue = this.getProfileFieldValue(
+          field?.id || field?.canonical_key || field?.storage_key,
+        );
+        if (options.includes(currentValue)) return currentValue;
+        return field.default ?? options[0] ?? value;
+      }
+      if (field.control === "range_with_number" || field.control === "number") {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+          return this.getProfileFieldValue(
+            field?.id || field?.canonical_key || field?.storage_key,
+          );
+        }
+        const min = Number(field.min ?? 0);
+        const max = this.resolveProfileFieldMax(field);
+        let nextValue = numeric;
+        if (Number.isFinite(min)) nextValue = Math.max(min, nextValue);
+        if (Number.isFinite(max)) nextValue = Math.min(max, nextValue);
+        const step = Number(field.step || 0);
+        if (step > 0) {
+          const base = Number.isFinite(min) ? min : 0;
+          nextValue = Math.round((nextValue - base) / step) * step + base;
+          nextValue = Number(nextValue.toFixed(6));
+        }
+        return nextValue;
+      }
+      return value;
+    },
+
+    setProfileFieldValue(fieldKey, value) {
+      const field = this.getProfileField(fieldKey);
+      if (!field) return;
+      const normalized = this.normalizeProfileFieldValue(field, value);
+      this.setByPath(field.storage_key || fieldKey, normalized);
+    },
+
+    getProfileFieldPercent(fieldKey) {
+      const field = this.getProfileField(fieldKey);
+      if (!field) return 0;
+      const rawValue = Number(this.getProfileFieldValue(fieldKey));
+      const min = Number(field.min ?? 0);
+      const max = this.resolveProfileFieldMax(field);
+      if (!Number.isFinite(rawValue) || !Number.isFinite(max) || max <= min) {
+        return 0;
+      }
+      const ratio = ((rawValue - min) / (max - min)) * 100;
+      return Math.max(0, Math.min(100, Math.round(ratio * 100) / 100));
+    },
+
+    isProfileFieldSlider(field) {
+      return field?.control === "range_with_number";
+    },
+
+    isProfileFieldToggle(field) {
+      return field?.control === "checkbox";
+    },
+
+    isProfileFieldSelect(field) {
+      return field?.control === "select";
     },
 
     setFieldValue(item, value) {

@@ -144,6 +144,21 @@ def test_preset_detail_reader_js_exposes_scalar_workspace_helpers():
     assert 'getScalarWorkspaceFieldSummary(fieldKey) {' in source
 
 
+def test_preset_detail_reader_js_exposes_mirrored_profile_helpers():
+    source = read_project_file('static/js/components/presetDetailReader.js')
+
+    assert 'get editorProfile() {' in source
+    assert 'get isMirroredProfileReader() {' in source
+    assert 'get mirroredProfileSections() {' in source
+    assert 'getProfileSectionFields(sectionId) {' in source
+    assert 'getProfileFieldValue(fieldKey) {' in source
+    assert 'getProfileFieldDisplay(fieldKey) {' in source
+    assert 'getProfileFieldPercent(fieldKey) {' in source
+    assert 'isProfileFieldSlider(field) {' in source
+    assert 'isProfileFieldToggle(field) {' in source
+    assert 'isProfileFieldSelect(field) {' in source
+
+
 def test_preset_detail_reader_template_compacts_prompt_list_metadata_row():
     source = read_project_file('templates/modals/detail_preset_popup.html')
 
@@ -292,6 +307,117 @@ def test_preset_detail_reader_runtime_preserves_items_when_reader_groups_are_mis
         }
         if (reader.readerStats.total_count !== 1) {
           throw new Error(`expected stats total count to stay intact, got ${reader.readerStats.total_count}`);
+        }
+        """
+    )
+
+
+def test_preset_detail_reader_runtime_reports_slider_percent_for_mirrored_profile():
+    run_preset_detail_reader_runtime_check(
+        """
+        reader.activePresetDetail = {
+          raw_data: {
+            openai_max_context: 4096,
+            openai_max_tokens: 1200,
+            stream_openai: true,
+            reasoning_effort: 'medium',
+          },
+          editor_profile: {
+            id: 'st_chat_completion_preset',
+            family: 'st_mirror',
+            sections: [
+              { id: 'output_and_reasoning', label: '输出与推理' },
+            ],
+            fields: {
+              openai_max_context: {
+                canonical_key: 'openai_max_context',
+                storage_key: 'openai_max_context',
+                section: 'output_and_reasoning',
+                control: 'range_with_number',
+                min: 0,
+                max: 8192,
+              },
+              openai_max_tokens: {
+                canonical_key: 'openai_max_tokens',
+                storage_key: 'openai_max_tokens',
+                section: 'output_and_reasoning',
+                control: 'range_with_number',
+                min: 0,
+                max: 2400,
+              },
+              stream_openai: {
+                canonical_key: 'stream_openai',
+                storage_key: 'stream_openai',
+                section: 'output_and_reasoning',
+                control: 'checkbox',
+              },
+            },
+          },
+          reader_view: { family: 'prompt_manager', groups: [], items: [], stats: {} },
+        };
+
+        if (!reader.isMirroredProfileReader) {
+          throw new Error('expected mirrored profile reader');
+        }
+        if (reader.mirroredProfileSections.length !== 1) {
+          throw new Error(`expected one mirrored section, got ${reader.mirroredProfileSections.length}`);
+        }
+        if (reader.getProfileFieldPercent('openai_max_context') !== 50) {
+          throw new Error(`expected 50 percent, got ${reader.getProfileFieldPercent('openai_max_context')}`);
+        }
+        if (!reader.isProfileFieldToggle(reader.editorProfile.fields.stream_openai)) {
+          throw new Error('expected checkbox detection to work');
+        }
+        """
+    )
+
+
+def test_preset_detail_reader_runtime_reads_mirrored_fields_when_object_keys_differ_from_canonical_key():
+    run_preset_detail_reader_runtime_check(
+        """
+        reader.activePresetDetail = {
+          raw_data: {
+            openai_max_context: 4096,
+            stream_openai: true,
+          },
+          editor_profile: {
+            id: 'st_chat_completion_preset',
+            family: 'st_mirror',
+            sections: [
+              { id: 'output_and_reasoning', label: '输出与推理' },
+            ],
+            fields: {
+              context_window: {
+                canonical_key: 'openai_max_context',
+                storage_key: 'openai_max_context',
+                section: 'output_and_reasoning',
+                control: 'range_with_number',
+                min: 0,
+                max: 8192,
+              },
+              stream_toggle: {
+                canonical_key: 'stream_openai',
+                storage_key: 'stream_openai',
+                section: 'output_and_reasoning',
+                control: 'checkbox',
+              },
+            },
+          },
+          reader_view: { family: 'prompt_manager', groups: [], items: [], stats: {} },
+        };
+
+        const fields = reader.getProfileSectionFields('output_and_reasoning');
+        if (fields.length !== 2) {
+          throw new Error(`expected two mirrored fields, got ${fields.length}`);
+        }
+        if (reader.getProfileFieldValue('openai_max_context') !== 4096) {
+          throw new Error(`expected storage-key lookup to resolve mirrored value, got ${reader.getProfileFieldValue('openai_max_context')}`);
+        }
+        if (reader.getProfileFieldPercent('openai_max_context') !== 50) {
+          throw new Error(`expected canonical lookup percent to remain 50, got ${reader.getProfileFieldPercent('openai_max_context')}`);
+        }
+        if (!reader.isProfileFieldToggle(fields.find((field) => field.canonical_key === 'stream_openai'))) {
+          throw new Error('expected checkbox field lookup by canonical key to work');
         }
         """
     )
@@ -1077,6 +1203,25 @@ def test_preset_detail_reader_template_exposes_scalar_workspace_overview_branch(
     assert '高级参数摘要' in source
     assert 'x-for="section in scalarWorkspaceSections"' in source
     assert 'x-for="entry in scalarWorkspaceVisibleFieldEntries"' in source
+
+
+def test_preset_detail_reader_template_exposes_mirrored_profile_snapshot_branch():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    assert 'x-if="isMirroredProfileReader && editorProfile"' in source
+    assert 'x-for="section in mirroredProfileSections"' in source
+    assert 'x-for="field in getProfileSectionFields(section.id)"' in source
+    assert 'x-text="getProfileFieldDisplay(field.canonical_key)"' in source
+    assert ':style="`width: ${getProfileFieldPercent(field.canonical_key)}%`"' in source
+    assert 'x-text="resolveProfileFieldMax(field) ?? \'-\' "' in source or 'x-text="resolveProfileFieldMax(field) ?? \'-\'"' in source
+    assert "x-text=\"getProfileFieldValue(field.canonical_key) ? '启用' : '关闭'\"" in source
+
+
+def test_preset_detail_reader_template_exposes_non_scalar_mirrored_snapshot_kinds():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    assert "field.control === 'sortable_string_list'" in source
+    assert "field.control === 'prompt_workspace'" in source
 
 
 def test_preset_detail_reader_template_scalar_workspace_header_uses_visible_count():

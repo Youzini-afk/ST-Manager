@@ -191,7 +191,9 @@ export default function presetDetailReader() {
     },
 
     get scalarWorkspaceVisibleFieldEntries() {
-      const fieldEntries = Object.entries(this.scalarWorkspace?.field_map || {});
+      const fieldEntries = Object.entries(
+        this.scalarWorkspace?.field_map || {},
+      );
       const hiddenFields = new Set(this.scalarWorkspace?.hidden_fields || []);
       const query = normalizeText(this.searchTerm);
 
@@ -218,9 +220,12 @@ export default function presetDetailReader() {
     },
 
     get scalarWorkspaceTotalVisibleFieldCount() {
-      const fieldEntries = Object.entries(this.scalarWorkspace?.field_map || {});
+      const fieldEntries = Object.entries(
+        this.scalarWorkspace?.field_map || {},
+      );
       const hiddenFields = new Set(this.scalarWorkspace?.hidden_fields || []);
-      return fieldEntries.filter(([fieldKey]) => !hiddenFields.has(fieldKey)).length;
+      return fieldEntries.filter(([fieldKey]) => !hiddenFields.has(fieldKey))
+        .length;
     },
 
     get scalarWorkspaceSummaryCards() {
@@ -544,10 +549,9 @@ export default function presetDetailReader() {
         total_count: this.isScalarWorkspaceReader
           ? this.scalarWorkspaceTotalVisibleFieldCount
           : Number(stats.total_count) || this.readerItems.length,
-        visible_count:
-          this.isScalarWorkspaceReader
-            ? this.scalarWorkspaceVisibleFieldEntries.length
-            : this.isPromptWorkspaceReader && this.activeWorkspace === "prompts"
+        visible_count: this.isScalarWorkspaceReader
+          ? this.scalarWorkspaceVisibleFieldEntries.length
+          : this.isPromptWorkspaceReader && this.activeWorkspace === "prompts"
             ? this.promptFilteredItemsCache.length
             : this.filteredItemsCache.length,
       };
@@ -663,6 +667,96 @@ export default function presetDetailReader() {
 
     getScalarWorkspaceFieldDisplay(fieldKey) {
       return this.getScalarWorkspaceFieldSummary(fieldKey);
+    },
+
+    get editorProfile() {
+      return this.activePresetDetail?.editor_profile || null;
+    },
+
+    get isMirroredProfileReader() {
+      return Boolean(
+        this.editorProfile?.id && this.editorProfile?.family === "st_mirror",
+      );
+    },
+
+    get mirroredProfileSections() {
+      return Array.isArray(this.editorProfile?.sections)
+        ? this.editorProfile.sections
+        : [];
+    },
+
+    getProfileField(fieldKey) {
+      const fields = Object.values(this.editorProfile?.fields || {});
+      return (
+        fields.find(
+          (field) =>
+            field?.canonical_key === fieldKey ||
+            field?.storage_key === fieldKey ||
+            field?.id === fieldKey,
+        ) || null
+      );
+    },
+
+    getProfileSectionFields(sectionId) {
+      return Object.values(this.editorProfile?.fields || {}).filter(
+        (field) => field.section === sectionId,
+      );
+    },
+
+    getProfileFieldValue(fieldKey) {
+      const field = this.getProfileField(fieldKey);
+      if (!field) return null;
+      const storageKey = field.storage_key || fieldKey;
+      return this.activePresetDetail?.raw_data?.[storageKey];
+    },
+
+    getProfileFieldDisplay(fieldKey) {
+      return this.formatValue(this.getProfileFieldValue(fieldKey));
+    },
+
+    resolveProfileFieldMax(field) {
+      const maxValue = field?.max;
+      if (
+        maxValue &&
+        typeof maxValue === "object" &&
+        maxValue.type === "dynamic"
+      ) {
+        const currentValue = Number(
+          this.getProfileFieldValue(field.canonical_key),
+        );
+        const fallback = Number(maxValue.fallback ?? 4095);
+        return Math.max(
+          Number.isFinite(currentValue) ? currentValue : 0,
+          fallback,
+        );
+      }
+      const numeric = Number(maxValue);
+      return Number.isFinite(numeric) ? numeric : null;
+    },
+
+    getProfileFieldPercent(fieldKey) {
+      const field = this.getProfileField(fieldKey);
+      if (!field) return 0;
+      const rawValue = Number(this.getProfileFieldValue(fieldKey));
+      const min = Number(field.min ?? 0);
+      const max = this.resolveProfileFieldMax(field);
+      if (!Number.isFinite(rawValue) || !Number.isFinite(max) || max <= min) {
+        return 0;
+      }
+      const ratio = ((rawValue - min) / (max - min)) * 100;
+      return Math.max(0, Math.min(100, Math.round(ratio * 100) / 100));
+    },
+
+    isProfileFieldSlider(field) {
+      return field?.control === "range_with_number";
+    },
+
+    isProfileFieldToggle(field) {
+      return field?.control === "checkbox";
+    },
+
+    isProfileFieldSelect(field) {
+      return field?.control === "select";
     },
 
     openFullscreenEditor(options = {}) {

@@ -126,6 +126,51 @@ def test_preset_save_overwrite_keeps_hidden_textgen_scalar_workspace_fields(monk
     assert payload['xtc_threshold'] == 0.15
 
 
+def test_merge_preset_content_preserves_existing_textgen_alias_key():
+    raw_data = {
+        'rep_pen': 1.1,
+        'temp': 0.7,
+        'prompts': [{'identifier': 'main', 'content': 'hello'}],
+    }
+
+    merged = presets_api.merge_preset_content(
+        raw_data,
+        'textgen',
+        {
+            'repetition_penalty': 1.4,
+            'temp': 0.95,
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    assert merged['rep_pen'] == 1.4
+    assert merged['temp'] == 0.95
+    assert 'repetition_penalty' not in merged
+
+
+def test_merge_preset_content_removes_stale_alias_twin_when_preserving_existing_key():
+    raw_data = {
+        'rep_pen': 1.1,
+        'repetition_penalty': 1.25,
+        'temp': 0.7,
+        'prompts': [{'identifier': 'main', 'content': 'hello'}],
+    }
+
+    merged = presets_api.merge_preset_content(
+        raw_data,
+        'textgen',
+        {
+            'repetition_penalty': 1.4,
+            'temp': 0.95,
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    assert merged['rep_pen'] == 1.4
+    assert merged['temp'] == 0.95
+    assert 'repetition_penalty' not in merged
+
+
 def test_preset_save_overwrite_ignores_removed_unknown_fields_and_preserves_unedited_keys(monkeypatch, tmp_path):
     presets_dir = tmp_path / 'presets'
     preset_file = presets_dir / 'textgen.json'
@@ -164,6 +209,57 @@ def test_preset_save_overwrite_ignores_removed_unknown_fields_and_preserves_uned
     assert payload['top_p'] == 0.92
     assert payload['custom_flag'] == {'keep': True}
     assert payload['extensions'] == {'regex_scripts': []}
+
+
+def test_preset_save_overwrite_does_not_rewrite_runtime_keys_for_chat_completion(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    preset_file = presets_dir / 'chat-runtime.json'
+    _write_json(
+        preset_file,
+        {
+            'name': 'Chat Runtime',
+            'temperature': 0.8,
+            'openai_max_context': 8192,
+            'openai_max_tokens': 1200,
+            'stream_openai': True,
+            'api_url': 'https://old.example/api',
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    detail_res = client.get('/api/presets/detail/global::chat-runtime.json')
+    revision = detail_res.get_json()['preset']['source_revision']
+
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global::chat-runtime.json',
+            'preset_kind': 'textgen',
+            'save_mode': 'overwrite',
+            'source_revision': revision,
+            'content': {
+                'name': 'Chat Runtime',
+                'temperature': 1.2,
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1400,
+                'stream_openai': False,
+                'api_url': 'https://new.example/api',
+                'proxy_password': 'secret',
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    payload = json.loads(preset_file.read_text(encoding='utf-8'))
+    assert payload['temperature'] == 1.2
+    assert payload['openai_max_tokens'] == 1400
+    assert payload['stream_openai'] is False
+    assert payload['api_url'] == 'https://old.example/api'
+    assert 'proxy_password' not in payload
 
 
 def test_preset_save_rejects_stale_source_revision(monkeypatch, tmp_path):
@@ -232,6 +328,548 @@ def test_preset_save_as_creates_new_global_file(monkeypatch, tmp_path):
     payload = res.get_json()
     assert payload['success'] is True
     assert (presets_dir / '新的文本生成预设.json').exists()
+
+
+def test_preset_save_as_does_not_write_runtime_keys_for_chat_completion(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    openai_dir = tmp_path / 'st-openai-presets'
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    openai_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {
+            'presets_dir': str(presets_dir),
+            'resources_dir': str(tmp_path / 'resources'),
+            'st_openai_preset_dir': str(openai_dir),
+            'st_textgen_preset_dir': str(tmp_path / 'st-textgen-presets'),
+            'st_instruct_preset_dir': '',
+            'st_context_preset_dir': '',
+            'st_sysprompt_dir': '',
+            'st_reasoning_dir': '',
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/save',
+        json={
+            'save_mode': 'save_as',
+            'preset_kind': 'textgen',
+            'name': 'Chat Save As Safe',
+            'content': {
+                'name': 'Chat Save As Safe',
+                'openai_max_context': 2048,
+                'openai_max_tokens': 1200,
+                'stream_openai': True,
+                'api_url': 'https://new.example/api',
+                'proxy_password': 'secret',
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert res.status_code == 200
+    payload = json.loads((openai_dir / 'Chat Save As Safe.json').read_text(encoding='utf-8'))
+    assert payload['openai_max_context'] == 2048
+    assert payload['openai_max_tokens'] == 1200
+    assert payload['stream_openai'] is True
+    assert 'api_url' not in payload
+    assert 'proxy_password' not in payload
+
+
+def test_preset_save_as_preserves_large_chat_completion_context_for_new_file(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    openai_dir = tmp_path / 'st-openai-presets'
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    openai_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {
+            'presets_dir': str(presets_dir),
+            'resources_dir': str(tmp_path / 'resources'),
+            'st_openai_preset_dir': str(openai_dir),
+            'st_textgen_preset_dir': str(tmp_path / 'st-textgen-presets'),
+            'st_instruct_preset_dir': '',
+            'st_context_preset_dir': '',
+            'st_sysprompt_dir': '',
+            'st_reasoning_dir': '',
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/save',
+        json={
+            'save_mode': 'save_as',
+            'preset_kind': 'textgen',
+            'name': 'Large Context Save As',
+            'content': {
+                'name': 'Large Context Save As',
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1200,
+                'stream_openai': True,
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert res.status_code == 200
+    payload = json.loads((openai_dir / 'Large Context Save As.json').read_text(encoding='utf-8'))
+    assert payload['openai_max_context'] == 8192
+
+
+def test_preset_save_overwrite_falls_back_from_invalid_preset_kind_to_stored_profile(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    preset_file = presets_dir / 'chat-invalid-kind.json'
+    _write_json(
+        preset_file,
+        {
+            'name': 'Chat Invalid Kind',
+            'temperature': 0.8,
+            'openai_max_context': 8192,
+            'openai_max_tokens': 1200,
+            'stream_openai': True,
+            'api_url': 'https://old.example/api',
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    detail_res = client.get('/api/presets/detail/global::chat-invalid-kind.json')
+    revision = detail_res.get_json()['preset']['source_revision']
+
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global::chat-invalid-kind.json',
+            'preset_kind': 'invalid-kind',
+            'save_mode': 'overwrite',
+            'source_revision': revision,
+            'content': {
+                'name': 'Chat Invalid Kind',
+                'temperature': 1.2,
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1400,
+                'stream_openai': False,
+                'api_url': 'https://new.example/api',
+                'proxy_password': 'secret',
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    payload = json.loads(preset_file.read_text(encoding='utf-8'))
+    assert payload['temperature'] == 1.2
+    assert payload['openai_max_tokens'] == 1400
+    assert payload['api_url'] == 'https://old.example/api'
+    assert 'proxy_password' not in payload
+
+
+def test_preset_save_as_falls_back_from_invalid_preset_kind_to_detected_profile(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    openai_dir = tmp_path / 'st-openai-presets'
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    openai_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {
+            'presets_dir': str(presets_dir),
+            'resources_dir': str(tmp_path / 'resources'),
+            'st_openai_preset_dir': str(openai_dir),
+            'st_textgen_preset_dir': str(tmp_path / 'st-textgen-presets'),
+            'st_instruct_preset_dir': '',
+            'st_context_preset_dir': '',
+            'st_sysprompt_dir': '',
+            'st_reasoning_dir': '',
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/save',
+        json={
+            'save_mode': 'save_as',
+            'preset_kind': 'invalid-kind',
+            'name': 'Invalid Kind Save As',
+            'content': {
+                'name': 'Invalid Kind Save As',
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1200,
+                'stream_openai': True,
+                'proxy_password': 'secret',
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['preset']['preset_kind'] == 'textgen'
+    saved = json.loads((openai_dir / 'Invalid Kind Save As.json').read_text(encoding='utf-8'))
+    assert saved['openai_max_context'] == 8192
+    assert 'proxy_password' not in saved
+
+
+def test_preset_save_overwrite_clamps_chat_completion_fields_and_preserves_valid_enum(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    preset_file = presets_dir / 'chat.json'
+    _write_json(
+        preset_file,
+        {
+            'name': 'Chat',
+            'temperature': 0.8,
+            'top_p': 0.9,
+            'frequency_penalty': 0.1,
+            'presence_penalty': 0.2,
+            'reasoning_effort': 'medium',
+            'openai_max_context': 8192,
+            'openai_max_tokens': 1200,
+            'stream_openai': True,
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    detail_res = client.get('/api/presets/detail/global::chat.json')
+    revision = detail_res.get_json()['preset']['source_revision']
+
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global::chat.json',
+            'preset_kind': 'textgen',
+            'save_mode': 'overwrite',
+            'source_revision': revision,
+            'content': {
+                'name': 'Chat',
+                'temperature': 9,
+                'top_p': 2,
+                'frequency_penalty': -9,
+                'presence_penalty': 9,
+                'reasoning_effort': 'extreme',
+                'openai_max_context': 2048,
+                'openai_max_tokens': 999999,
+                'stream_openai': False,
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    payload = json.loads(preset_file.read_text(encoding='utf-8'))
+    assert payload['temperature'] == 2
+    assert payload['top_p'] == 1
+    assert payload['frequency_penalty'] == -2
+    assert payload['presence_penalty'] == 2
+    assert payload['reasoning_effort'] == 'medium'
+    assert payload['openai_max_tokens'] == 128000
+    assert payload['stream_openai'] is False
+
+
+def test_preset_save_overwrite_uses_dynamic_context_max_fallback_for_chat_completion(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    preset_file = presets_dir / 'chat-context.json'
+    _write_json(
+        preset_file,
+        {
+            'name': 'Chat Context',
+            'openai_max_context': 8192,
+            'openai_max_tokens': 1200,
+            'stream_openai': True,
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    detail_res = client.get('/api/presets/detail/global::chat-context.json')
+    revision = detail_res.get_json()['preset']['source_revision']
+
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global::chat-context.json',
+            'preset_kind': 'textgen',
+            'save_mode': 'overwrite',
+            'source_revision': revision,
+            'content': {
+                'name': 'Chat Context',
+                'openai_max_context': 999999,
+                'openai_max_tokens': 1200,
+                'stream_openai': True,
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    payload = json.loads(preset_file.read_text(encoding='utf-8'))
+    assert payload['openai_max_context'] == 8192
+
+
+def test_preset_save_as_routes_chat_completion_profile_to_configured_directory(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    openai_dir = tmp_path / 'st-openai-presets'
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    openai_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {
+            'presets_dir': str(presets_dir),
+            'resources_dir': str(tmp_path / 'resources'),
+            'st_openai_preset_dir': str(openai_dir),
+            'st_textgen_preset_dir': str(tmp_path / 'st-textgen-presets'),
+            'st_instruct_preset_dir': '',
+            'st_context_preset_dir': '',
+            'st_sysprompt_dir': '',
+            'st_reasoning_dir': '',
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/save',
+        json={
+            'save_mode': 'save_as',
+            'preset_kind': 'textgen',
+            'name': 'Chat Mirror Save As',
+            'content': {
+                'name': 'Chat Mirror Save As',
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1200,
+                'stream_openai': True,
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert res.status_code == 200
+    assert (openai_dir / 'Chat Mirror Save As.json').exists()
+    assert not (presets_dir / 'Chat Mirror Save As.json').exists()
+
+
+def test_merge_preset_content_clamps_dynamic_max_without_existing_value():
+    merged = presets_api.merge_preset_content(
+        {
+            'name': 'Chat Preset',
+            'temperature': 0.8,
+            'top_p': 0.9,
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+        'textgen',
+        {
+            'name': 'Chat Preset',
+            'openai_max_context': 999999,
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    assert merged['openai_max_context'] == 4095
+
+
+def test_preset_save_as_returns_followup_usable_id_for_chat_completion_directory(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    openai_dir = tmp_path / 'st-openai-presets'
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    openai_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {
+            'presets_dir': str(presets_dir),
+            'resources_dir': str(tmp_path / 'resources'),
+            'st_openai_preset_dir': str(openai_dir),
+            'st_textgen_preset_dir': str(tmp_path / 'st-textgen-presets'),
+            'st_instruct_preset_dir': '',
+            'st_context_preset_dir': '',
+            'st_sysprompt_dir': '',
+            'st_reasoning_dir': '',
+        },
+    )
+
+    client = _make_test_app().test_client()
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'save_mode': 'save_as',
+            'preset_kind': 'textgen',
+            'name': 'Chat Save As Followup',
+            'content': {
+                'name': 'Chat Save As Followup',
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1200,
+                'stream_openai': True,
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    payload = save_res.get_json()
+    preset_id = payload['preset_id']
+    assert '..' not in preset_id
+
+    detail_res = client.get(f'/api/presets/detail/{preset_id}')
+    assert detail_res.status_code == 200
+    assert detail_res.get_json()['preset']['id'] == preset_id
+
+
+def test_preset_save_as_prefers_explicit_preset_kind_over_shape_detection(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    openai_dir = tmp_path / 'st-openai-presets'
+    textgen_dir = tmp_path / 'st-textgen-presets'
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    openai_dir.mkdir(parents=True, exist_ok=True)
+    textgen_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {
+            'presets_dir': str(presets_dir),
+            'resources_dir': str(tmp_path / 'resources'),
+            'st_openai_preset_dir': str(openai_dir),
+            'st_textgen_preset_dir': str(textgen_dir),
+            'st_instruct_preset_dir': '',
+            'st_context_preset_dir': '',
+            'st_sysprompt_dir': '',
+            'st_reasoning_dir': '',
+        },
+    )
+
+    client = _make_test_app().test_client()
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'save_mode': 'save_as',
+            'preset_kind': 'instruct',
+            'name': 'Explicit Kind Wins',
+            'content': {
+                'name': 'Explicit Kind Wins',
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    payload = save_res.get_json()
+    assert payload['preset']['preset_kind'] == 'instruct'
+    assert payload['preset']['source_folder'] is None
+
+
+def test_preset_save_as_followup_operations_work_with_alternate_root_ids(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    openai_dir = tmp_path / 'st-openai-presets'
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    openai_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {
+            'presets_dir': str(presets_dir),
+            'resources_dir': str(tmp_path / 'resources'),
+            'st_openai_preset_dir': str(openai_dir),
+            'st_textgen_preset_dir': str(tmp_path / 'st-textgen-presets'),
+            'st_instruct_preset_dir': '',
+            'st_context_preset_dir': '',
+            'st_sysprompt_dir': '',
+            'st_reasoning_dir': '',
+        },
+    )
+
+    client = _make_test_app().test_client()
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'save_mode': 'save_as',
+            'preset_kind': 'textgen',
+            'name': 'Alt Root Flow',
+            'content': {
+                'name': 'Alt Root Flow',
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1200,
+                'stream_openai': True,
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    payload = save_res.get_json()
+    preset_id = payload['preset_id']
+    assert preset_id.startswith('global-alt::')
+
+    detail_res = client.get(f'/api/presets/detail/{preset_id}')
+    assert detail_res.status_code == 200
+    revision = detail_res.get_json()['preset']['source_revision']
+
+    overwrite_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': preset_id,
+            'preset_kind': 'textgen',
+            'save_mode': 'overwrite',
+            'source_revision': revision,
+            'content': {
+                'name': 'Alt Root Flow',
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1600,
+                'stream_openai': False,
+                'prompts': [{'identifier': 'main', 'content': 'hello'}],
+            },
+        },
+    )
+    assert overwrite_res.status_code == 200
+
+    renamed_revision = overwrite_res.get_json()['preset']['source_revision']
+    rename_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': preset_id,
+            'save_mode': 'rename',
+            'new_name': 'Alt Root Flow Renamed',
+            'source_revision': renamed_revision,
+        },
+    )
+    assert rename_res.status_code == 200
+    renamed_id = rename_res.get_json()['preset_id']
+
+    renamed_detail_res = client.get(f'/api/presets/detail/{renamed_id}')
+    assert renamed_detail_res.status_code == 200
+    delete_revision = renamed_detail_res.get_json()['preset']['source_revision']
+    delete_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': renamed_id,
+            'save_mode': 'delete',
+            'source_revision': delete_revision,
+        },
+    )
+    assert delete_res.status_code == 200
+    assert not (openai_dir / 'Alt Root Flow Renamed.json').exists()
 
 
 def test_preset_rename_updates_filename_and_object_name(monkeypatch, tmp_path):

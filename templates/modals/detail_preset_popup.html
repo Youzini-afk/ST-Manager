@@ -325,6 +325,148 @@
               <div
                 class="h-full min-h-0 overflow-y-auto custom-scrollbar p-4 space-y-3"
               >
+                <template x-if="isMirroredProfileReader && editorProfile">
+                  <section
+                    class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-sub)] p-4 space-y-4"
+                  >
+                    <div
+                      class="flex items-center justify-between gap-3 flex-wrap"
+                    >
+                      <div>
+                        <div class="text-sm font-bold text-[var(--text-main)]">
+                          参数快照
+                        </div>
+                        <div class="text-[11px] text-[var(--text-dim)]">
+                          只读镜像展示当前 ST 预设参数
+                        </div>
+                      </div>
+                      <div
+                        class="text-[11px] text-[var(--text-dim)]"
+                        x-text="editorProfile.label || editorProfile.id"
+                      ></div>
+                    </div>
+
+                    <div
+                      class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"
+                    >
+                      <template
+                        x-for="section in mirroredProfileSections"
+                        :key="section.id"
+                      >
+                        <div
+                          class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
+                        >
+                          <div>
+                            <div
+                              class="text-sm font-bold text-[var(--text-main)]"
+                              x-text="section.label"
+                            ></div>
+                            <div
+                              class="text-[11px] text-[var(--text-dim)]"
+                              x-text="section.description || section.id"
+                            ></div>
+                          </div>
+
+                          <template
+                            x-for="field in getProfileSectionFields(section.id)"
+                            :key="field.canonical_key"
+                          >
+                            <div
+                              class="rounded-xl border border-[var(--border-light)] bg-[var(--bg-body)] p-3 space-y-2"
+                            >
+                              <div
+                                class="flex items-center justify-between gap-3"
+                              >
+                                <div
+                                  class="text-sm text-[var(--text-main)]"
+                                  x-text="field.label"
+                                ></div>
+                                <div
+                                  class="text-xs font-mono text-[var(--text-sub)]"
+                                  x-text="getProfileFieldDisplay(field.canonical_key)"
+                                ></div>
+                              </div>
+
+                              <template x-if="isProfileFieldSlider(field)">
+                                <div class="space-y-2">
+                                  <div
+                                    class="h-2 rounded-full bg-[var(--bg-sub)] overflow-hidden"
+                                  >
+                                    <div
+                                      class="h-full rounded-full bg-[var(--accent-main)]"
+                                      :style="`width: ${getProfileFieldPercent(field.canonical_key)}%`"
+                                    ></div>
+                                  </div>
+                                  <div
+                                    class="flex items-center justify-between text-[10px] text-[var(--text-dim)] font-mono"
+                                  >
+                                    <span x-text="field.min ?? '-' "></span>
+                                    <span
+                                      x-text="resolveProfileFieldMax(field) ?? '-' "
+                                    ></span>
+                                  </div>
+                                </div>
+                              </template>
+
+                              <template x-if="isProfileFieldToggle(field)">
+                                <div
+                                  class="flex items-center justify-between text-xs text-[var(--text-dim)]"
+                                >
+                                  <span>状态</span>
+                                  <span
+                                    x-text="getProfileFieldValue(field.canonical_key) ? '启用' : '关闭'"
+                                  ></span>
+                                </div>
+                              </template>
+
+                              <template x-if="isProfileFieldSelect(field)">
+                                <div
+                                  class="inline-flex items-center rounded-full border border-[var(--border-light)] px-2.5 py-1 text-[11px] text-[var(--text-main)] bg-[var(--bg-sub)]"
+                                  x-text="getProfileFieldDisplay(field.canonical_key)"
+                                ></div>
+                              </template>
+
+                              <template
+                                x-if="field.control === 'sortable_string_list'"
+                              >
+                                <div class="space-y-2">
+                                  <template
+                                    x-for="(entry, index) in (Array.isArray(getProfileFieldValue(field.canonical_key)) ? getProfileFieldValue(field.canonical_key) : [])"
+                                    :key="`${field.canonical_key}-${index}`"
+                                  >
+                                    <div
+                                      class="rounded-lg border border-[var(--border-light)] bg-[var(--bg-sub)] px-3 py-2 text-xs text-[var(--text-main)]"
+                                      x-text="entry || '—'"
+                                    ></div>
+                                  </template>
+                                </div>
+                              </template>
+
+                              <template
+                                x-if="field.control === 'prompt_workspace'"
+                              >
+                                <div
+                                  class="space-y-2 text-xs text-[var(--text-dim)]"
+                                >
+                                  <div
+                                    class="rounded-lg border border-[var(--border-light)] bg-[var(--bg-sub)] px-3 py-2"
+                                  >
+                                    Prompt Workspace
+                                  </div>
+                                  <div
+                                    class="break-words"
+                                    x-text="getProfileFieldDisplay(field.canonical_key)"
+                                  ></div>
+                                </div>
+                              </template>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </section>
+                </template>
+
                 <template x-if="readerItems.length === 0">
                   <div
                     class="rounded-2xl border border-dashed border-[var(--border-light)] bg-[var(--bg-panel)] p-8 text-center"

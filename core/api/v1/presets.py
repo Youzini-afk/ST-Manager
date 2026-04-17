@@ -18,6 +18,8 @@ from core.data.ui_store import (
     save_ui_data,
     set_resource_item_categories,
 )
+from core.services.preset_editor_schema import normalize_preset_content_for_save
+from core.services.preset_editor_schema import resolve_global_save_dir_config_key
 from core.services.preset_model import build_preset_detail
 from core.services.preset_model import detect_preset_kind, merge_preset_content
 from core.services.preset_storage import (
@@ -35,6 +37,24 @@ from core.utils.regex import extract_regex_from_preset_data
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('presets', __name__)
+
+ALTERNATE_GLOBAL_ROOT_CONFIG_KEYS = (
+    'st_openai_preset_dir',
+    'st_textgen_preset_dir',
+    'st_instruct_preset_dir',
+    'st_context_preset_dir',
+    'st_sysprompt_dir',
+    'st_reasoning_dir',
+)
+
+VALID_PRESET_KINDS = {'textgen', 'instruct', 'context', 'sysprompt', 'reasoning'}
+
+
+def _resolve_requested_preset_kind(requested_kind: str, fallback_data, *, source_folder='', file_path='') -> str:
+    kind = str(requested_kind or '').strip()
+    if kind in VALID_PRESET_KINDS:
+        return kind
+    return detect_preset_kind(fallback_data, source_folder=source_folder, file_path=file_path)
 
 
 def _normalize_category_path(value) -> str:
@@ -259,11 +279,32 @@ def _get_cards_by_resource_folder():
     return mapping
 
 
+def _resolve_configured_global_root(config_key: str) -> str:
+    cfg = load_config()
+    raw_path = cfg.get(config_key)
+    if not raw_path:
+        return ''
+    return raw_path if os.path.isabs(raw_path) else os.path.join(BASE_DIR, raw_path)
+
+
+def _get_alternate_global_roots():
+    roots = {}
+    for config_key in ALTERNATE_GLOBAL_ROOT_CONFIG_KEYS:
+        root_path = _resolve_configured_global_root(config_key)
+        if root_path:
+            roots[config_key] = root_path
+    return roots
+
+
 def _resolve_preset_file_path(preset_id, presets_root):
     if not preset_id:
         return '', None, None
 
-    if '::' in preset_id and not (preset_id.startswith('resource::') or preset_id.startswith('global::')):
+    if '::' in preset_id and not (
+        preset_id.startswith('resource::')
+        or preset_id.startswith('global::')
+        or preset_id.startswith('global-alt::')
+    ):
         return '', None, None
 
     if preset_id.startswith('resource::'):
@@ -284,6 +325,17 @@ def _resolve_preset_file_path(preset_id, presets_root):
         rel_path = preset_id.split('::', 1)[1]
         return _safe_join(presets_root, rel_path), 'global', None
 
+    if preset_id.startswith('global-alt::'):
+        parts = preset_id.split('::', 2)
+        if len(parts) != 3:
+            return '', None, None
+
+        _, config_key, rel_path = parts
+        root_path = _get_alternate_global_roots().get(config_key)
+        if not root_path:
+            return '', None, None
+        return _safe_join(root_path, rel_path), 'global', None
+
     return _safe_join(presets_root, f'{preset_id}.json'), 'global', None
 
 
@@ -294,7 +346,27 @@ def _build_canonical_preset_id(file_path, preset_type, source_folder, presets_ro
     if preset_type == 'resource' and source_folder:
         return f"resource::{source_folder}::{os.path.splitext(os.path.basename(file_path))[0]}"
 
-    rel_path = os.path.relpath(file_path, presets_root).replace('\\', '/')
+    file_abs = os.path.abspath(file_path)
+    presets_abs = os.path.abspath(presets_root)
+    try:
+        if os.path.commonpath([file_abs, presets_abs]) == presets_abs:
+            rel_path = os.path.relpath(file_abs, presets_abs).replace('\\', '/')
+            return f'global::{rel_path}'
+    except Exception:
+        pass
+
+    for config_key, root_path in _get_alternate_global_roots().items():
+        root_abs = os.path.abspath(root_path)
+        try:
+            if os.path.commonpath([file_abs, root_abs]) != root_abs:
+                continue
+        except Exception:
+            continue
+
+        rel_path = os.path.relpath(file_abs, root_abs).replace('\\', '/')
+        return f'global-alt::{config_key}::{rel_path}'
+
+    rel_path = os.path.basename(file_abs)
     return f'global::{rel_path}'
 
 def _safe_join(base_dir: str, rel_path: str) -> str:
@@ -337,12 +409,20 @@ def _get_presets_path():
     return presets_root
 
 
-def _resolve_global_save_dir(preset_kind: str) -> str:
-    presets_root = _get_presets_path()
-    return presets_root
+def _resolve_global_save_dir(preset_kind: str, raw_data=None) -> str:
+    cfg = load_config()
+    config_key = resolve_global_save_dir_config_key(raw_data, preset_kind)
+    raw_path = cfg.get(config_key) or cfg.get('presets_dir', 'data/library/presets')
+    target_root = raw_path if os.path.isabs(raw_path) else os.path.join(BASE_DIR, raw_path)
+    if not os.path.exists(target_root):
+        try:
+            os.makedirs(target_root, exist_ok=True)
+        except Exception as e:
+            logger.error(f'Failed to create presets directory: {e}')
+    return target_root
 
 
-def _build_saved_preset_response(file_path: str, preset_type: str, source_folder, presets_root: str):
+def _build_saved_preset_response(file_path: str, preset_type: str, source_folder, presets_root: str, preset_kind_hint: str = ''):
     raw_data = load_preset_json(file_path)
     return build_preset_detail(
         preset_id=_build_canonical_preset_id(file_path, preset_type, source_folder, presets_root),
@@ -352,6 +432,7 @@ def _build_saved_preset_response(file_path: str, preset_type: str, source_folder
         source_folder=source_folder,
         raw_data=raw_data,
         base_dir=BASE_DIR,
+        preset_kind_hint=preset_kind_hint,
     )
 
 
@@ -383,7 +464,7 @@ def _save_preset_legacy(data):
 def _handle_preset_overwrite(data):
     preset_id = str(data.get('preset_id') or '').strip()
     content = data.get('content')
-    preset_kind = str(data.get('preset_kind') or '').strip()
+    requested_preset_kind = str(data.get('preset_kind') or '').strip()
     presets_root = _get_presets_path()
     file_path, preset_type, source_folder = _resolve_preset_file_path(preset_id, presets_root)
 
@@ -394,9 +475,12 @@ def _handle_preset_overwrite(data):
 
     require_matching_revision(file_path, str(data.get('source_revision') or '').strip())
     raw_data = load_preset_json(file_path)
-    stored_preset_kind = detect_preset_kind(raw_data, source_folder=source_folder, file_path=file_path)
-    if not preset_kind:
-        preset_kind = stored_preset_kind
+    preset_kind = _resolve_requested_preset_kind(
+        requested_preset_kind,
+        raw_data,
+        source_folder=source_folder,
+        file_path=file_path,
+    )
 
     merged = merge_preset_content(raw_data, preset_kind, content)
     suppress_fs_events(2.5)
@@ -411,17 +495,17 @@ def _handle_preset_save_as(data):
     if not name:
         return jsonify({'success': False, 'msg': '名称不能为空'}), 400
 
-    preset_kind = str(data.get('preset_kind') or '').strip() or detect_preset_kind(content or {})
-    target_dir = _resolve_global_save_dir(preset_kind)
-    file_path = ensure_unique_path(build_save_as_path(target_dir, name))
-
-    final_content = dict(content or {})
-    if isinstance(final_content, dict) and 'name' in final_content:
+    preset_kind = _resolve_requested_preset_kind(str(data.get('preset_kind') or '').strip(), content or {})
+    final_content = merge_preset_content({}, preset_kind, content or {})
+    if isinstance(final_content, dict):
         final_content['name'] = name
+
+    target_dir = _resolve_global_save_dir(preset_kind, final_content)
+    file_path = ensure_unique_path(build_save_as_path(target_dir, name))
 
     suppress_fs_events(2.5)
     new_revision = write_preset_json(file_path, final_content)
-    detail = _build_saved_preset_response(file_path, 'global', None, _get_presets_path())
+    detail = _build_saved_preset_response(file_path, 'global', None, _get_presets_path(), preset_kind_hint=preset_kind)
     return jsonify({'success': True, 'source_revision': new_revision, 'preset': detail, 'preset_id': detail['id']})
 
 

@@ -201,7 +201,40 @@
             </div>
           </template>
 
-          <template x-if="!isPromptWorkspaceEditor">
+          <template x-if="isMirroredProfileEditor && editorProfile">
+            <div
+              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 space-y-2"
+            >
+              <div class="text-xs text-[var(--text-dim)]">分区</div>
+              <template
+                x-for="section in mirroredProfileSections"
+                :key="section.id"
+              >
+                <button
+                  @click="selectWorkspace(section.id === 'prompt_manager' ? 'prompts' : section.id)"
+                  class="w-full text-left px-3 py-2 rounded-xl text-sm border transition-colors"
+                  :class="activeMirroredSection?.id === section.id ? 'bg-[var(--accent-main)]/15 text-[var(--text-main)] border-[var(--accent-main)]/30' : 'bg-[var(--bg-body)] text-[var(--text-dim)] border-transparent hover:border-[var(--border-light)] hover:text-[var(--text-main)]'"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div
+                      class="font-medium"
+                      x-text="section.label || section.id"
+                    ></div>
+                    <div
+                      class="text-[11px] text-[var(--text-dim)]"
+                      x-text="getMirroredSectionFieldCount(section.id)"
+                    ></div>
+                  </div>
+                  <div
+                    class="text-[11px] text-[var(--text-dim)] truncate"
+                    x-text="section.description || section.id"
+                  ></div>
+                </button>
+              </template>
+            </div>
+          </template>
+
+          <template x-if="!isMirroredProfileEditor && !isPromptWorkspaceEditor">
             <div
               class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 space-y-2"
             >
@@ -843,7 +876,257 @@
           </template>
 
           <template
-            x-if="!isPromptWorkspaceEditor || (activeWorkspace !== 'prompts' && !isScalarWorkspaceEditor)"
+            x-if="isMirroredProfileEditor && editorProfile && (!isPromptWorkspaceEditor || activeWorkspace !== 'prompts')"
+          >
+            <div class="space-y-4">
+              <template
+                x-if="activeMirroredSection && activeMirroredSection.id !== 'prompt_manager'"
+              >
+                <section
+                  class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-4"
+                >
+                  <div>
+                    <div
+                      class="text-sm font-bold text-[var(--text-main)]"
+                      x-text="activeMirroredSection.label"
+                    ></div>
+                    <div
+                      class="text-[11px] text-[var(--text-dim)]"
+                      x-text="activeMirroredSection.description || activeMirroredSection.id"
+                    ></div>
+                  </div>
+
+                  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <template
+                      x-for="field in getProfileSectionFields(activeMirroredSection.id)"
+                      :key="field.id"
+                    >
+                      <div
+                        class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-3"
+                      >
+                        <div class="flex items-center justify-between gap-3">
+                          <div>
+                            <div
+                              class="text-sm font-semibold text-[var(--text-main)]"
+                              x-text="field.label"
+                            ></div>
+                            <div
+                              class="text-[11px] text-[var(--text-dim)]"
+                              x-text="field.storage_key"
+                            ></div>
+                          </div>
+                          <div
+                            class="text-xs font-mono text-[var(--text-sub)]"
+                            x-text="getProfileFieldValue(field.id)"
+                          ></div>
+                        </div>
+
+                        <template x-if="isProfileFieldSlider(field)">
+                          <div class="space-y-2">
+                            <input
+                              type="range"
+                              class="w-full"
+                              :min="field.min ?? 0"
+                              :max="resolveProfileFieldMax(field) ?? (field.min ?? 0)"
+                              :step="field.step ?? 1"
+                              :value="getProfileFieldValue(field.id) ?? field.default ?? field.min ?? 0"
+                              @input="setProfileFieldValue(field.id, $event.target.value)"
+                            />
+                            <div
+                              class="grid grid-cols-[1fr_auto] gap-3 items-center"
+                            >
+                              <div
+                                class="h-2 rounded-full bg-[var(--bg-sub)] overflow-hidden"
+                              >
+                                <div
+                                  class="h-full rounded-full bg-[var(--accent-main)]"
+                                  :style="`width: ${getProfileFieldPercent(field.id)}%`"
+                                ></div>
+                              </div>
+                              <input
+                                type="number"
+                                class="form-input w-28 text-right"
+                                :min="field.min ?? 0"
+                                :max="resolveProfileFieldMax(field) ?? undefined"
+                                :step="field.step ?? 1"
+                                :value="getProfileFieldValue(field.id) ?? field.default ?? ''"
+                                @change="setProfileFieldValue(field.id, $event.target.value)"
+                              />
+                            </div>
+                          </div>
+                        </template>
+
+                        <template x-if="isProfileFieldToggle(field)">
+                          <label
+                            class="flex items-center justify-between gap-3 text-sm text-[var(--text-main)]"
+                          >
+                            <span>开关</span>
+                            <input
+                              type="checkbox"
+                              :checked="!!getProfileFieldValue(field.id)"
+                              @change="setProfileFieldValue(field.id, $event.target.checked)"
+                            />
+                          </label>
+                        </template>
+
+                        <template x-if="field.control === 'number'">
+                          <input
+                            type="number"
+                            class="form-input"
+                            :min="field.min ?? 0"
+                            :max="resolveProfileFieldMax(field) ?? undefined"
+                            :step="field.step ?? 1"
+                            :value="getProfileFieldValue(field.id) ?? field.default ?? ''"
+                            @input="setProfileFieldValue(field.id, $event.target.value)"
+                          />
+                        </template>
+
+                        <template x-if="isProfileFieldSelect(field)">
+                          <select
+                            class="form-input"
+                            :value="getProfileFieldValue(field.id) ?? field.default ?? ''"
+                            @change="setProfileFieldValue(field.id, $event.target.value)"
+                          >
+                            <template
+                              x-for="option in (field.options || [])"
+                              :key="`${field.id}-${option}`"
+                            >
+                              <option :value="option" x-text="option"></option>
+                            </template>
+                          </select>
+                        </template>
+
+                        <template x-if="field.control === 'textarea'">
+                          <textarea
+                            class="form-input min-h-[8rem]"
+                            :value="getProfileFieldValue(field.id) || ''"
+                            @input="setProfileFieldValue(field.id, $event.target.value)"
+                          ></textarea>
+                        </template>
+
+                        <template
+                          x-if="field.control === 'sortable_string_list' || field.control === 'string_list'"
+                        >
+                          <div class="space-y-2">
+                            <template
+                              x-for="(entry, index) in (Array.isArray(getProfileFieldValue(field.id)) ? getProfileFieldValue(field.id) : [])"
+                              :key="`${field.id}-${index}`"
+                            >
+                              <div
+                                class="rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3 flex items-center gap-2"
+                              >
+                                <input
+                                  class="form-input flex-1"
+                                  :value="entry || ''"
+                                  @input="updateStringListItem(field.storage_key || field.id, index, $event.target.value)"
+                                />
+                                <button
+                                  x-show="field.control === 'sortable_string_list'"
+                                  @click="moveListItem(field.storage_key || field.id, index, index - 1)"
+                                  class="btn-secondary px-3 py-1.5 text-xs rounded"
+                                  :disabled="index === 0"
+                                >
+                                  上移
+                                </button>
+                                <button
+                                  x-show="field.control === 'sortable_string_list'"
+                                  @click="moveListItem(field.storage_key || field.id, index, index + 1)"
+                                  class="btn-secondary px-3 py-1.5 text-xs rounded"
+                                  :disabled="index === ((Array.isArray(getProfileFieldValue(field.id)) ? getProfileFieldValue(field.id).length : 0) - 1)"
+                                >
+                                  下移
+                                </button>
+                                <button
+                                  @click="removeStringListItem(field.storage_key || field.id, index)"
+                                  class="btn-secondary px-3 py-1.5 text-xs rounded hover:text-red-300"
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            </template>
+                            <button
+                              @click="addStringListItem(field.storage_key || field.id)"
+                              class="btn-secondary px-3 py-1.5 text-xs rounded"
+                            >
+                              添加项
+                            </button>
+                          </div>
+                        </template>
+
+                        <template
+                          x-if="field.control === 'key_value_list' && field.id === 'logit_bias'"
+                        >
+                          <div class="space-y-3">
+                            <div
+                              class="flex items-center justify-between gap-3"
+                            >
+                              <div class="text-[11px] text-[var(--text-dim)]">
+                                针对 text/value 结构的键值对编辑。
+                              </div>
+                              <button
+                                @click="addBiasEntry()"
+                                class="btn-secondary px-3 py-1.5 text-xs rounded"
+                              >
+                                添加 Bias
+                              </button>
+                            </div>
+                            <template
+                              x-for="(entry, index) in (Array.isArray(getProfileFieldValue(field.id)) ? getProfileFieldValue(field.id) : [])"
+                              :key="`${field.id}-bias-${index}`"
+                            >
+                              <div
+                                class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_8rem_auto] gap-2 rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3"
+                              >
+                                <input
+                                  class="form-input"
+                                  :value="entry.text || ''"
+                                  @input="updateBiasEntry(index, 'text', $event.target.value)"
+                                />
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  class="form-input"
+                                  :value="entry.value ?? 0"
+                                  @input="updateBiasEntry(index, 'value', $event.target.value)"
+                                />
+                                <button
+                                  @click="removeBiasEntry(index)"
+                                  class="btn-secondary px-3 py-1.5 text-xs rounded hover:text-red-300"
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+
+                        <template
+                          x-if="field.control === 'raw_json' && field.id === 'extensions'"
+                        >
+                          <div
+                            class="rounded-xl border border-[var(--border-light)] bg-[var(--bg-body)] p-3 space-y-2"
+                          >
+                            <div class="text-[11px] text-[var(--text-dim)]">
+                              复杂 JSON 结构通过扩展编辑器处理。
+                            </div>
+                            <button
+                              @click="openAdvancedExtensions()"
+                              class="btn-secondary px-3 py-1.5 text-xs rounded"
+                            >
+                              编辑扩展
+                            </button>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </section>
+              </template>
+            </div>
+          </template>
+
+          <template
+            x-if="!isMirroredProfileEditor && (!isPromptWorkspaceEditor || (activeWorkspace !== 'prompts' && !isScalarWorkspaceEditor))"
           >
             <div
               class="grid grid-cols-1 xl:grid-cols-[20rem_minmax(0,1fr)] gap-4 h-full min-h-0"
@@ -1335,6 +1618,70 @@
                   <div
                     class="text-[var(--text-main)]"
                     x-text="activeItem?.editor?.kind || 'unknown'"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template
+            x-if="isMirroredProfileEditor && activeMirroredField && (!isPromptWorkspaceEditor || activeWorkspace !== 'prompts')"
+          >
+            <div
+              class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-4 space-y-3"
+            >
+              <div class="text-xs text-[var(--text-dim)]">镜像字段</div>
+              <div
+                class="text-base font-bold text-[var(--text-main)]"
+                x-text="activeMirroredField?.label || activeMirroredField?.id || '尚未选择字段'"
+              ></div>
+              <div
+                class="text-xs text-[var(--text-dim)]"
+                x-text="activeMirroredField?.description || '当前分区使用 profile schema 直接驱动 ST 镜像控件。'"
+              ></div>
+              <div class="grid grid-cols-1 gap-2 text-xs">
+                <div>
+                  <div class="text-[var(--text-dim)]">存储键</div>
+                  <div
+                    class="font-mono break-all text-[var(--text-main)]"
+                    x-text="activeMirroredField?.storage_key || '-'"
+                  ></div>
+                </div>
+                <div>
+                  <div class="text-[var(--text-dim)]">来源键</div>
+                  <div
+                    class="font-mono break-all text-[var(--text-main)]"
+                    x-text="activeMirroredField?.source_key || activeMirroredField?.canonical_key || '-'"
+                  ></div>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                  <div>
+                    <div class="text-[var(--text-dim)]">最小值</div>
+                    <div
+                      class="text-[var(--text-main)]"
+                      x-text="activeMirroredField?.min ?? '-'"
+                    ></div>
+                  </div>
+                  <div>
+                    <div class="text-[var(--text-dim)]">最大值</div>
+                    <div
+                      class="text-[var(--text-main)]"
+                      x-text="resolveProfileFieldMax(activeMirroredField) ?? '-'"
+                    ></div>
+                  </div>
+                  <div>
+                    <div class="text-[var(--text-dim)]">默认值</div>
+                    <div
+                      class="text-[var(--text-main)]"
+                      x-text="activeMirroredField?.default ?? '-'"
+                    ></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="text-[var(--text-dim)]">Preset Bound</div>
+                  <div
+                    class="text-[var(--text-main)]"
+                    x-text="activeMirroredField?.preset_bound === false ? '否' : '是'"
                   ></div>
                 </div>
               </div>

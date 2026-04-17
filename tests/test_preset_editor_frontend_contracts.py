@@ -148,6 +148,24 @@ def test_preset_editor_js_exposes_scalar_workspace_helpers():
     assert 'getScalarWorkspaceSectionEntries(sectionId) {' in source
 
 
+def test_preset_editor_js_exposes_mirrored_profile_helpers():
+    source = read_project_file('static/js/components/presetEditor.js')
+
+    assert 'get editorProfile() {' in source
+    assert 'get isMirroredProfileEditor() {' in source
+    assert 'get mirroredProfileSections() {' in source
+    assert 'get activeMirroredSection() {' in source
+    assert 'getProfileSectionFields(sectionId) {' in source
+    assert 'getMirroredSectionFieldCount(sectionId) {' in source
+    assert 'getProfileFieldValue(fieldKey) {' in source
+    assert 'setProfileFieldValue(fieldKey, value) {' in source
+    assert 'normalizeProfileFieldValue(field, value) {' in source
+    assert 'getProfileFieldPercent(fieldKey) {' in source
+    assert 'isProfileFieldSlider(field) {' in source
+    assert 'isProfileFieldToggle(field) {' in source
+    assert 'isProfileFieldSelect(field) {' in source
+
+
 def test_preset_editor_js_exposes_localized_prompt_option_metadata():
     source = read_project_file('static/js/components/presetEditor.js')
 
@@ -408,6 +426,219 @@ def test_preset_editor_runtime_tracks_dirty_state_and_refreshes_cached_prompt_co
         editor.setByPath('temperature', 1.1);
         if (!editor.isDirty) {
           throw new Error('expected setByPath to mark editor dirty');
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_clamps_mirrored_slider_values():
+    run_preset_editor_runtime_check(
+        """
+        editor.editingPresetFile = {
+          preset_kind: 'textgen',
+          editor_profile: {
+            id: 'st_chat_completion_preset',
+            family: 'st_mirror',
+            sections: [{ id: 'core_sampling', label: '核心采样' }],
+            fields: {
+              top_p: {
+                canonical_key: 'top_p',
+                storage_key: 'top_p',
+                section: 'core_sampling',
+                control: 'range_with_number',
+                min: 0,
+                max: 1,
+                step: 0.01,
+              },
+              stream_openai: {
+                canonical_key: 'stream_openai',
+                storage_key: 'stream_openai',
+                section: 'core_sampling',
+                control: 'checkbox',
+              },
+              reasoning_effort: {
+                canonical_key: 'reasoning_effort',
+                storage_key: 'reasoning_effort',
+                section: 'core_sampling',
+                control: 'select',
+                default: 'auto',
+                options: ['auto', 'low', 'medium', 'high', 'min', 'max'],
+              },
+            },
+          },
+          reader_view: { family: 'prompt_manager', groups: [], items: [], stats: {} },
+        };
+        editor.editingData = {
+          top_p: 0.8,
+          stream_openai: false,
+          reasoning_effort: 'medium',
+          prompts: [{ identifier: 'main', content: 'hello' }],
+        };
+
+        editor.setProfileFieldValue('top_p', 9);
+        if (editor.editingData.top_p !== 1) {
+          throw new Error(`expected top_p clamp to 1, got ${editor.editingData.top_p}`);
+        }
+
+        editor.setProfileFieldValue('stream_openai', true);
+        if (editor.editingData.stream_openai !== true) {
+          throw new Error('expected checkbox value to be written');
+        }
+
+        editor.setProfileFieldValue('reasoning_effort', 'invalid');
+        if (editor.editingData.reasoning_effort !== 'medium') {
+          throw new Error(`expected invalid enum to preserve current valid value, got ${editor.editingData.reasoning_effort}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_preserves_numeric_mirrored_select_option_types():
+    run_preset_editor_runtime_check(
+        """
+        editor.editingPresetFile = {
+          preset_kind: 'textgen',
+          editor_profile: {
+            id: 'st_textgen_preset',
+            family: 'st_mirror',
+            sections: [{ id: 'advanced_sampling', label: '高级采样' }],
+            fields: {
+              mirostat_mode: {
+                id: 'mirostat_mode',
+                storage_key: 'mirostat_mode',
+                section: 'advanced_sampling',
+                control: 'select',
+                default: 0,
+                options: [0, 1, 2],
+              },
+            },
+          },
+          reader_view: { family: 'prompt_manager', groups: [], items: [], stats: {} },
+        };
+        editor.editingData = {
+          mirostat_mode: 0,
+          prompts: [{ identifier: 'main', content: 'hello' }],
+        };
+
+        editor.setProfileFieldValue('mirostat_mode', '2');
+
+        if (editor.editingData.mirostat_mode !== 2) {
+          throw new Error(`expected numeric mirrored select option to persist as number 2, got ${JSON.stringify(editor.editingData.mirostat_mode)}`);
+        }
+        if (typeof editor.editingData.mirostat_mode !== 'number') {
+          throw new Error(`expected numeric mirrored select option type to stay numeric, got ${typeof editor.editingData.mirostat_mode}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_tracks_active_mirrored_section_workspace_and_counts():
+    run_preset_editor_runtime_check(
+        """
+        editor.editingPresetFile = {
+          preset_kind: 'textgen',
+          editor_profile: {
+            id: 'st_chat_completion_preset',
+            family: 'st_mirror',
+            sections: [
+              { id: 'output_and_reasoning', label: '输出与推理' },
+              { id: 'prompt_manager', label: 'Prompt Manager' },
+            ],
+            fields: {
+              openai_max_context: {
+                id: 'openai_max_context',
+                storage_key: 'openai_max_context',
+                section: 'output_and_reasoning',
+                control: 'range_with_number',
+                min: 512,
+                max: 8192,
+                step: 1,
+              },
+              openai_max_tokens: {
+                id: 'openai_max_tokens',
+                storage_key: 'openai_max_tokens',
+                section: 'output_and_reasoning',
+                control: 'range_with_number',
+                min: 1,
+                max: 4096,
+                step: 1,
+              },
+              prompts: {
+                id: 'prompts',
+                storage_key: 'prompts',
+                section: 'prompt_manager',
+                control: 'prompt_workspace',
+              },
+              prompt_order: {
+                id: 'prompt_order',
+                storage_key: 'prompt_order',
+                section: 'prompt_manager',
+                control: 'prompt_workspace',
+              },
+            },
+          },
+          reader_view: {
+            family: 'prompt_manager',
+            groups: [{ id: 'prompts', label: 'Prompt 条目' }],
+            items: [],
+            stats: {},
+          },
+        };
+        editor.editingData = {
+          openai_max_context: 4096,
+          openai_max_tokens: 1200,
+          prompts: [{ identifier: 'main', content: 'hello' }],
+          prompt_order: ['main'],
+        };
+        editor.activeWorkspace = 'prompts';
+
+        if (editor.activeMirroredSection?.id !== 'prompt_manager') {
+          throw new Error(`expected prompt workspace to map to prompt_manager section, got ${editor.activeMirroredSection?.id}`);
+        }
+        if (editor.getMirroredSectionFieldCount('output_and_reasoning') !== 2) {
+          throw new Error(`expected mirrored section count to include both output fields, got ${editor.getMirroredSectionFieldCount('output_and_reasoning')}`);
+        }
+
+        editor.selectWorkspace('output_and_reasoning');
+
+        if (editor.activeWorkspace !== 'output_and_reasoning') {
+          throw new Error(`expected mirrored section workspace to be selectable, got ${editor.activeWorkspace}`);
+        }
+        if (editor.activeMirroredSection?.id !== 'output_and_reasoning') {
+          throw new Error(`expected active mirrored section to follow workspace, got ${editor.activeMirroredSection?.id}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_mirrored_profile_editor_is_hidden_for_prompt_workspace():
+    run_preset_editor_runtime_check(
+        """
+        editor.editingPresetFile = {
+          preset_kind: 'textgen',
+          editor_profile: {
+            id: 'st_chat_completion_preset',
+            family: 'st_mirror',
+            sections: [{ id: 'core_sampling', label: '核心采样' }],
+            fields: {},
+          },
+          reader_view: {
+            family: 'prompt_manager',
+            groups: [{ id: 'prompts', label: 'Prompts' }],
+            items: [],
+            stats: {},
+          },
+        };
+        editor.activeWorkspace = 'prompts';
+
+        if (!editor.isMirroredProfileEditor) {
+          throw new Error('expected mirrored profile editor to be recognized');
+        }
+        if (!editor.isPromptWorkspaceEditor) {
+          throw new Error('expected prompt workspace editor to be recognized');
+        }
+        if (editor.activeWorkspace !== 'prompts') {
+          throw new Error(`expected activeWorkspace to stay prompts, got ${editor.activeWorkspace}`);
         }
         """
     )
@@ -1291,6 +1522,85 @@ def test_preset_editor_template_exposes_scalar_workspace_parameter_panels():
         'getScalarWorkspaceFieldValue(field.storage_key)' in source
         or 'setScalarWorkspaceFieldValue(field.storage_key' in source
     )
+
+
+def test_preset_editor_template_exposes_mirrored_profile_control_panels():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert (
+        'x-if="isMirroredProfileEditor && editorProfile"' in source
+        or "x-if=\"isMirroredProfileEditor && editorProfile && (!isPromptWorkspaceEditor || activeWorkspace !== 'prompts')\"" in source
+    )
+    assert 'x-for="section in mirroredProfileSections"' in source
+    assert 'x-for="field in getProfileSectionFields(activeMirroredSection.id)"' in source
+    assert '@input="setProfileFieldValue(field.id, $event.target.value)"' in source
+    assert '@change="setProfileFieldValue(field.id, $event.target.checked)"' in source
+    assert '@change="setProfileFieldValue(field.id, $event.target.value)"' in source
+    assert ':style="`width: ${getProfileFieldPercent(field.id)}%`"' in source
+
+
+def test_preset_editor_template_exposes_mirrored_profile_section_navigation():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert '@click="selectWorkspace(section.id === \'prompt_manager\' ? \'prompts\' : section.id)"' in source
+    assert 'getMirroredSectionFieldCount(section.id)' in source
+
+
+def test_preset_editor_template_mirrored_profile_renders_active_section_only_and_skips_prompt_manager_panel():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert "x-if=\"activeMirroredSection && activeMirroredSection.id !== 'prompt_manager'\"" in source
+    assert 'x-text="activeMirroredSection.label"' in source
+    assert 'x-text="activeMirroredSection.description || activeMirroredSection.id"' in source
+    assert "x-if=\"section.id !== 'prompt_manager'\"" not in source
+
+
+def test_preset_editor_template_mirrored_profile_uses_stable_field_ids_for_bindings():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert 'getProfileFieldValue(field.id)' in source
+    assert 'getProfileFieldPercent(field.id)' in source
+    assert 'setProfileFieldValue(field.id, $event.target.value)' in source
+    assert 'setProfileFieldValue(field.id, $event.target.checked)' in source
+    assert 'getProfileFieldValue(field.canonical_key)' not in source
+    assert 'getProfileFieldPercent(field.canonical_key)' not in source
+    assert 'setProfileFieldValue(field.canonical_key, $event.target.value)' not in source
+    assert 'setProfileFieldValue(field.canonical_key, $event.target.checked)' not in source
+
+
+def test_preset_editor_template_exposes_mirrored_profile_auxiliary_metadata_panel():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert 'activeMirroredField?.description' in source
+    assert 'activeMirroredField?.storage_key' in source
+    assert 'activeMirroredField?.default' in source
+    assert 'activeMirroredField?.preset_bound' in source
+    assert 'activeMirroredField?.source_key ||' in source
+    assert 'resolveProfileFieldMax(activeMirroredField)' in source
+
+
+def test_preset_editor_template_exposes_full_mirrored_profile_control_kinds():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert "field.control === 'sortable_string_list' || field.control === 'string_list'" in source
+    assert "field.control === 'key_value_list'" in source
+    assert "field.control === 'raw_json'" in source
+    assert "field.control === 'key_value_list' && field.id === 'logit_bias'" in source
+    assert "field.control === 'raw_json' && field.id === 'extensions'" in source
+    assert '@click="openAdvancedExtensions()"' in source
+
+
+def test_preset_editor_template_mirrored_profile_supports_number_controls_and_live_textarea_updates():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert "field.control === 'number'" in source
+    assert '@input="setProfileFieldValue(field.id, $event.target.value)"' in source
+
+
+def test_preset_editor_template_mirrored_profile_branch_yields_to_prompt_workspace():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert "x-if=\"isMirroredProfileEditor && editorProfile && (!isPromptWorkspaceEditor || activeWorkspace !== 'prompts')\"" in source
 
 
 def test_preset_editor_template_scalar_workspace_supports_structured_editor_kinds():

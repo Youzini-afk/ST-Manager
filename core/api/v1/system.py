@@ -258,6 +258,18 @@ def api_get_settings():
         cfg['chats_dir'] = 'data/library/chats'
     if 'presets_dir' not in cfg:
         cfg['presets_dir'] = 'data/library/presets'
+    if 'st_openai_preset_dir' not in cfg:
+        cfg['st_openai_preset_dir'] = ''
+    if 'st_textgen_preset_dir' not in cfg:
+        cfg['st_textgen_preset_dir'] = ''
+    if 'st_instruct_preset_dir' not in cfg:
+        cfg['st_instruct_preset_dir'] = ''
+    if 'st_context_preset_dir' not in cfg:
+        cfg['st_context_preset_dir'] = ''
+    if 'st_sysprompt_dir' not in cfg:
+        cfg['st_sysprompt_dir'] = ''
+    if 'st_reasoning_dir' not in cfg:
+        cfg['st_reasoning_dir'] = ''
     if 'quick_replies_dir' not in cfg:
         cfg['quick_replies_dir'] = 'data/library/extensions/quick-replies'
     if 'default_sort' not in cfg:
