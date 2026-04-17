@@ -1417,9 +1417,12 @@ def test_preset_detail_reader_template_guards_active_item_accesses():
     source = read_project_file('templates/modals/detail_preset_popup.html')
 
     assert 'x-if="activeItem?.type === \'prompt_order\'"' not in source
-    assert 'x-if="activeItem?.type === \'extension\'"' in source
-    assert 'x-if="activeItem?.type === \'field\'"' in source
-    assert 'x-if="activeItem?.type === \'structured\'"' in source
+    assert 'x-if="activeItem?.type === \'extension\'"' not in source
+    assert 'x-if="activeItem?.type === \'field\'"' not in source
+    assert 'x-if="activeItem?.type === \'structured\'"' not in source
+    assert 'x-if="activeContextItem?.type === \'extension\'"' in source
+    assert 'x-if="activeContextItem?.type === \'field\'"' in source
+    assert 'x-if="activeContextItem?.type === \'structured\'"' in source
     assert "x-if=\"activeItem?.group === 'unknown_fields' || activeItem?.type === 'unknown_field'\"" not in source
 
 

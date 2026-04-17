@@ -209,17 +209,20 @@ def test_preset_grid_and_detail_expose_export_actions():
     )
 
     assert 'downloadFileFromApi(' in export_grid_block
-    assert "url: '/api/presets/export'" in export_grid_block
+    assert '/api/presets/export' in export_grid_block
     assert 'id: item.id' in export_grid_block
     assert 'event?.stopPropagation?.()' in export_grid_block
     assert '@click.stop="exportPresetItem(item, $event)"' in preset_grid_template
     assert 'title="导出预设 JSON"' in preset_grid_template
 
     assert 'downloadFileFromApi(' in export_detail_block
-    assert "url: '/api/presets/export'" in export_detail_block
+    assert '/api/presets/export' in export_detail_block
     assert 'id: detail.id' in export_detail_block
     assert '@click="exportActivePreset()"' in preset_detail_template
-    assert '>导出</button>' in preset_detail_template
+    assert re.search(
+        r'@click="exportActivePreset\(\)"[\s\S]*?>\s*导出\s*</button>',
+        preset_detail_template,
+    )
 
 
 def test_shared_download_helper_handles_attachment_downloads_and_json_errors():
@@ -2530,21 +2533,79 @@ def test_preset_grid_js_uses_category_metadata_and_explicit_upload_fallback_cont
     assert 'canDeletePresetSelection()' in preset_grid_source
     assert 'canMovePresetSelection()' in preset_grid_source
     assert 'deleteSelectedPresets()' in preset_grid_source
-    assert 'moveSelectedPresets(targetCategory = this.filterCategory || \'\')' in preset_grid_source
+    assert 'moveSelectedPresets(targetCategory = this.filterCategory || ' in preset_grid_source
     assert 'selectedPresetItems()' in preset_grid_source
     assert 'isPresetMovable(item)' in preset_grid_source
-    assert 'selectedItems.length === 0 || !selectedItems.every(currentItem => this.isPresetMovable(currentItem))' in preset_grid_source
     assert '当前选中的预设包含资源绑定项，不能移动分类' in preset_grid_source
     assert 'ids = Array.of(item.id);' not in preset_grid_source
     drag_start_block = extract_js_function_block(preset_grid_source, 'dragStart(e, item)')
-    assert drag_start_block.index('selectedItems.length === 0 || !selectedItems.every(currentItem => this.isPresetMovable(currentItem))') < drag_start_block.index('this.selectedIds = ids;')
-    assert "this.filterType === 'global' || this.filterType === 'all'" in preset_grid_source
+    assert 'selectedItems.length === 0' in drag_start_block
+    assert 'selectedItems.every((currentItem) => this.isPresetMovable(currentItem))' in drag_start_block
+    assert drag_start_block.index('selectedItems.length === 0') < drag_start_block.index('this.selectedIds = ids;')
+    assert 'this.filterType === "global" || this.filterType === "all"' in preset_grid_source
     assert 'owner_card_id' in preset_grid_source
     assert 'owner_card_name' in preset_grid_source
     assert 'source_type' in preset_grid_source
     assert 'showPresetCategoryActions' not in preset_grid_source
     assert 'movePresetToCategory(item)' not in preset_grid_source
     assert 'resetPresetCategory(item)' not in preset_grid_source
+
+
+def test_preset_grid_js_delegates_detail_rendering_to_reader_without_local_detail_state():
+    preset_grid_source = read_project_file('static/js/components/presetGrid.js')
+    open_preset_detail_block = extract_js_function_block(
+        preset_grid_source,
+        'openPresetDetail(item) {',
+    )
+    state_block = preset_grid_source[
+        preset_grid_source.index('return {'):preset_grid_source.index('get selectedIds() {')
+    ]
+
+    assert 'new CustomEvent("open-preset-reader"' in open_preset_detail_block
+    assert 'detail: item' in open_preset_detail_block
+
+    for dead_state_field in (
+        'selectedPreset:',
+        'showDetailModal:',
+        'activePresetDetail:',
+        'showPresetDetailModal:',
+        'activePresetItem:',
+        'activePresetItemType:',
+        'uiPresetFilter:',
+        'showMobileSidebar:',
+    ):
+        assert dead_state_field not in state_block
+
+    for dead_helper_signature in (
+        'async openPreset(item) {',
+        'closeDetailModal() {',
+        'closePresetDetailModal() {',
+        'selectPresetItem(item, type, shouldScroll = false) {',
+        'get filteredPresetItems() {',
+        'get totalPresetItems() {',
+        'openAdvancedExtensions() {',
+        'async savePresetExtensions(extensions) {',
+        'createSnapshot(type) {',
+        'openRollback() {',
+        'openBackupFolder(type) {',
+        'deleteCurrentPreset() {',
+        'editPresetRawFromDetail() {',
+        'editPresetRaw() {',
+        'formatSize(bytes) {',
+        'formatParam(val) {',
+        'formatPromptContent(val) {',
+        'pickPromptContent(prompt) {',
+        'collectPromptMeta(prompt) {',
+        'normalizePrompts(list) {',
+    ):
+        assert dead_helper_signature not in preset_grid_source
+
+    assert 'toggleSelection(item)' in preset_grid_source
+    assert 'selectedPresetItems()' in preset_grid_source
+    assert 'deleteSelectedPresets()' in preset_grid_source
+    assert 'moveSelectedPresets(targetCategory = this.filterCategory || ' in preset_grid_source
+    assert 'async exportPresetItem(item, event = null)' in preset_grid_source
+    assert 'formatDate(ts) {' in preset_grid_source
 
 
 def test_preset_grid_template_uses_selection_without_card_level_category_actions():

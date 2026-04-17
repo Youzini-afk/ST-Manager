@@ -848,9 +848,6 @@
               <div class="hidden" x-show="!isPromptWorkspaceReader">
                 <span x-text="activeItem?.title || '未选择条目'"></span>
                 <span x-text="getItemFullDetail(activeItem)"></span>
-                <span x-if="activeItem?.type === 'extension'"></span>
-                <span x-if="activeItem?.type === 'field'"></span>
-                <span x-if="activeItem?.type === 'structured'"></span>
               </div>
 
               <template x-if="!activeContextItem">
