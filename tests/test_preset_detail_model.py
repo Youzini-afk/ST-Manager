@@ -191,7 +191,7 @@ def test_preset_detail_reader_view_uses_prompt_manager_family_for_prompt_presets
     prompt_items = [item for item in reader_view['items'] if item['type'] == 'prompt']
 
     assert reader_view['family'] == 'prompt_manager'
-    assert reader_view['family_label'] == 'Prompt Manager 预设'
+    assert reader_view['family_label'] == '提示词管理预设'
     assert [group['id'] for group in reader_view['groups']][0] == 'prompts'
     assert 'prompt_order' not in [group['id'] for group in reader_view['groups']]
     assert [item['payload']['identifier'] for item in prompt_items] == ['summary', 'main', 'worldInfoAfter']

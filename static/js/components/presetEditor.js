@@ -128,6 +128,7 @@ export default function presetEditor() {
     uiFilter: "all",
     showMobileSidebar: false,
     showRightPanel: true,
+    showPromptTriggers: false,
     hasUnsavedChanges: false,
     dirtyPaths: {},
     editingPresetFile: null,
@@ -1258,6 +1259,7 @@ export default function presetEditor() {
     selectPrompt(promptId) {
       this.activeWorkspace = "prompts";
       this.activePromptId = String(promptId || "");
+      this.showPromptTriggers = false;
       this.refreshEditorCollections();
     },
 
@@ -1633,6 +1635,7 @@ export default function presetEditor() {
         this.activeItemId = "";
         this.showMobileSidebar = false;
         this.showRightPanel = true;
+        this.showPromptTriggers = false;
         this.markClean();
         this.selectGroup("all");
         this.showPresetEditor = true;
@@ -1689,6 +1692,7 @@ export default function presetEditor() {
       this.activePromptId = "";
       this.activeGenericItemId = "";
       this.activeItemId = "";
+      this.showPromptTriggers = false;
       this.promptItemsCache = [];
       this.orderedPromptItemsCache = [];
       this.filteredItemsCache = [];

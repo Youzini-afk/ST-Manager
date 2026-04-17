@@ -267,7 +267,7 @@ def test_preset_editor_template_uses_user_facing_copy_for_prompt_and_mirrored_wo
 
     assert '提示词列表' in source
     assert '当前筛选下没有可用字段' in source
-    assert 'Prompt Manager' not in source
+    assert '提示词管理' not in source
     assert 'Reader Workspace' not in source
     assert 'SillyTavern 提示词管理' not in source
     assert '当前分区使用 profile schema 直接驱动 ST 镜像控件。' not in source
@@ -290,6 +290,23 @@ def test_preset_editor_template_localizes_remaining_prompt_workspace_copy():
     assert '当前预设没有可编辑的 Prompt 条目。' not in source
     assert '切换 Prompt 启用状态' not in source
     assert 'In-Chat 深度' not in source
+
+
+def test_preset_editor_template_localizes_prompt_manager_guidance_copy():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert '按提示词管理的常用方式编辑' in source
+    assert '名称、角色、注入位置与触发器' in source
+    assert 'SillyTavern 提示词管理的使用习惯编辑。' not in source
+
+
+def test_preset_editor_template_collapses_prompt_triggers_by_default():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert '按需展开设置触发场景。' in source
+    assert '勾选后仅在对应场景触发此提示词。' in source
+    assert re.search(r'<button\b[\s\S]*?>[\s\S]*?触发器[\s\S]*?按需展开设置触发场景。[\s\S]*?</button>', source)
+    assert re.search(r'<button\b[\s\S]*?>[\s\S]*?触发器[\s\S]*?</button>[\s\S]*?勾选后仅在对应场景触发此提示词。', source)
 
 
 def test_preset_editor_template_localizes_remaining_parameter_copy():
@@ -576,7 +593,7 @@ def test_preset_editor_runtime_tracks_active_mirrored_section_workspace_and_coun
             family: 'st_mirror',
             sections: [
               { id: 'output_and_reasoning', label: '输出与推理' },
-              { id: 'prompt_manager', label: 'Prompt Manager' },
+              { id: 'prompt_manager', label: '提示词管理' },
             ],
             fields: {
               openai_max_context: {
@@ -654,7 +671,7 @@ def test_preset_editor_runtime_filters_and_selects_mirrored_fields_by_workspace_
             id: 'st_chat_completion_preset',
             family: 'st_mirror',
             sections: [
-              { id: 'prompt_manager', label: 'Prompt Manager' },
+              { id: 'prompt_manager', label: '提示词管理' },
               { id: 'output_and_reasoning', label: '输出与推理' },
             ],
             fields: {
@@ -728,6 +745,64 @@ def test_preset_editor_runtime_filters_and_selects_mirrored_fields_by_workspace_
         }
         if (editor.activeMirroredField !== null) {
           throw new Error(`expected no active mirrored field after empty result, got ${editor.activeMirroredField?.id}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_resets_prompt_trigger_collapse_state():
+    run_preset_editor_runtime_check(
+        """
+        editor.editingPresetFile = {
+          id: 'preset-1',
+          preset_kind: 'textgen',
+          raw_data: {},
+          editor_profile: {
+            id: 'st_chat_completion_preset',
+            family: 'st_mirror',
+            sections: [{ id: 'prompt_manager', label: '提示词管理' }],
+            fields: {
+              prompts: {
+                id: 'prompts',
+                storage_key: 'prompts',
+                section: 'prompt_manager',
+                control: 'prompt_workspace',
+              },
+            },
+          },
+          reader_view: {
+            family: 'prompt_manager',
+            groups: [{ id: 'prompts', label: 'Prompt 条目' }],
+            items: [],
+            stats: {},
+          },
+        };
+        editor.editingData = {
+          prompts: [
+            { identifier: 'main', name: 'Main', content: 'hello' },
+            { identifier: 'summary', name: 'Summary', content: 'world' },
+          ],
+          prompt_order: ['main', 'summary'],
+        };
+        editor.activeWorkspace = 'prompts';
+        editor.refreshEditorCollections();
+
+        if (editor.showPromptTriggers !== false) {
+          throw new Error(`expected prompt triggers collapsed by default, got ${editor.showPromptTriggers}`);
+        }
+
+        editor.showPromptTriggers = true;
+        editor.selectPrompt('summary');
+
+        if (editor.showPromptTriggers !== false) {
+          throw new Error(`expected prompt selection to re-collapse triggers, got ${editor.showPromptTriggers}`);
+        }
+
+        editor.showPromptTriggers = true;
+        editor.closeEditor();
+
+        if (editor.showPromptTriggers !== false) {
+          throw new Error(`expected closeEditor to reset trigger collapse state, got ${editor.showPromptTriggers}`);
         }
         """
     )

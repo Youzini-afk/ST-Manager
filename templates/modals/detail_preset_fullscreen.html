@@ -446,8 +446,7 @@
                           提示词基础信息
                         </div>
                         <div class="text-sm text-[var(--text-dim)]">
-                          名称、角色、注入位置与触发器按 SillyTavern
-                          提示词管理的使用习惯编辑。
+                          按提示词管理的常用方式编辑名称、角色、注入位置与触发器。
                         </div>
                       </div>
 
@@ -555,30 +554,48 @@
                         class="rounded-2xl border border-[var(--border-light)] bg-[var(--bg-body)] p-4 space-y-3"
                         data-prompt-triggers
                       >
-                        <div class="text-sm font-bold text-[var(--text-main)]">
-                          触发器
-                        </div>
-                        <div class="text-[11px] text-[var(--text-dim)]">
-                          勾选后仅在对应场景触发此提示词。
-                        </div>
-                        <div class="flex flex-wrap gap-2">
-                          <template
-                            x-for="option in promptTriggerOptions"
-                            :key="option.value"
-                          >
-                            <label
-                              class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--border-light)] text-sm text-[var(--text-main)]"
+                        <button
+                          type="button"
+                          @click="showPromptTriggers = !showPromptTriggers"
+                          class="w-full flex items-center justify-between gap-3 text-left"
+                        >
+                          <div>
+                            <div class="text-sm font-bold text-[var(--text-main)]">
+                              触发器
+                            </div>
+                            <div class="text-[11px] text-[var(--text-dim)]">
+                              按需展开设置触发场景。
+                            </div>
+                          </div>
+                          <span
+                            class="text-[11px] text-[var(--text-dim)]"
+                            x-text="showPromptTriggers ? '收起' : '展开'"
+                          ></span>
+                        </button>
+
+                        <div x-show="showPromptTriggers" class="space-y-3">
+                          <div class="text-[11px] text-[var(--text-dim)]">
+                            勾选后仅在对应场景触发此提示词。
+                          </div>
+                          <div class="flex flex-wrap gap-2">
+                            <template
+                              x-for="option in promptTriggerOptions"
+                              :key="option.value"
                             >
-                              <input
-                                type="checkbox"
-                                class="rounded"
-                                :value="option.value"
-                                :checked="Array.isArray(activePromptItem?.injection_trigger) && activePromptItem.injection_trigger.includes(option.value)"
-                                @change="updatePromptTriggers(Array.from($el.closest('[data-prompt-triggers]').querySelectorAll('input:checked')).map((input) => input.value))"
-                              />
-                              <span x-text="option.label"></span>
-                            </label>
-                          </template>
+                              <label
+                                class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--border-light)] text-sm text-[var(--text-main)]"
+                              >
+                                <input
+                                  type="checkbox"
+                                  class="rounded"
+                                  :value="option.value"
+                                  :checked="Array.isArray(activePromptItem?.injection_trigger) && activePromptItem.injection_trigger.includes(option.value)"
+                                  @change="updatePromptTriggers(Array.from($el.closest('[data-prompt-triggers]').querySelectorAll('input:checked')).map((input) => input.value))"
+                                />
+                                <span x-text="option.label"></span>
+                              </label>
+                            </template>
+                          </div>
                         </div>
                       </div>
 

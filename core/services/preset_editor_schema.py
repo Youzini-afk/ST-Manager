@@ -116,7 +116,7 @@ CHAT_COMPLETION_SECTIONS = [
     {'id': 'output_and_reasoning', 'label': '输出与推理', 'description': '上下文、回复长度、流式与推理配置'},
     {'id': 'core_sampling', 'label': '核心采样', 'description': '温度、Top P、Top K 与相关采样参数'},
     {'id': 'penalties', 'label': '惩罚', 'description': '频率、存在与重复惩罚'},
-    {'id': 'prompt_manager', 'label': 'Prompt Manager', 'description': 'Prompt 顺序、启用状态与正文编辑'},
+    {'id': 'prompt_manager', 'label': '提示词管理', 'description': 'Prompt 顺序、启用状态与正文编辑'},
     {'id': 'formatting_and_templates', 'label': '格式与模板', 'description': '格式化提示词与模板字段'},
     {'id': 'extensions_and_advanced', 'label': '扩展与高级', 'description': '扩展、bias、seed 与附加高级参数'},
 ]
@@ -130,7 +130,7 @@ TEXTGEN_SECTIONS = [
     {'id': 'mirostat_and_advanced', 'label': 'Mirostat 与高级采样', 'description': 'Mirostat、beam、CFG 等高级参数'},
     {'id': 'constraints_and_control', 'label': '约束与控制', 'description': '负面提示、grammar、schema 和 token 限制'},
     {'id': 'sampler_ordering', 'label': '采样器排序', 'description': '采样器顺序与优先级'},
-    {'id': 'prompt_manager', 'label': 'Prompt Manager', 'description': 'Prompt 顺序、启用状态与正文编辑'},
+    {'id': 'prompt_manager', 'label': '提示词管理', 'description': 'Prompt 顺序、启用状态与正文编辑'},
 ]
 
 
