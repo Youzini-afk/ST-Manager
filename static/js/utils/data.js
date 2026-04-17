@@ -169,6 +169,15 @@ export function normalizeWiEntry(entry, index = 0) {
     return Number.isFinite(n) ? n : false;
   };
 
+  const normalizeTriStateBoolean = (val) => {
+    if (val === true || val === false || val === null) return val;
+    if (val === undefined || val === "") return null;
+    if (val === "true") return true;
+    if (val === "false") return false;
+    if (val === "null") return null;
+    return null;
+  };
+
   // 1. 获取原始数组 (优先使用新字段，回退到旧字段)
   // 使用浅拷贝 [...arr] 断开引用
   const rawKeys = Array.isArray(entry.keys)
@@ -207,8 +216,8 @@ export function normalizeWiEntry(entry, index = 0) {
     excludeRecursion: !!entry.excludeRecursion,
     preventRecursion: !!entry.preventRecursion,
     ignoreBudget: !!entry.ignoreBudget,
-    matchWholeWords: !!entry.matchWholeWords,
-    caseSensitive: !!entry.caseSensitive,
+    matchWholeWords: normalizeTriStateBoolean(entry.matchWholeWords),
+    caseSensitive: normalizeTriStateBoolean(entry.caseSensitive),
     use_regex: !!entry.use_regex,
     selective: entry.selective !== undefined ? !!entry.selective : true,
     useProbability:

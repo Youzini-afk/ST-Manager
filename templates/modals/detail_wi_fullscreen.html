@@ -632,6 +632,34 @@
                     />
                   </div>
                 </template>
+                <template x-if="activeEditorEntry.position === 7">
+                  <div
+                    class="pt-2 border-t border-[var(--border-light)] flex items-center justify-between gap-3"
+                  >
+                    <span class="text-gray-500 whitespace-nowrap"
+                      >输出端名称 (Outlet)</span
+                    >
+                    <input
+                      type="text"
+                      x-model="activeEditorEntry.outletName"
+                      placeholder="main"
+                      class="flex-1 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-xs"
+                    />
+                  </div>
+                </template>
+                <div
+                  class="pt-2 border-t border-[var(--border-light)] flex items-center justify-between gap-3"
+                >
+                  <span class="text-gray-500 whitespace-nowrap"
+                    >扫描深度 (Scan Depth)</span
+                  >
+                  <input
+                    type="number"
+                    x-model.number="activeEditorEntry.scanDepth"
+                    placeholder="留空跟随全局"
+                    class="w-24 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-center"
+                  />
+                </div>
               </div>
             </div>
 
@@ -752,6 +780,16 @@
                     class="text-xs text-gray-500 whitespace-nowrap flex-shrink-0"
                     >逻辑模式 (Logic)</span
                   >
+                  <label
+                    class="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap"
+                  >
+                    <input
+                      type="checkbox"
+                      x-model="activeEditorEntry.selective"
+                      class="accent-purple-500 scale-90"
+                    />
+                    <span>启用选择过滤</span>
+                  </label>
                   <select
                     x-model.number="activeEditorEntry.selectiveLogic"
                     class="bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1.5 text-xs flex-1 min-w-0 hover:border-accent-main transition-colors cursor-pointer"
@@ -774,11 +812,16 @@
                       class="text-xs text-gray-400 group-hover:text-gray-200"
                       >全词匹配 (Whole Words)</span
                     >
-                    <input
-                      type="checkbox"
-                      x-model="activeEditorEntry.matchWholeWords"
-                      class="accent-purple-500 scale-90"
-                    />
+                    <select
+                      x-model="activeEditorEntry.matchWholeWordsState"
+                      @change="setTriStateValue(activeEditorEntry, 'matchWholeWords', activeEditorEntry.matchWholeWordsState)"
+                      x-init="activeEditorEntry.matchWholeWordsState = getTriStateSelectValue(activeEditorEntry.matchWholeWords)"
+                      class="bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-xs min-w-[88px]"
+                    >
+                      <option value="null">跟随全局</option>
+                      <option value="true">是</option>
+                      <option value="false">否</option>
+                    </select>
                   </label>
                   <label
                     class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
@@ -787,11 +830,16 @@
                       class="text-xs text-gray-400 group-hover:text-gray-200"
                       >区分大小写 (Case Sensitive)</span
                     >
-                    <input
-                      type="checkbox"
-                      x-model="activeEditorEntry.caseSensitive"
-                      class="accent-purple-500 scale-90"
-                    />
+                    <select
+                      x-model="activeEditorEntry.caseSensitiveState"
+                      @change="setTriStateValue(activeEditorEntry, 'caseSensitive', activeEditorEntry.caseSensitiveState)"
+                      x-init="activeEditorEntry.caseSensitiveState = getTriStateSelectValue(activeEditorEntry.caseSensitive)"
+                      class="bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-xs min-w-[88px]"
+                    >
+                      <option value="null">跟随全局</option>
+                      <option value="true">是</option>
+                      <option value="false">否</option>
+                    </select>
                   </label>
                   <label
                     class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
@@ -846,6 +894,304 @@
                           class="accent-accent-main cursor-pointer w-4 h-4"
                         />
                       </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  class="pt-2 mt-2 border-t border-[var(--border-light)] space-y-1"
+                >
+                  <div
+                    class="text-[10px] uppercase tracking-wide text-gray-500"
+                  >
+                    附加扫描来源
+                  </div>
+                  <label
+                    class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
+                  >
+                    <span
+                      class="text-xs text-gray-400 group-hover:text-gray-200"
+                      >匹配角色描述</span
+                    >
+                    <input
+                      type="checkbox"
+                      x-model="activeEditorEntry.matchCharacterDescription"
+                      class="accent-purple-500 scale-90"
+                    />
+                  </label>
+                  <label
+                    class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
+                  >
+                    <span
+                      class="text-xs text-gray-400 group-hover:text-gray-200"
+                      >匹配角色性格</span
+                    >
+                    <input
+                      type="checkbox"
+                      x-model="activeEditorEntry.matchCharacterPersonality"
+                      class="accent-purple-500 scale-90"
+                    />
+                  </label>
+                  <label
+                    class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
+                  >
+                    <span
+                      class="text-xs text-gray-400 group-hover:text-gray-200"
+                      >匹配场景</span
+                    >
+                    <input
+                      type="checkbox"
+                      x-model="activeEditorEntry.matchScenario"
+                      class="accent-purple-500 scale-90"
+                    />
+                  </label>
+                  <label
+                    class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
+                  >
+                    <span
+                      class="text-xs text-gray-400 group-hover:text-gray-200"
+                      >匹配 Persona 描述</span
+                    >
+                    <input
+                      type="checkbox"
+                      x-model="activeEditorEntry.matchPersonaDescription"
+                      class="accent-purple-500 scale-90"
+                    />
+                  </label>
+                  <label
+                    class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
+                  >
+                    <span
+                      class="text-xs text-gray-400 group-hover:text-gray-200"
+                      >匹配角色深度提示</span
+                    >
+                    <input
+                      type="checkbox"
+                      x-model="activeEditorEntry.matchCharacterDepthPrompt"
+                      class="accent-purple-500 scale-90"
+                    />
+                  </label>
+                  <label
+                    class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
+                  >
+                    <span
+                      class="text-xs text-gray-400 group-hover:text-gray-200"
+                      >匹配创作者备注</span
+                    >
+                    <input
+                      type="checkbox"
+                      x-model="activeEditorEntry.matchCreatorNotes"
+                      class="accent-purple-500 scale-90"
+                    />
+                  </label>
+                </div>
+
+                <div
+                  class="pt-2 mt-2 border-t border-[var(--border-light)] space-y-2"
+                >
+                  <div
+                    class="text-[10px] uppercase tracking-wide text-gray-500"
+                  >
+                    时序行为
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-xs text-gray-400 whitespace-nowrap"
+                      >Sticky</span
+                    >
+                    <input
+                      type="number"
+                      min="1"
+                      :value="getOptionalNumberInputValue(activeEditorEntry.sticky)"
+                      @input="setOptionalNumberField(activeEditorEntry, 'sticky', $event.target.value)"
+                      placeholder="留空表示关闭"
+                      class="w-28 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-center placeholder:text-[10px]"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-xs text-gray-400 whitespace-nowrap"
+                      >Cooldown</span
+                    >
+                    <input
+                      type="number"
+                      min="1"
+                      :value="getOptionalNumberInputValue(activeEditorEntry.cooldown)"
+                      @input="setOptionalNumberField(activeEditorEntry, 'cooldown', $event.target.value)"
+                      placeholder="留空表示关闭"
+                      class="w-28 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-center placeholder:text-[10px]"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-xs text-gray-400 whitespace-nowrap"
+                      >Delay</span
+                    >
+                    <input
+                      type="number"
+                      min="1"
+                      :value="getOptionalNumberInputValue(activeEditorEntry.delay)"
+                      @input="setOptionalNumberField(activeEditorEntry, 'delay', $event.target.value)"
+                      placeholder="留空表示关闭"
+                      class="w-28 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-center placeholder:text-[10px]"
+                    />
+                  </div>
+                </div>
+
+                <div
+                  class="pt-2 mt-2 border-t border-[var(--border-light)] space-y-2"
+                >
+                  <div
+                    class="text-[10px] uppercase tracking-wide text-gray-500"
+                  >
+                    分组与自动化
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-xs text-gray-400 whitespace-nowrap"
+                      >Inclusion Group</span
+                    >
+                    <input
+                      type="text"
+                      x-model="activeEditorEntry.group"
+                      placeholder="逗号分隔多个组"
+                      class="flex-1 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-xs"
+                    />
+                  </div>
+                  <label
+                    class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
+                  >
+                    <span
+                      class="text-xs text-gray-400 group-hover:text-gray-200"
+                      >组优先 (Prioritize)</span
+                    >
+                    <input
+                      type="checkbox"
+                      x-model="activeEditorEntry.groupOverride"
+                      class="accent-purple-500 scale-90"
+                    />
+                  </label>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-xs text-gray-400 whitespace-nowrap"
+                      >组权重 (Weight)</span
+                    >
+                    <input
+                      type="number"
+                      min="1"
+                      max="10000"
+                      x-model.number="activeEditorEntry.groupWeight"
+                      class="w-28 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-center"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-xs text-gray-400 whitespace-nowrap"
+                      >Group Scoring</span
+                    >
+                    <select
+                      x-model="activeEditorEntry.useGroupScoringState"
+                      @change="setTriStateValue(activeEditorEntry, 'useGroupScoring', activeEditorEntry.useGroupScoringState)"
+                      x-init="activeEditorEntry.useGroupScoringState = getTriStateSelectValue(activeEditorEntry.useGroupScoring)"
+                      class="bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-xs min-w-[96px]"
+                    >
+                      <option value="null">跟随全局</option>
+                      <option value="true">是</option>
+                      <option value="false">否</option>
+                    </select>
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-xs text-gray-400 whitespace-nowrap"
+                      >Automation ID</span
+                    >
+                    <input
+                      type="text"
+                      x-model="activeEditorEntry.automationId"
+                      placeholder="可选"
+                      class="flex-1 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-xs"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-2 pt-1">
+                    <span class="text-xs text-gray-400"
+                      >Generation Triggers</span
+                    >
+                    <select
+                      multiple
+                      @change="setMultiSelectField(activeEditorEntry, 'triggers', $event.target)"
+                      class="bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-xs min-h-[96px]"
+                    >
+                      <option
+                        value="normal"
+                        :selected="(activeEditorEntry.triggers || []).includes('normal')"
+                      >
+                        Normal
+                      </option>
+                      <option
+                        value="continue"
+                        :selected="(activeEditorEntry.triggers || []).includes('continue')"
+                      >
+                        Continue
+                      </option>
+                      <option
+                        value="impersonate"
+                        :selected="(activeEditorEntry.triggers || []).includes('impersonate')"
+                      >
+                        Impersonate
+                      </option>
+                      <option
+                        value="swipe"
+                        :selected="(activeEditorEntry.triggers || []).includes('swipe')"
+                      >
+                        Swipe
+                      </option>
+                      <option
+                        value="regenerate"
+                        :selected="(activeEditorEntry.triggers || []).includes('regenerate')"
+                      >
+                        Regenerate
+                      </option>
+                      <option
+                        value="quiet"
+                        :selected="(activeEditorEntry.triggers || []).includes('quiet')"
+                      >
+                        Quiet
+                      </option>
+                    </select>
+                  </div>
+                  <div
+                    class="flex flex-col gap-2 pt-1 border-t border-[var(--border-light)] mt-1 pt-3"
+                  >
+                    <label
+                      class="flex items-center justify-between cursor-pointer p-1.5 hover:bg-[var(--bg-hover)] rounded group transition-colors"
+                    >
+                      <span
+                        class="text-xs text-gray-400 group-hover:text-gray-200"
+                        >Character Filter Exclude</span
+                      >
+                      <input
+                        type="checkbox"
+                        :checked="!!activeEditorEntry.characterFilter?.isExclude"
+                        @change="toggleCharacterFilterExclude(activeEditorEntry, $event.target.checked)"
+                        class="accent-purple-500 scale-90"
+                      />
+                    </label>
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-xs text-gray-400 whitespace-nowrap"
+                        >Character Names</span
+                      >
+                      <input
+                        type="text"
+                        :value="getCharacterFilterCsv(activeEditorEntry, 'names')"
+                        @input="setCharacterFilterCsv(activeEditorEntry, 'names', $event.target.value)"
+                        placeholder="逗号分隔"
+                        class="flex-1 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-xs"
+                      />
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-xs text-gray-400 whitespace-nowrap"
+                        >Character Tags</span
+                      >
+                      <input
+                        type="text"
+                        :value="getCharacterFilterCsv(activeEditorEntry, 'tags')"
+                        @input="setCharacterFilterCsv(activeEditorEntry, 'tags', $event.target.value)"
+                        placeholder="逗号分隔"
+                        class="flex-1 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1 text-xs"
+                      />
                     </div>
                   </div>
                 </div>
