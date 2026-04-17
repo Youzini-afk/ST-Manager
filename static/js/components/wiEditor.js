@@ -184,6 +184,41 @@ export default function wiEditor() {
       entry.role = null;
     },
 
+    getDelayUntilRecursionEnabled(entry) {
+      return !!entry?.delayUntilRecursion;
+    },
+
+    getDelayUntilRecursionLevel(entry) {
+      const value = entry?.delayUntilRecursion;
+      return typeof value === "number" ? value : "";
+    },
+
+    setDelayUntilRecursionEnabled(entry, enabled) {
+      if (!entry || typeof entry !== "object") return;
+      if (!enabled) {
+        entry.delayUntilRecursion = false;
+        return;
+      }
+
+      const current = entry.delayUntilRecursion;
+      entry.delayUntilRecursion = typeof current === "number" ? current : true;
+    },
+
+    setDelayUntilRecursionLevel(entry, rawValue) {
+      if (!entry || typeof entry !== "object") return;
+
+      const content = String(rawValue ?? "").trim();
+      if (content === "") {
+        entry.delayUntilRecursion = this.getDelayUntilRecursionEnabled(entry)
+          ? true
+          : false;
+        return;
+      }
+
+      const value = Number(content);
+      entry.delayUntilRecursion = Number.isFinite(value) ? value : false;
+    },
+
     // === 初始化 ===
     init() {
       // 监听打开编辑器事件

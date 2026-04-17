@@ -676,11 +676,21 @@
                 <div
                   class="flex items-center justify-between mt-1 pt-1 border-t border-[var(--border-light)]"
                 >
-                  <span class="text-gray-500">延迟递归等级</span>
+                  <label class="flex items-center gap-2 text-gray-500">
+                    <input
+                      type="checkbox"
+                      :checked="getDelayUntilRecursionEnabled(activeEditorEntry)"
+                      @change="setDelayUntilRecursionEnabled(activeEditorEntry, $event.target.checked)"
+                      class="accent-pink-500"
+                    />
+                    <span>延迟递归</span>
+                  </label>
                   <input
                     type="number"
-                    x-model.number="activeEditorEntry.delayUntilRecursion"
-                    placeholder="0"
+                    :value="getDelayUntilRecursionLevel(activeEditorEntry)"
+                    @input="setDelayUntilRecursionLevel(activeEditorEntry, $event.target.value)"
+                    placeholder="1"
+                    :disabled="!getDelayUntilRecursionEnabled(activeEditorEntry)"
                     class="w-12 bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-1 text-center"
                   />
                 </div>
@@ -747,10 +757,10 @@
                     class="bg-[var(--bg-body)] border border-[var(--border-light)] rounded px-2 py-1.5 text-xs flex-1 min-w-0 hover:border-accent-main transition-colors cursor-pointer"
                     :disabled="!activeEditorEntry.selective"
                   >
-                    <option value="0">0 - 任意匹配 (Any/OR)</option>
-                    <option value="1">1 - 全部匹配 (All/AND)</option>
-                    <option value="2">2 - 全不匹配 (Not Any/NOR)</option>
-                    <option value="3">3 - 非全部 (Not All/NAND)</option>
+                    <option value="0">0 - AND ANY (任一副关键词命中)</option>
+                    <option value="3">3 - AND ALL (全部副关键词命中)</option>
+                    <option value="1">1 - NOT ALL (存在未命中即可)</option>
+                    <option value="2">2 - NOT ANY (全部副关键词未命中)</option>
                   </select>
                 </div>
 
