@@ -225,6 +225,75 @@ def test_preset_grid_and_detail_expose_export_actions():
     )
 
 
+def test_preset_grid_template_places_selection_left_and_actions_right():
+    preset_template = read_project_file('templates/components/grid_presets.html')
+
+    assert 'preset-grid-card' in preset_template
+    assert 'preset-card-toolbar' in preset_template
+    assert 'class="preset-card-toolbar-actions ml-auto flex items-center gap-1"' in preset_template
+    assert 'preset-select-shell' in preset_template
+    assert 'title="选择预设"' in preset_template
+    assert 'title="删除预设"' in preset_template
+    assert 'title="导出预设 JSON"' in preset_template
+    assert 'absolute top-0 left-0 w-6 h-6' not in preset_template
+    assert 'absolute top-0 left-7 w-6 h-6' not in preset_template
+
+
+def test_preset_grid_css_reveals_selection_and_actions_on_hover():
+    preset_template = read_project_file('templates/components/grid_presets.html')
+    cards_css = read_project_file('static/css/modules/view-cards.css')
+
+    assert 'preset-select-shell' in preset_template
+    assert 'preset-card-action-btn is-danger' in preset_template
+    assert 'preset-card-action-btn is-export' in preset_template
+    assert 'text-red-400' not in preset_template
+    assert 'text-sky-300' not in preset_template
+    assert '.preset-grid-card:hover .card-select-overlay' in cards_css
+    assert '.preset-grid-card:focus-within .card-select-overlay' in cards_css
+    assert '.preset-grid-card .preset-card-toolbar-actions' in cards_css
+    assert 'visibility: hidden' in cards_css
+    assert '.preset-grid-card:hover .preset-card-toolbar-actions' in cards_css
+    assert '.preset-grid-card:focus-within .preset-card-toolbar-actions' in cards_css
+    assert 'visibility: visible' in cards_css
+    assert '.preset-select-shell {' in cards_css
+    assert '.preset-select-shell.is-selected {' in cards_css
+    assert '.preset-card-action-btn {' in cards_css
+
+
+def test_preset_grid_source_badge_stays_top_right_and_shifts_left_on_hover():
+    preset_template = read_project_file('templates/components/grid_presets.html')
+    cards_css = read_project_file('static/css/modules/view-cards.css')
+
+    assert 'preset-card-source-badge' in preset_template
+    assert 'absolute right-3 top-3' in preset_template
+    assert 'absolute right-3 top-11' not in preset_template
+    assert '.preset-card-source-badge {' in cards_css
+
+    badge_block = extract_exact_css_block(cards_css, '.preset-card-source-badge')
+    hover_block = extract_exact_css_block(
+        cards_css,
+        '.preset-grid-card:hover .preset-card-source-badge',
+    )
+    focus_block = extract_exact_css_block(
+        cards_css,
+        '.preset-grid-card:focus-within .preset-card-source-badge',
+    )
+
+    assert 'right: 0.75rem;' in badge_block
+    assert 'top: 0.75rem;' in badge_block
+    assert 'transition:' in badge_block
+    assert 'right:' in hover_block
+    assert 'right:' in focus_block
+    assert 'left:' not in hover_block
+    assert 'left:' not in focus_block
+    assert '.preset-card-action-btn.is-danger {' in cards_css
+    assert '.preset-card-action-btn.is-export {' in cards_css
+    assert 'html.light-mode .preset-card-action-btn {' in cards_css
+    assert 'html.light-mode .preset-card-action-btn.is-danger {' in cards_css
+    assert 'html.light-mode .preset-card-action-btn.is-export {' in cards_css
+    assert '.preset-card-source-badge {' in cards_css
+
+
 def test_shared_download_helper_handles_attachment_downloads_and_json_errors():
     download_source = read_project_file('static/js/utils/download.js')
 

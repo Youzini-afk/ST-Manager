@@ -350,6 +350,116 @@ html.light-mode .card-bottom-toolbar {
   transform: scale(1);
 }
 
+.preset-grid-card:hover .card-select-overlay {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.preset-grid-card:focus-within .card-select-overlay {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.preset-grid-card .preset-card-toolbar-actions {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.preset-grid-card:hover .preset-card-toolbar-actions,
+.preset-grid-card:focus-within .preset-card-toolbar-actions,
+.preset-grid-card .preset-card-toolbar-actions.is-mobile,
+.preset-grid-card .preset-card-toolbar-actions:focus-within {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.preset-select-shell {
+  background: color-mix(in srgb, var(--bg-panel), #ffffff 12%);
+  border-color: color-mix(in srgb, var(--border-light), var(--accent-main) 22%);
+  color: var(--text-main);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.18);
+}
+
+.preset-select-shell.is-selected {
+  background: var(--accent-main);
+  border-color: var(--accent-main);
+  color: var(--text-on-accent);
+  transform: scale(1.05);
+}
+
+.preset-card-action-btn {
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--bg-panel), #000000 10%);
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(6px);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.preset-card-action-btn:hover {
+  transform: translateY(-1px);
+}
+
+.preset-card-action-btn.is-danger {
+  color: #fca5a5;
+}
+
+.preset-card-action-btn.is-danger:hover {
+  color: #fecaca;
+}
+
+.preset-card-action-btn.is-export {
+  color: #7dd3fc;
+}
+
+.preset-card-action-btn.is-export:hover {
+  color: #bae6fd;
+}
+
+html.light-mode .preset-card-action-btn {
+  background: color-mix(in srgb, var(--bg-panel), #ffffff 24%);
+  color: color-mix(in srgb, var(--text-main), #0f172a 12%);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+}
+
+html.light-mode .preset-card-action-btn.is-danger {
+  color: #b91c1c;
+}
+
+html.light-mode .preset-card-action-btn.is-export {
+  color: #0369a1;
+}
+
+.preset-card-source-badge {
+  z-index: 7;
+  right: 0.75rem;
+  top: 0.75rem;
+  max-width: calc(100% - 1.5rem);
+  transition:
+    right 0.2s ease,
+    top 0.2s ease;
+}
+
+.preset-grid-card:hover .preset-card-source-badge {
+  right: 4.75rem;
+}
+
+.preset-grid-card:focus-within .preset-card-source-badge {
+  right: 4.75rem;
+}
+
 .card-fav-overlay {
   position: absolute;
   top: 0.45rem;

@@ -80,30 +80,55 @@
             draggable="true"
             :data-preset-id="item.id"
             :class="selectedIds.includes(item.id) ? 'border-[var(--accent-main)] ring-2 ring-[var(--accent-main)]/40' : 'border-[var(--border-light)]'"
-            class="group bg-[var(--bg-panel)] p-4 rounded-lg cursor-pointer hover:border-[var(--accent-main)] hover:shadow-lg transition-all relative overflow-hidden flex flex-col"
+            class="preset-grid-card group bg-[var(--bg-panel)] px-4 pb-4 pt-14 rounded-lg cursor-pointer hover:border-[var(--accent-main)] hover:shadow-lg transition-all relative overflow-hidden flex flex-col"
           >
-            <button
-              type="button"
-              class="card-select-indicator card-select-overlay"
-              :class="{ 'is-selected': selectedIds.includes(item.id), 'is-mobile': $store.global.deviceType === 'mobile' }"
-              @click.stop="toggleSelection(item)"
-              title="选择预设"
+            <div
+              class="preset-card-toolbar absolute inset-x-3 top-3 z-20 flex items-start justify-between gap-3"
             >
-              <div
-                class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 shadow-sm"
-                :class="selectedIds.includes(item.id) ? 'bg-blue-600 border-blue-500 text-white scale-105' : 'bg-black/25 border-gray-400/60 hover:bg-black/50 hover:border-white/80 text-white/80'"
+              <button
+                type="button"
+                class="card-select-indicator card-select-overlay"
+                :class="{ 'is-selected': selectedIds.includes(item.id), 'is-mobile': $store.global.deviceType === 'mobile' }"
+                @click.stop="toggleSelection(item)"
+                title="选择预设"
               >
-                <span
-                  x-show="selectedIds.includes(item.id)"
-                  class="text-xs font-bold"
-                  >✓</span
+                <div
+                  class="preset-select-shell w-6 h-6 rounded-full border flex items-center justify-center transition-all duration-200"
+                  :class="{ 'is-selected': selectedIds.includes(item.id) }"
                 >
+                  <span
+                    x-show="selectedIds.includes(item.id)"
+                    class="text-xs font-bold"
+                    >✓</span
+                  >
+                </div>
+              </button>
+
+              <div
+                class="preset-card-toolbar-actions ml-auto flex items-center gap-1"
+                :class="{ 'is-mobile': $store.global.deviceType === 'mobile' }"
+              >
+                <button
+                  @click="deletePreset(item, $event)"
+                  class="preset-card-action-btn is-danger flex h-7 w-7 items-center justify-center"
+                  title="删除预设"
+                >
+                  ✕
+                </button>
+
+                <button
+                  @click.stop="exportPresetItem(item, $event)"
+                  class="preset-card-action-btn is-export flex h-7 w-7 items-center justify-center"
+                  title="导出预设 JSON"
+                >
+                  ⇩
+                </button>
               </div>
-            </button>
+            </div>
 
             <!-- 来源角标 -->
             <div
-              class="absolute top-0 right-0 px-2 py-1 text-[10px] font-bold text-white rounded-bl-lg shadow-sm"
+              class="preset-card-source-badge absolute right-3 top-3 px-2 py-1 text-[10px] font-bold text-white rounded-md shadow-sm"
               :class="(item.source_type || item.type) === 'global' ? 'bg-blue-600' : 'bg-green-600'"
             >
               <span x-text="getPresetSourceHint(item)"></span>
@@ -116,23 +141,6 @@
               title="定位所属角色卡"
             >
               定位所属角色卡
-            </button>
-
-            <!-- 删除按钮 -->
-            <button
-              @click="deletePreset(item, $event)"
-              class="absolute top-0 left-0 w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-br-lg opacity-0 group-hover:opacity-100 transition-opacity"
-              title="删除预设"
-            >
-              ✕
-            </button>
-
-            <button
-              @click.stop="exportPresetItem(item, $event)"
-              class="absolute top-0 left-7 w-6 h-6 flex items-center justify-center text-sky-300 hover:text-sky-200 hover:bg-sky-500/20 rounded-br-lg opacity-0 group-hover:opacity-100 transition-opacity"
-              title="导出预设 JSON"
-            >
-              ⇩
             </button>
 
             <div class="flex items-start gap-3 mb-3">
