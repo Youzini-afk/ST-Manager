@@ -164,7 +164,7 @@
               </div>
 
               <div class="wi-card-footer" @click.stop>
-                <div class="wi-card-footer-meta">
+                <div class="wi-card-footer-info">
                   <div
                     class="wi-card-meta-chip wi-card-category-chip"
                     :title="formatCategoryLabel(getWorldInfoDisplayCategory(item))"
@@ -182,22 +182,20 @@
                   ></div>
                 </div>
 
-                <div class="wi-card-footer-actions">
-                  <div
-                    class="wi-card-note-state"
-                    :class="worldInfoHasLocalNote(item) ? 'has-note' : 'no-note'"
-                    x-text="getWorldInfoNoteState(item)"
-                  ></div>
-                  <button
-                    type="button"
-                    class="card-local-note-btn"
-                    :class="worldInfoHasLocalNote(item) ? 'has-note' : 'no-note'"
-                    :disabled="!worldInfoHasLocalNote(item)"
-                    :title="getWorldInfoNotePreviewTitle(item)"
-                    @click.stop="openWorldInfoLocalNote(item)"
-                  >
-                    📝
-                  </button>
+                <div class="wi-card-footer-tools">
+                  <div class="wi-card-footer-tools-left">
+                    <button
+                      type="button"
+                      class="card-local-note-btn wi-card-note-tool"
+                      :class="worldInfoHasLocalNote(item) ? 'has-note' : 'no-note'"
+                      :disabled="!worldInfoHasLocalNote(item)"
+                      :title="getWorldInfoNotePreviewTitle(item)"
+                      @click.stop="openWorldInfoLocalNote(item)"
+                    >
+                      📝
+                    </button>
+                  </div>
+                  <div class="wi-card-footer-tools-right"></div>
                 </div>
               </div>
             </div>

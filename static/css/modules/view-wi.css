@@ -1337,7 +1337,6 @@ html.light-mode .wi-help-modal-content {
   display: flex;
   align-items: center;
   gap: 0.42rem;
-  padding-right: 1.75rem;
   flex: 0 0 auto;
 }
 
@@ -1622,23 +1621,20 @@ html.light-mode .wi-help-modal-content {
 
 .wi-card-footer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.55rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.42rem;
   padding-top: 0.56rem;
-  padding-right: 1.75rem;
   border-top: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 12%);
   position: relative;
   z-index: 1;
 }
 
-.wi-card-footer-meta {
+.wi-card-footer-info {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   min-width: 0;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
 }
 
 .wi-card-meta-chip {
@@ -1669,43 +1665,34 @@ html.light-mode .wi-help-modal-content {
 }
 
 .wi-card-date-chip {
+  margin-left: auto;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
-.wi-card-footer-actions {
+.wi-card-footer-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.32rem;
+  min-height: 1.6rem;
+  padding-right: 1.75rem;
+}
+
+.wi-card-footer-tools-left,
+.wi-card-footer-tools-right {
   display: flex;
   align-items: center;
   gap: 0.32rem;
+}
+
+.wi-card-footer-tools-right {
+  margin-left: auto;
+  min-width: 0;
+}
+
+.wi-card-note-tool {
   flex: 0 0 auto;
-}
-
-.wi-card-note-state {
-  font-size: 0.62rem;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--text-dim);
-  padding: 0.12rem 0.42rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-sub), transparent 4%);
-  border: 1px solid color-mix(in srgb, var(--border-light), #d6b36a 10%);
-}
-
-.wi-card-note-state.has-note {
-  color: #f6e3ab;
-  border-color: rgba(214, 179, 106, 0.26);
-  background: linear-gradient(
-    180deg,
-    rgba(125, 88, 35, 0.24),
-    rgba(92, 63, 24, 0.14)
-  );
-}
-
-.wi-card-note-state.no-note {
-  opacity: 0.58;
-  color: color-mix(in srgb, var(--text-dim), transparent 8%);
-  border-color: color-mix(in srgb, var(--border-light), transparent 6%);
-  background: color-mix(in srgb, var(--bg-sub), transparent 16%);
 }
 
 html.light-mode .wi-card-front {
@@ -1742,16 +1729,6 @@ html.light-mode .wi-card-meta-chip {
   background: rgba(252, 247, 236, 0.92);
   border-color: rgba(148, 116, 60, 0.16);
   color: #5e4d37;
-}
-
-html.light-mode .wi-card-note-state.has-note {
-  color: #7a5a1f;
-  border-color: rgba(184, 148, 85, 0.24);
-  background: linear-gradient(
-    180deg,
-    rgba(232, 214, 173, 0.72),
-    rgba(244, 235, 214, 0.88)
-  );
 }
 
 html.light-mode .wi-card-bookmark {
@@ -1907,10 +1884,14 @@ html.light-mode .wi-card-back {
     min-height: 1.2rem;
   }
   .wi-card-footer {
-    align-items: center;
+    align-items: stretch;
+    gap: 0.36rem;
   }
-  .wi-card-footer-meta {
+  .wi-card-footer-info {
     gap: 0.42rem;
+  }
+  .wi-card-footer-tools {
+    padding-right: 1.5rem;
   }
   .wi-back-note {
     min-height: 0;
@@ -2052,10 +2033,6 @@ html.light-mode .wi-card-back {
     --wi-card-page-inset-x: 0.72rem;
     --wi-card-page-inset-y: 0.72rem;
     --wi-card-page-frame-inset: 0.28rem;
-  }
-  .wi-card-header-actions,
-  .wi-card-footer {
-    padding-right: 1.5rem;
   }
   .wi-reader-topbar h3 {
     font-size: 0.875rem !important;

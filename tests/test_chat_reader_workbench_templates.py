@@ -175,7 +175,7 @@ def test_worldinfo_grid_and_detail_expose_export_actions():
     )
 
     assert 'downloadFileFromApi(' in export_grid_block
-    assert "url: '/api/world_info/export'" in export_grid_block
+    assert '/api/world_info/export' in export_grid_block
     assert 'source_type: item.source_type || item.type' in export_grid_block
     assert 'file_path: item.path' in export_grid_block
     assert 'card_id: item.card_id' in export_grid_block
@@ -184,13 +184,42 @@ def test_worldinfo_grid_and_detail_expose_export_actions():
     assert 'title="导出世界书 JSON"' in wi_grid_template
 
     assert 'downloadFileFromApi(' in export_detail_block
-    assert "url: '/api/world_info/export'" in export_detail_block
+    assert '/api/world_info/export' in export_detail_block
     assert 'source_type: detail.type' in export_detail_block
     assert 'file_path: detail.path' in export_detail_block
     assert 'card_id: detail.card_id' in export_detail_block
     assert 'id: detail.id' in export_detail_block
     assert '@click="exportActiveWorldInfo()"' in wi_detail_template
-    assert '>导出 JSON</button>' in wi_detail_template
+    assert 'title="导出 JSON"' in wi_detail_template
+    assert re.search(
+        r'@click="exportActiveWorldInfo\(\)"[\s\S]*?>[\s\S]*导出[\s\S]*</button>',
+        wi_detail_template,
+    )
+
+
+def test_worldinfo_grid_template_splits_footer_meta_and_tools():
+    wi_grid_template = read_project_file('templates/components/grid_wi.html')
+
+    footer_block = extract_balanced_tag_block(
+        wi_grid_template,
+        '<div class="wi-card-footer"'
+    )
+
+    tools_block = extract_balanced_tag_block(
+        footer_block,
+        '<div class="wi-card-footer-tools"'
+    )
+
+    info_index = footer_block.index('wi-card-footer-info')
+    tools_index = footer_block.index('wi-card-footer-tools')
+    date_index = footer_block.index('wi-card-date-chip')
+
+    assert info_index < date_index < tools_index
+    assert 'wi-card-footer-tools-left' in tools_block
+    assert 'wi-card-note-tool' in tools_block
+    assert 'wi-card-footer-tools-right' in tools_block
+    assert 'wi-card-note-state' not in footer_block
+    assert 'getWorldInfoNoteState(item)' not in footer_block
 
 
 def test_preset_grid_and_detail_expose_export_actions():
@@ -2278,10 +2307,22 @@ def test_worldinfo_css_exposes_archive_front_groups_and_light_mode_palette():
 
 def test_worldinfo_css_separates_badge_tag_and_note_state_visual_weight():
     wi_css = read_project_file('static/css/modules/view-wi.css')
+    header_actions_block = extract_exact_css_block(wi_css, '.wi-card-header-actions')
+    footer_block = extract_exact_css_block(wi_css, '.wi-card-footer')
+    footer_info_block = extract_exact_css_block(wi_css, '.wi-card-footer-info')
+    footer_tools_block = extract_exact_css_block(wi_css, '.wi-card-footer-tools')
+    date_chip_block = extract_exact_css_block(wi_css, '.wi-card-date-chip')
 
     assert '.wi-card-tag-placeholder::before' in wi_css
-    assert '.wi-card-note-state.no-note' in wi_css
-    assert '.wi-card-note-state.has-note' in wi_css
+    assert 'padding-right:' not in header_actions_block
+    assert 'flex-direction: column;' in footer_block
+    assert 'align-items: stretch;' in footer_block
+    assert 'justify-content: space-between;' not in footer_block
+    assert 'display: flex;' in footer_info_block
+    assert 'display: flex;' in footer_tools_block
+    assert 'padding-right: 1.75rem;' in footer_tools_block
+    assert 'margin-left: auto;' in date_chip_block
+    assert '.wi-card-note-state {' not in wi_css
 
 
 def test_worldinfo_css_archive_tag_summary_overrides_placeholder_rules():
@@ -2300,7 +2341,7 @@ def test_worldinfo_css_styles_archive_backface_and_catalog_meta():
     assert '.wi-card-back-note-wrap::before' in wi_css
     assert 'html.light-mode .wi-card-back {' in wi_css
     assert 'html.light-mode .wi-card-meta-chip {' in wi_css
-    assert 'html.light-mode .wi-card-note-state.has-note {' in wi_css
+    assert 'html.light-mode .wi-card-note-state.has-note {' not in wi_css
 
 
 def test_worldinfo_css_back_header_reserves_space_for_catalog_stamp():
@@ -2343,13 +2384,12 @@ def test_worldinfo_mobile_css_reuses_shared_page_boundary_tokens_for_front_and_b
 
     assert '@media (max-width: 768px)' in wi_css
     mobile_block = extract_media_block(wi_css, '@media (max-width: 768px)')
-    mobile_header_footer_padding_block = extract_exact_css_block(
-        mobile_block,
-        '.wi-card-header-actions,\n  .wi-card-footer',
-    )
     front_mobile_block = extract_exact_css_block(mobile_block, '.wi-card-front')
     back_note_wrap_mobile_block = extract_exact_css_block(mobile_block, '.wi-card-back-note-wrap')
     back_note_frame_mobile_block = extract_exact_css_block(mobile_block, '.wi-card-back-note-wrap::before')
+    footer_block = extract_exact_css_block(mobile_block, '.wi-card-footer')
+    footer_info_block = extract_exact_css_block(mobile_block, '.wi-card-footer-info')
+    footer_tools_block = extract_exact_css_block(mobile_block, '.wi-card-footer-tools')
 
     assert '--wi-card-page-inset-x:' in mobile_block
     assert '--wi-card-page-inset-y:' in mobile_block
@@ -2357,7 +2397,12 @@ def test_worldinfo_mobile_css_reuses_shared_page_boundary_tokens_for_front_and_b
     assert 'padding: var(--wi-card-page-inset-y) var(--wi-card-page-inset-x);' in front_mobile_block
     assert 'padding: 0.18rem var(--wi-card-page-inset-x) var(--wi-card-page-inset-y);' in back_note_wrap_mobile_block
     assert 'inset: 0.1rem var(--wi-card-page-inset-x) var(--wi-card-page-inset-y);' in back_note_frame_mobile_block
-    assert 'padding-right: 1.5rem;' in mobile_header_footer_padding_block
+    assert 'align-items: stretch;' in footer_block
+    assert 'gap: 0.36rem;' in footer_block
+    assert 'gap: 0.42rem;' in footer_info_block
+    assert 'padding-right: 1.5rem;' in footer_tools_block
+    assert '.wi-card-footer-meta' not in mobile_block
+    assert '.wi-card-header-actions,' not in mobile_block
 
 
 def test_worldinfo_grid_template_uses_back_note_reading_layout():
@@ -2426,14 +2471,14 @@ def test_worldinfo_css_keeps_flip_corner_on_outer_shell_instead_of_face_offsets(
     grid_card_block = extract_exact_css_block(wi_css, '.wi-grid-card')
     front_block = extract_exact_css_block(wi_css, '.wi-card-front')
     header_actions_block = extract_exact_css_block(wi_css, '.wi-card-header-actions')
-    footer_block = extract_exact_css_block(wi_css, '.wi-card-footer')
+    footer_tools_block = extract_exact_css_block(wi_css, '.wi-card-footer-tools')
     flip_corner_block = extract_exact_css_block(card_css, '.card-flip-corner')
 
     assert 'padding: 0;' in grid_card_block
     assert 'position: absolute;' in front_block
     assert 'inset: 0;' in front_block
-    assert 'padding-right: 1.75rem;' in header_actions_block
-    assert 'padding-right: 1.75rem;' in footer_block
+    assert 'padding-right:' not in header_actions_block
+    assert 'padding-right: 1.75rem;' in footer_tools_block
     assert '.wi-item-flip-corner {' in wi_css
     assert 'right: 0;' in flip_corner_block
     assert 'bottom: 0;' in flip_corner_block
