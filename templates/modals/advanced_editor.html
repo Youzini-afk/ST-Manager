@@ -367,7 +367,7 @@
 
                                         <!-- HTML 渲染显示 (Shadow DOM) -->
                                         <div x-show="regexPreviewMode==='html'" class="test-io-render-box"
-                                            x-effect="updateMixedPreviewContent($el, regexPreviewMode==='html' ? regexTestResult : null, { runtimeOwner: 'regex-test-bench', runtimeLabel: 'Regex Test Bench Preview', scroll: true, minHeight: 200, maxHeight: 0, embeddedStageStyle: false })">
+                                            x-effect="renderUnifiedPreviewHost($el, regexPreviewMode==='html' ? regexTestResult : null, { runtimeOwner: 'regex-test-bench', runtimeLabel: 'Regex Test Bench Preview', scroll: true, minHeight: 200, maxHeight: 0, embeddedStageStyle: false })">
                                         </div>
                                     </div>
                                 </div>

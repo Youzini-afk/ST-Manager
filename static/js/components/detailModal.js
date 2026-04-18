@@ -42,7 +42,7 @@ import {
     formatWiKeys,
     getTopbarTokenLevelClass
 } from '../utils/format.js';
-import { updateShadowContent, updateMixedPreviewContent } from '../utils/dom.js';
+import { updateShadowContent, renderUnifiedPreviewHost, updateMixedPreviewContent } from '../utils/dom.js';
 import { createAutoSaver } from '../utils/autoSave.js'; 
 import { wiHelpers } from '../utils/wiHelpers.js';
 import { clearActiveRuntimeContext, setActiveRuntimeContext } from '../runtime/runtimeContext.js';
@@ -126,6 +126,7 @@ export default function detailModal() {
         formatDate,
         estimateTokens,
         updateShadowContent,
+        renderUnifiedPreviewHost,
         updateMixedPreviewContent,
         formatWiKeys,
         getTopbarTokenLevelClass,
@@ -134,6 +135,15 @@ export default function detailModal() {
 
         formatDateWithYear(ts) {
             return formatDate(ts, { includeYear: true });
+        },
+
+        buildPreviewRegexConfig() {
+            const regexScripts = Array.isArray(this.editingData?.extensions?.regex_scripts)
+                ? this.editingData.extensions.regex_scripts
+                : [];
+            return {
+                displayRules: regexScripts,
+            };
         },
 
         _convertLegacyTavernHelper(extensions) {

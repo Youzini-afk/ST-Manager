@@ -5,10 +5,7 @@
 
 import { ManagerScriptRuntime } from "../runtime/scriptRuntime.js";
 import { subscribeRuntimeManager } from "../runtime/runtimeManager.js";
-import {
-  updateShadowContent,
-  updateMixedPreviewContent,
-} from "../utils/dom.js";
+import { renderUnifiedPreviewHost, updateShadowContent } from "../utils/dom.js";
 import { runRegexTestBenchScript } from "../utils/regexTestBench.js";
 
 export default function advancedEditor() {
@@ -72,7 +69,10 @@ export default function advancedEditor() {
     fileType: null, // 'regex' | 'script'
 
     updateShadowContent,
-    updateMixedPreviewContent,
+    renderUnifiedPreviewHost:
+      typeof renderUnifiedPreviewHost === "function"
+        ? renderUnifiedPreviewHost
+        : updateShadowContent,
     scriptRuntime: null,
     _runtimeManagerUnsubscribe: null,
 

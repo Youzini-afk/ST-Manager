@@ -345,15 +345,19 @@ def test_advanced_editor_no_longer_listens_for_runtime_inspector_bridge_events()
     assert 'focus-script-runtime-owner' not in advanced_editor_source
 
 
-def test_advanced_editor_regex_test_bench_uses_dedicated_runner():
+def test_advanced_editor_regex_test_bench_uses_shared_preview_renderer_and_dedicated_runner():
     advanced_editor_source = read_project_file('static/js/components/advancedEditor.js')
+    advanced_editor_template = read_project_file('templates/modals/advanced_editor.html')
     run_regex_block = extract_js_function_block(advanced_editor_source, 'runRegexTest() {')
 
-    assert "from '../utils/regexTestBench.js'" in advanced_editor_source
+    assert '../utils/regexTestBench.js' in advanced_editor_source
+    assert '../utils/dom.js' in advanced_editor_source
     assert 'runRegexTestBenchScript' in advanced_editor_source
-    assert 'applyDisplayRules' not in advanced_editor_source
-    assert 'this.regexTestResult = runRegexTestBenchScript(script, this.regexTestInput);' in run_regex_block
+    assert 'renderUnifiedPreviewHost' in advanced_editor_source
+    assert 'updateMixedPreviewContent' not in advanced_editor_source
+    assert 'this.regexTestResult = runRegexTestBenchScript(' in run_regex_block
     assert '❌ 正则表达式错误:' in run_regex_block
+    assert 'applyDisplayRules: true' not in advanced_editor_template
 
 
 def test_chat_reader_css_defines_workbench_theme_tokens():

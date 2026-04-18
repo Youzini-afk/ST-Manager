@@ -1,27 +1,58 @@
 <!-- HTML 大屏预览模态框 -->
-<div x-show="showLargePreview" x-cloak class="modal-overlay z-modal-popover" x-init="ensurePreviewState()" @click.self="showLargePreview=false">
-    <div class="modal-container"
-        style="width: 1000px; height: 90vh; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border-light); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8);">
-
-        <!-- 头部 -->
-        <div class="p-4 border-b flex justify-between items-center"
-            style="background: var(--bg-sub); border-color: var(--border-light);">
-            <h3 class="font-bold text-lg flex items-center gap-2" style="color: var(--text-main);">
-                <span>👁️</span> 渲染结果预览 (HTML Preview)
-            </h3>
-            <button @click="showLargePreview=false" class="text-gray-400 hover:text-white text-xl px-2">✕</button>
-        </div>
-
-        <!-- 内容区 (Shadow DOM) -->
-        <!-- 这里复用 updateShadowContent 函数，确保样式和逻辑与小框一致 -->
-        <div class="flex-1 overflow-auto custom-scrollbar relative bg-[var(--bg-body)]"
-            x-effect="updateMixedPreviewContent($el, showLargePreview ? regexTestResult : null, { runtimeOwner: 'fullscreen-html-preview', runtimeLabel: 'Fullscreen HTML Preview', scroll: false, minHeight: 260, maxHeight: 100000, embeddedStageStyle: false })">
-        </div>
-
-        <!-- 底部 -->
-        <div class="p-3 border-t text-right bg-[var(--bg-sub)] border-[var(--border-light)]">
-            <span class="text-xs text-[var(--text-dim)] mr-4">提示：此视图样式已隔离，不受外部 CSS 影响</span>
-            <button @click="showLargePreview=false" class="btn-secondary px-4 py-1">关闭 (Esc)</button>
-        </div>
+<div
+  x-show="showLargePreview"
+  x-cloak
+  class="modal-overlay z-modal-popover"
+  x-init="ensurePreviewState()"
+  @click.self="showLargePreview=false"
+>
+  <div
+    class="modal-container"
+    style="
+      width: 1000px;
+      height: 90vh;
+      flex-direction: column;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-light);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+    "
+  >
+    <!-- 头部 -->
+    <div
+      class="p-4 border-b flex justify-between items-center"
+      style="background: var(--bg-sub); border-color: var(--border-light)"
+    >
+      <h3
+        class="font-bold text-lg flex items-center gap-2"
+        style="color: var(--text-main)"
+      >
+        <span>👁️</span> 渲染结果预览 (HTML Preview)
+      </h3>
+      <button
+        @click="showLargePreview=false"
+        class="text-gray-400 hover:text-white text-xl px-2"
+      >
+        ✕
+      </button>
     </div>
+
+    <!-- 内容区 (Shadow DOM) -->
+    <!-- 这里复用 updateShadowContent 函数，确保样式和逻辑与小框一致 -->
+    <div
+      class="flex-1 overflow-auto custom-scrollbar relative bg-[var(--bg-body)]"
+      x-effect="renderUnifiedPreviewHost($el, showLargePreview ? regexTestResult : null, { runtimeOwner: 'fullscreen-html-preview', runtimeLabel: 'Fullscreen HTML Preview', scroll: false, minHeight: 260, maxHeight: 100000, embeddedStageStyle: false })"
+    ></div>
+
+    <!-- 底部 -->
+    <div
+      class="p-3 border-t text-right bg-[var(--bg-sub)] border-[var(--border-light)]"
+    >
+      <span class="text-xs text-[var(--text-dim)] mr-4"
+        >提示：此视图样式已隔离，不受外部 CSS 影响</span
+      >
+      <button @click="showLargePreview=false" class="btn-secondary px-4 py-1">
+        关闭 (Esc)
+      </button>
+    </div>
+  </div>
 </div>

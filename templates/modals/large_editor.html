@@ -1,80 +1,140 @@
 <!-- 大编辑器 -->
-<div x-show="showLargeEditor" x-cloak class="modal-overlay z-modal-popover" x-init="ensurePreviewState()" @click.stop>
-    <div class="modal-container large-editor-container" style="width: 1000px; height: 90vh; max-width: 95vw;"
-        @click.away="saveLargeEditor()">
-        <!-- 顶部栏 -->
-        <div class="large-editor-topbar">
-            <!-- 第一行：标题和操作按钮 -->
-            <div class="large-editor-topbar-row">
-                <h3 class="large-editor-title">
-                    <span>📝</span> <span x-text="largeEditorTitle"></span>
-                </h3>
-                <div class="large-editor-actions">
-                    <button @click="showLargeEditor=false" class="large-editor-cancel-btn">取消</button>
-                    <button @click="saveLargeEditor()" class="btn-primary large-editor-save-btn">完成</button>
-                </div>
-            </div>
-
-            <!-- 第二行：导航和模式切换 -->
-            <div class="large-editor-toolbar">
-                <!-- === 左右切换导航栏 (仅在数组模式下显示) === -->
-                <div x-show="largeEditorIsArray" class="large-editor-nav-group">
-                    <button @click="prevLargeEditorItem()" class="large-editor-nav-btn" title="上一个 (自动保存)">◀</button>
-                    <!-- 显示索引进度 -->
-                    <span class="large-editor-nav-info">
-                        <span x-text="largeEditorIndex + 1"></span> /
-                        <span x-text="editingData[largeEditorField] ? editingData[largeEditorField].length : 0"></span>
-                    </span>
-                    <button @click="nextLargeEditorItem()" class="large-editor-nav-btn" title="下一个 (自动保存)">▶</button>
-                </div>
-                <!-- 模式切换按钮组 -->
-                <div class="large-editor-mode-group">
-                    <!-- 编辑/预览 切换 -->
-                    <div class="toggle-btn-group">
-                        <button @click="markdownPreview = false" class="toggle-btn"
-                            :class="!markdownPreview ? 'active' : ''">编辑</button>
-                        <button @click="markdownPreview = true" class="toggle-btn"
-                            :class="markdownPreview ? 'active' : ''">预览</button>
-                    </div>
-
-                    <!-- 渲染格式切换 (仅在预览模式下显示) -->
-                    <div x-show="markdownPreview" class="large-editor-divider"></div>
-                    <div x-show="markdownPreview" class="toggle-btn-group">
-                        <button @click="largeRenderMode = 'markdown'" class="toggle-btn"
-                            :class="largeRenderMode === 'markdown' ? 'active' : ''" title="Markdown 解析">MD</button>
-                        <button @click="largeRenderMode = 'html'" class="toggle-btn"
-                            :class="largeRenderMode === 'html' ? 'active' : ''" title="原生 HTML">HTML</button>
-                    </div>
-                </div>
-            </div>
+<div
+  x-show="showLargeEditor"
+  x-cloak
+  class="modal-overlay z-modal-popover"
+  x-init="ensurePreviewState()"
+  @click.stop
+>
+  <div
+    class="modal-container large-editor-container"
+    style="width: 1000px; height: 90vh; max-width: 95vw"
+    @click.away="saveLargeEditor()"
+  >
+    <!-- 顶部栏 -->
+    <div class="large-editor-topbar">
+      <!-- 第一行：标题和操作按钮 -->
+      <div class="large-editor-topbar-row">
+        <h3 class="large-editor-title">
+          <span>📝</span> <span x-text="largeEditorTitle"></span>
+        </h3>
+        <div class="large-editor-actions">
+          <button
+            @click="showLargeEditor=false"
+            class="large-editor-cancel-btn"
+          >
+            取消
+          </button>
+          <button
+            @click="saveLargeEditor()"
+            class="btn-primary large-editor-save-btn"
+          >
+            完成
+          </button>
         </div>
+      </div>
 
-        <!-- 内容区域 -->
-        <div class="large-editor-content">
-            <!-- 编辑模式 (Textarea) -->
-            <textarea x-show="!markdownPreview" x-model="largeEditorContent" @paste="handleNotePaste($event)"
-                class="large-editor-textarea custom-scrollbar"
-                :style="largeEditorField === 'mes_example' ? 'font-family: monospace; font-size: 0.9rem;' : ''"
-                placeholder="在此输入内容... (本地备注支持粘贴图片)" spellcheck="false"></textarea>
-
-            <!-- 预览模式：根据 largeRenderMode 决定传什么给 updateShadowContent -->
-            <!-- 
-                    逻辑：
-                    如果是 HTML 模式 -> 直接传 raw content
-                    如果是 MD 模式   -> 传 renderMarkdown(content)
-                -->
-            <div x-show="markdownPreview" class="large-editor-preview"
-                x-effect="largeRenderMode === 'html' ? updateMixedPreviewContent($el, markdownPreview ? largeEditorContent : null, { runtimeOwner: 'large-editor', runtimeLabel: 'Large Editor Preview', scroll: true, minHeight: 220, maxHeight: 3200 }) : updateShadowContent($el, markdownPreview ? renderMarkdown(largeEditorContent) : null, { scroll: true })">
-            </div>
-
-            <div class="large-editor-footer">
-                字数统计: <span x-text="largeEditorContent ? largeEditorContent.length : 0"></span>
-                <span
-                    x-show="['ui_summary', 'first_mes', 'mes_example', 'description'].includes(largeEditorField) && !markdownPreview"
-                    class="large-editor-hint">
-                    💡 支持 Markdown/HTML 渲染
-                </span>
-            </div>
+      <!-- 第二行：导航和模式切换 -->
+      <div class="large-editor-toolbar">
+        <!-- === 左右切换导航栏 (仅在数组模式下显示) === -->
+        <div x-show="largeEditorIsArray" class="large-editor-nav-group">
+          <button
+            @click="prevLargeEditorItem()"
+            class="large-editor-nav-btn"
+            title="上一个 (自动保存)"
+          >
+            ◀
+          </button>
+          <!-- 显示索引进度 -->
+          <span class="large-editor-nav-info">
+            <span x-text="largeEditorIndex + 1"></span> /
+            <span
+              x-text="editingData[largeEditorField] ? editingData[largeEditorField].length : 0"
+            ></span>
+          </span>
+          <button
+            @click="nextLargeEditorItem()"
+            class="large-editor-nav-btn"
+            title="下一个 (自动保存)"
+          >
+            ▶
+          </button>
         </div>
+        <!-- 模式切换按钮组 -->
+        <div class="large-editor-mode-group">
+          <!-- 编辑/预览 切换 -->
+          <div class="toggle-btn-group">
+            <button
+              @click="markdownPreview = false"
+              class="toggle-btn"
+              :class="!markdownPreview ? 'active' : ''"
+            >
+              编辑
+            </button>
+            <button
+              @click="markdownPreview = true"
+              class="toggle-btn"
+              :class="markdownPreview ? 'active' : ''"
+            >
+              预览
+            </button>
+          </div>
+
+          <!-- 渲染格式切换 (仅在预览模式下显示) -->
+          <div x-show="markdownPreview" class="large-editor-divider"></div>
+          <div x-show="markdownPreview" class="toggle-btn-group">
+            <button
+              @click="largeRenderMode = 'markdown'"
+              class="toggle-btn"
+              :class="largeRenderMode === 'markdown' ? 'active' : ''"
+              title="Markdown 解析"
+            >
+              MD
+            </button>
+            <button
+              @click="largeRenderMode = 'html'"
+              class="toggle-btn"
+              :class="largeRenderMode === 'html' ? 'active' : ''"
+              title="原生 HTML"
+            >
+              HTML
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <!-- 内容区域 -->
+    <div class="large-editor-content">
+      <!-- 编辑模式 (Textarea) -->
+      <textarea
+        x-show="!markdownPreview"
+        x-model="largeEditorContent"
+        @paste="handleNotePaste($event)"
+        class="large-editor-textarea custom-scrollbar"
+        :style="largeEditorField === 'mes_example' ? 'font-family: monospace; font-size: 0.9rem;' : ''"
+        placeholder="在此输入内容... (本地备注支持粘贴图片)"
+        spellcheck="false"
+      ></textarea>
+
+      <div
+        x-show="markdownPreview"
+        class="large-editor-preview"
+        x-effect="renderUnifiedPreviewHost($el, markdownPreview ? largeEditorContent : null, { ...resolvePreviewOptions() })"
+      ></div>
+
+      <div class="large-editor-footer">
+        字数统计:
+        <span
+          x-text="largeEditorContent ? largeEditorContent.length : 0"
+        ></span>
+        <span
+          x-show="['ui_summary', 'first_mes', 'mes_example', 'description'].includes(largeEditorField) && !markdownPreview"
+          class="large-editor-hint"
+        >
+          💡 支持 Markdown/HTML 渲染
+        </span>
+      </div>
+    </div>
+  </div>
 </div>

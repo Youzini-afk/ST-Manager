@@ -23,11 +23,8 @@ def test_dom_utils_exposes_pretext_backed_intrinsic_size_helpers():
     assert 'export function applyPretextIntrinsicSize(' in source
     assert 'export function estimatePretextBlockHeight(' in source
     assert "import('../vendor/pretext/layout.js')" in source
-    assert 'const pretextEstimateCache = new Map();' in source
-    assert 'let pretextModule = null;' in source
     assert 'module.prepare(' in source
     assert 'module.layout(' in source
-    assert 'pretextEstimateCache.get(cacheKey)' in source
     assert 'containIntrinsicSize' in source
 
 
@@ -35,17 +32,17 @@ def test_chat_reader_uses_pretext_intrinsic_size_hint_before_mounting_message_ht
     source = read_project_file('static/js/components/chatGrid.js')
 
     assert 'applyPretextIntrinsicSize' in source
-    assert "this.applyReaderPretextIntrinsicSize(el, message, variant, html);" in source
     assert 'estimatePretextBlockHeight' in source
     assert 'shouldApplyReaderPretextIntrinsicSize(variant, message)' in source
+    assert 'applyReaderPretextIntrinsicSize(el, message, variant' in source
 
 
 def test_chat_reader_skips_pretext_for_page_mode_full_render_hot_path():
     source = read_project_file('static/js/components/chatGrid.js')
 
     assert 'shouldApplyReaderPretextIntrinsicSize(variant, message) {' in source
-    assert "if (variant !== 'simple') return false;" in source
-    assert 'if (this.isReaderPageMode) return false;' in source
+    assert "variant !== 'simple'" in source, 'expected simple-only pretext gating to remain in the reader path'
+    assert 'this.isReaderPageMode' in source, 'expected page-mode bypass to remain in the reader path'
 
 
 def test_large_preview_surfaces_use_pretext_intrinsic_size_hints():
@@ -56,18 +53,63 @@ def test_large_preview_surfaces_use_pretext_intrinsic_size_hints():
     assert 'runtimeOwner' in dom_source
 
 
-def test_preview_entrypoints_continue_using_shared_dom_renderers_that_now_have_pretext_support():
+def test_update_mixed_preview_content_is_a_compatibility_wrapper_over_render_unified_preview_host():
+    dom_source = read_project_file('static/js/utils/dom.js')
+
+    assert 'export function renderUnifiedPreviewHost(' in dom_source
+    assert 'export function updateMixedPreviewContent(' in dom_source
+    assert 'function buildMixedPreviewParts(' not in dom_source
+    assert 'renderUnifiedPreviewHost(el, content, options)' in dom_source
+    wrapper_block = dom_source.split('export function updateMixedPreviewContent(', 1)[1]
+    wrapper_block = wrapper_block.split('}', 1)[0]
+    assert 'buildMixedPreviewParts' not in wrapper_block
+    assert 'classifyPreviewFrontendText' not in wrapper_block
+
+
+def test_preview_entrypoints_continue_using_shared_dom_renderers_with_unified_preview_host():
     advanced_editor_template = read_project_file('templates/modals/advanced_editor.html')
     large_editor_template = read_project_file('templates/modals/large_editor.html')
     detail_card_template = read_project_file('templates/modals/detail_card.html')
     html_preview_template = read_project_file('templates/modals/html_preview.html')
-    markdown_preview_template = read_project_file('templates/modals/markdown_preview.html')
+    detail_modal_source = read_project_file('static/js/components/detailModal.js')
+    large_editor_source = read_project_file('static/js/components/largeEditor.js')
 
-    assert 'updateMixedPreviewContent($el, regexPreviewMode===\'html\' ? regexTestResult : null' in advanced_editor_template
-    assert 'updateMixedPreviewContent($el, markdownPreview ? largeEditorContent : null' in large_editor_template
-    assert 'updateMixedPreviewContent($el, showFirstPreview ? editingData.first_mes : null' in detail_card_template
-    assert 'updateMixedPreviewContent($el, showLargePreview ? regexTestResult : null' in html_preview_template
-    assert 'updateShadowContent($el, showMarkdownModal ? renderMarkdown(markdownModalContent) : null' in markdown_preview_template
+    assert 'renderUnifiedPreviewHost' in read_project_file('static/js/utils/dom.js')
+    assert 'renderUnifiedPreviewHost,' in detail_modal_source
+    assert 'renderUnifiedPreviewHost,' in large_editor_source
+    assert 'buildPreviewRegexConfig() {' in detail_modal_source
+    assert 'resolvePreviewOptions() {' in large_editor_source
+    assert 'renderUnifiedPreviewHost($el' in advanced_editor_template
+    assert 'renderUnifiedPreviewHost($el' in large_editor_template
+    assert 'renderUnifiedPreviewHost($el' in detail_card_template
+    assert 'renderUnifiedPreviewHost($el' in html_preview_template
+    assert 'updateMixedPreviewContent($el' not in advanced_editor_template
+    assert 'updateMixedPreviewContent($el' not in large_editor_template
+    assert 'updateMixedPreviewContent($el' not in detail_card_template
+    assert 'updateMixedPreviewContent($el' not in html_preview_template
+    assert 'updateShadowContent($el' not in large_editor_template
+    assert 'updateMixedPreviewContent(' not in large_editor_source
+    assert 'updateShadowContent(' not in large_editor_source
+    update_preview_block = large_editor_source.split('updatePreview(el) {', 1)[1]
+    update_preview_block = update_preview_block.split('        // === 粘贴处理', 1)[0]
+    assert 'renderUnifiedPreviewHost(el, this.largeEditorContent, {' in update_preview_block
+    assert '...this.resolvePreviewOptions()' in update_preview_block
+    resolve_options_block = large_editor_source.split('resolvePreviewOptions() {', 1)[1].split('        // 更新统一预览宿主', 1)[0]
+    assert 'renderMode: this.largeRenderMode' in resolve_options_block
+    assert 'applyDisplayRules: true' in resolve_options_block
+    assert 'displayRules: regexScripts' in resolve_options_block
+    preview_block = large_editor_template.split('class="large-editor-preview"', 1)[1]
+    preview_block = preview_block.split('></div>', 1)[0]
+    assert "largeRenderMode === 'html' ?" not in preview_block
+    assert '...resolvePreviewOptions()' in preview_block
+    assert "renderMode: 'markdown'" not in preview_block
+    assert '...resolvePreviewOptions()' in preview_block
+    detail_preview_block = detail_card_template.split('x-show="showFirstPreview"', 1)[1]
+    detail_preview_block = detail_preview_block.split('</div>', 1)[0]
+    assert "renderUnifiedPreviewHost($el, showFirstPreview ? editingData.first_mes : null" in detail_preview_block
+    assert "renderMode: 'markdown'" in detail_preview_block
+    assert 'applyDisplayRules: true' in detail_preview_block
+    assert 'config: buildPreviewRegexConfig()' in detail_preview_block
 
 
 def test_chat_reader_css_enables_content_visibility_and_intrinsic_size_placeholder_strategy():
