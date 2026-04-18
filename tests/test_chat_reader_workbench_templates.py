@@ -2067,6 +2067,29 @@ def test_detail_modal_template_marks_multicard_mobile_tabs_for_stacked_layout():
     assert '<section x-show="tab===\'dialog\'" x-transition.opacity class="detail-section detail-section-fill detail-section-mobile-stack">' in detail_template
 
 
+def test_detail_modal_dialog_editors_allow_first_message_inner_box_to_shrink_with_card_height():
+    detail_template = read_project_file('templates/modals/detail_card.html')
+    detail_css = read_project_file('static/css/modules/modal-detail.css')
+
+    assert 'class="form-textarea detail-dialog-grow-box detail-first-message-edit-box"' in detail_template
+    assert 'class="detail-render-box custom-scrollbar detail-dialog-grow-box detail-first-message-preview-box"' in detail_template
+    assert "minHeight: 0" in detail_template
+
+    edit_box_block = extract_exact_css_block(
+        detail_css,
+        '.detail-section-fill .detail-card .detail-first-message-edit-box',
+    )
+    preview_box_block = extract_exact_css_block(
+        detail_css,
+        '.detail-section-fill .detail-card .detail-first-message-preview-box',
+    )
+
+    assert 'flex: 1 1 0 !important;' in edit_box_block
+    assert 'min-height: 0 !important;' in edit_box_block
+    assert 'flex: 1 1 0 !important;' in preview_box_block
+    assert 'min-height: 0 !important;' in preview_box_block
+
+
 def test_detail_modal_mobile_css_releases_equal_height_card_splits_for_stacked_tabs():
     detail_css = read_project_file('static/css/modules/modal-detail.css')
     mobile_detail_css = extract_media_block(detail_css, '@media (max-width: 768px)')

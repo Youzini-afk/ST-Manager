@@ -1073,21 +1073,21 @@
                 <textarea
                   x-show="isEditMode && !showFirstPreview"
                   x-model="editingData.first_mes"
-                  class="form-textarea detail-dialog-grow-box"
+                  class="form-textarea detail-dialog-grow-box detail-first-message-edit-box"
                   style="resize: none"
                 ></textarea>
 
                 <!-- 编辑模式或阅览模式 - HTML预览 -->
                 <div
                   x-show="showFirstPreview"
-                  class="detail-render-box custom-scrollbar detail-dialog-grow-box"
+                  class="detail-render-box custom-scrollbar detail-dialog-grow-box detail-first-message-preview-box"
                   style="
                     background: var(--bg-panel);
                     border-color: var(--accent-main);
                     padding: 0;
                     overflow: auto;
                   "
-                  x-effect="renderUnifiedPreviewHost($el, showFirstPreview ? editingData.first_mes : null, { runtimeOwner: 'card-first-message', runtimeLabel: 'Card First Message Preview', scroll: true, minHeight: 220, maxHeight: 0, fillStageHeight: true, renderMode: 'markdown', applyDisplayRules: true, config: buildPreviewRegexConfig() })"
+                  x-effect="renderUnifiedPreviewHost($el, showFirstPreview ? editingData.first_mes : null, { runtimeOwner: 'card-first-message', runtimeLabel: 'Card First Message Preview', scroll: true, minHeight: 0, maxHeight: 0, fillStageHeight: true, renderMode: 'markdown', applyDisplayRules: true, config: buildPreviewRegexConfig() })"
                 ></div>
 
                 <!-- 阅览模式 - 只读文本 -->
