@@ -718,12 +718,6 @@
           <option value="mobile">移动端</option>
           <option value="dual">双端</option>
         </select>
-        <select x-model="installFilter" class="beautify-filter-select">
-          <option value="all">全部状态</option>
-          <option value="installed">已安装</option>
-          <option value="applied">当前应用中</option>
-          <option value="uninstalled">未安装</option>
-        </select>
       </div>
 
       <div class="beautify-toolbar-actions">
@@ -769,11 +763,6 @@
                 x-text="item.author || '未填写作者'"
               ></div>
             </div>
-            <div
-              class="beautify-status-pill"
-              :class="item.install_state?.applied_variant_id ? 'is-applied' : (item.install_state?.installed_variant_id ? 'is-installed' : '')"
-              x-text="item.install_state?.applied_variant_id ? '当前应用中' : (item.install_state?.installed_variant_id ? '已安装' : '未安装')"
-            ></div>
           </div>
           <div class="beautify-package-chips">
             <span class="beautify-chip" x-show="supportsPlatform(item, 'pc')"

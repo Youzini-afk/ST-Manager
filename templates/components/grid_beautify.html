@@ -27,7 +27,7 @@
             <select
               class="beautify-filter-select"
               x-show="activeVariant"
-              x-model="activeVariant.platform"
+              :value="activeVariant?.platform || 'pc'"
               @change="updateCurrentVariantPlatform($event.target.value)"
             >
               <option value="pc">PC</option>
@@ -76,43 +76,41 @@
             >
               壁纸切换
             </button>
-            <button
-              type="button"
-              class="beautify-primary-btn"
-              @click="installCurrentSelection()"
-            >
-              安装到 ST
-            </button>
-            <button
-              type="button"
-              class="beautify-primary-btn"
-              @click="applyCurrentSelection()"
-            >
-              立即应用
-            </button>
           </div>
         </div>
 
         <div class="beautify-stage-body">
           <div class="beautify-preview-column">
-            <div
-              class="beautify-preview-notice"
-              x-show="previewApproximateNoticeVisible"
-            >
-              当前预览为近似效果，安装到 ST 后为完整效果。
-            </div>
-            <div
-              class="beautify-preview-frame-shell"
-              :class="previewShellMode === 'mobile' ? 'is-mobile' : 'is-pc'"
-            >
+            <template x-if="!isPreviewLoaded">
+              <div class="beautify-preview-unloaded-card">
+                <div class="beautify-detail-heading">原生 ST 预览</div>
+                <div class="beautify-empty-copy">
+                  预览默认不加载。点击后会按需加载原生 ST 样式、图标和相关资源。
+                </div>
+                <button
+                  type="button"
+                  class="beautify-primary-btn"
+                  @click="loadPreview()"
+                >
+                  加载原生 ST 预览
+                </button>
+              </div>
+            </template>
+
+            <template x-if="isPreviewLoaded">
               <div
-                x-ref="previewHost"
-                class="beautify-preview-host"
-                :data-preview-platform="previewShellMode"
-                data-runtime-owner="beautify-preview"
-                data-runtime-label="Beautify ST Preview"
-              ></div>
-            </div>
+                class="beautify-preview-frame-shell"
+                :class="previewShellMode === 'mobile' ? 'is-mobile' : 'is-pc'"
+              >
+                <div
+                  x-ref="previewHost"
+                  class="beautify-preview-host"
+                  :data-preview-platform="previewShellMode"
+                  data-runtime-owner="beautify-preview"
+                  data-runtime-label="Beautify Native ST Preview"
+                ></div>
+              </div>
+            </template>
           </div>
 
           <div class="beautify-detail-column">
@@ -183,7 +181,7 @@
       <div class="beautify-stage-placeholder">
         <div class="beautify-empty-title">选择一个美化包开始预览</div>
         <div class="beautify-empty-copy">
-          右侧舞台会实时显示主题近似渲染，并提供安装与立即应用操作。
+          右侧舞台可按需加载原生 ST 预览，用于检查当前主题与壁纸效果。
         </div>
       </div>
     </template>

@@ -11,7 +11,6 @@ from PIL import Image
 
 from core.config import get_beautify_folder
 from core.data.ui_store import get_beautify_library, load_ui_data, save_ui_data, set_beautify_library
-from core.services.st_client import STClient
 
 
 logger = logging.getLogger(__name__)
@@ -21,13 +20,10 @@ class BeautifyService:
     def __init__(
         self,
         library_root: Optional[str] = None,
-        st_data_dir: Optional[str] = None,
-        st_client: Optional[STClient] = None,
         ui_data_loader: Optional[Callable[[], Dict]] = None,
         ui_data_saver: Optional[Callable[[Dict], bool]] = None,
     ):
         self.library_root = os.path.abspath(library_root or get_beautify_folder())
-        self.st_client = st_client or STClient(st_data_dir=st_data_dir)
         self._ui_data_loader = ui_data_loader or load_ui_data
         self._ui_data_saver = ui_data_saver or save_ui_data
         os.makedirs(self.library_root, exist_ok=True)
@@ -69,7 +65,6 @@ class BeautifyService:
                     'wallpaper_count': len(wallpapers),
                     'platforms': sorted({variant.get('platform', 'dual') for variant in variants}),
                     'updated_at': package_info.get('updated_at', 0),
-                    'install_state': copy.deepcopy(package_info.get('install_state', {})),
                     'wallpaper_previews': [wallpaper.get('file', '') for wallpaper in wallpapers[:3]],
                 }
             )
@@ -220,88 +215,6 @@ class BeautifyService:
             'wallpaper': copy.deepcopy(package_info['wallpapers'][wallpaper_id]),
         }
 
-    def install_variant(self, package_id: str, variant_id: str, wallpaper_id: Optional[str] = None):
-        ui_data = self._load_ui_data()
-        library, package_info, variant = self._load_package_variant(ui_data, package_id, variant_id)
-
-        themes_dir = self.st_client.get_themes_dir()
-        backgrounds_dir = self.st_client.get_backgrounds_dir()
-        if not themes_dir or not backgrounds_dir:
-            raise ValueError('未找到 SillyTavern themes/backgrounds 目录')
-
-        theme_source = self._resolve_project_relative_path(variant.get('theme_file', ''))
-        if not theme_source or not os.path.exists(theme_source):
-            raise ValueError('主题文件缺失，无法安装')
-
-        theme_filename = f"stm-beautify-{package_info['id']}-{variant['platform']}.json"
-        shutil.copy2(theme_source, os.path.join(themes_dir, theme_filename))
-
-        wallpaper_filename = ''
-        if wallpaper_id:
-            wallpaper = package_info.get('wallpapers', {}).get(wallpaper_id)
-            if not wallpaper or wallpaper.get('variant_id') != variant_id:
-                raise ValueError('壁纸未绑定到当前变体')
-            wallpaper_source = self._resolve_project_relative_path(wallpaper.get('file', ''))
-            if not wallpaper_source or not os.path.exists(wallpaper_source):
-                raise ValueError('壁纸文件缺失，无法安装')
-
-            wallpaper_index = self._wallpaper_index_for_variant(variant, wallpaper_id)
-            ext = os.path.splitext(wallpaper.get('filename') or wallpaper_source)[1] or '.png'
-            wallpaper_filename = f"stm-beautify-{package_info['id']}-{variant['platform']}-bg-{wallpaper_index}{ext}"
-            shutil.copy2(wallpaper_source, os.path.join(backgrounds_dir, wallpaper_filename))
-
-        install_state = copy.deepcopy(package_info.get('install_state') or {})
-        install_state.update(
-            {
-                'installed_variant_id': variant_id,
-                'installed_theme_file': theme_filename,
-                'installed_wallpaper_file': wallpaper_filename,
-                'last_installed_at': int(time.time()),
-            }
-        )
-        package_info['install_state'] = install_state
-        package_info['updated_at'] = int(time.time())
-        library['packages'][package_info['id']] = package_info
-        self._save_library(ui_data, library)
-
-        return {
-            'package': copy.deepcopy(package_info),
-            'variant': copy.deepcopy(variant),
-            'theme_filename': theme_filename,
-            'wallpaper_filename': wallpaper_filename,
-        }
-
-    def apply_variant(self, package_id: str, variant_id: str, wallpaper_id: Optional[str] = None):
-        install_result = self.install_variant(package_id, variant_id, wallpaper_id)
-
-        settings = self.st_client.read_settings()
-        power_user = settings.get('power_user') if isinstance(settings.get('power_user'), dict) else {}
-        background = settings.get('background') if isinstance(settings.get('background'), dict) else {}
-
-        power_user['theme'] = install_result['variant'].get('theme_name') or install_result['package'].get('name', '')
-        settings['power_user'] = power_user
-
-        if install_result.get('wallpaper_filename'):
-            background['name'] = install_result['wallpaper_filename']
-            background['url'] = f"url('backgrounds/{install_result['wallpaper_filename']}')"
-            settings['background'] = background
-
-        if not self.st_client.write_settings(settings):
-            raise ValueError('写入 SillyTavern settings.json 失败')
-
-        ui_data = self._load_ui_data()
-        library, package_info, _variant = self._load_package_variant(ui_data, package_id, variant_id)
-        install_state = copy.deepcopy(package_info.get('install_state') or {})
-        install_state['applied_variant_id'] = variant_id
-        install_state['applied_wallpaper_id'] = wallpaper_id or ''
-        package_info['install_state'] = install_state
-        package_info['updated_at'] = int(time.time())
-        library['packages'][package_info['id']] = package_info
-        self._save_library(ui_data, library)
-
-        install_result['package'] = copy.deepcopy(package_info)
-        return install_result
-
     def delete_package(self, package_id: str):
         ui_data = self._load_ui_data()
         library = get_beautify_library(ui_data)
@@ -384,7 +297,6 @@ class BeautifyService:
             'updated_at': int(time.time()),
             'variants': {},
             'wallpapers': {},
-            'install_state': {},
         }
 
     def _build_package_id(self, package_name: str, existing_packages: Dict):
@@ -446,12 +358,6 @@ class BeautifyService:
             if not os.path.exists(os.path.join(target_dir, candidate)):
                 return candidate
             index += 1
-
-    def _wallpaper_index_for_variant(self, variant: Dict, wallpaper_id: str):
-        wallpaper_ids = list(variant.get('wallpaper_ids') or [])
-        if wallpaper_id in wallpaper_ids:
-            return wallpaper_ids.index(wallpaper_id) + 1
-        return 1
 
     def _find_variant_by_platform(self, package_info: Dict, platform: str):
         for variant in (package_info.get('variants') or {}).values():

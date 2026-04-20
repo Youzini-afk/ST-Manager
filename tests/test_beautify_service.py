@@ -182,16 +182,8 @@ def test_import_wallpaper_binds_file_to_specific_variant_and_persists_dimensions
     assert package_info['variants'][imported_theme['variant']['id']]['wallpaper_ids'] == [result['wallpaper']['id']]
 
 
-def test_install_variant_copies_stable_theme_and_wallpaper_files_into_st(tmp_path):
+def test_beautify_package_shape_no_longer_requires_install_state(tmp_path):
     library_root = tmp_path / 'data' / 'library' / 'beautify'
-    st_user_dir = tmp_path / 'SillyTavern' / 'data' / 'default-user'
-    themes_dir = st_user_dir / 'themes'
-    backgrounds_dir = st_user_dir / 'backgrounds'
-    settings_path = st_user_dir / 'settings.json'
-    themes_dir.mkdir(parents=True)
-    backgrounds_dir.mkdir(parents=True)
-    settings_path.write_text(json.dumps({'power_user': {}, 'background': {}}, ensure_ascii=False), encoding='utf-8')
-
     ui_data = {}
     theme_file = tmp_path / 'theme_pc.json'
     theme_file.write_text(
@@ -203,7 +195,6 @@ def test_install_variant_copies_stable_theme_and_wallpaper_files_into_st(tmp_pat
 
     service = BeautifyService(
         library_root=library_root,
-        st_data_dir=str(st_user_dir),
         ui_data_loader=lambda: ui_data,
         ui_data_saver=lambda data: ui_data.clear() or ui_data.update(data),
     )
@@ -214,74 +205,12 @@ def test_install_variant_copies_stable_theme_and_wallpaper_files_into_st(tmp_pat
         str(wallpaper_file),
     )
 
-    result = service.install_variant(
-        imported_theme['package']['id'],
-        imported_theme['variant']['id'],
-        imported_wallpaper['wallpaper']['id'],
-    )
-
-    assert result['theme_filename'].startswith(f"stm-beautify-{imported_theme['package']['id']}-pc")
-    assert result['wallpaper_filename'].startswith(f"stm-beautify-{imported_theme['package']['id']}-pc-bg-1")
-    assert (themes_dir / result['theme_filename']).exists()
-    assert (backgrounds_dir / result['wallpaper_filename']).exists()
-
     package_info = service.get_package(imported_theme['package']['id'])
-    assert package_info['install_state']['installed_variant_id'] == imported_theme['variant']['id']
-    assert package_info['install_state']['installed_theme_file'] == result['theme_filename']
-    assert package_info['install_state']['installed_wallpaper_file'] == result['wallpaper_filename']
+    assert 'install_state' not in package_info
 
 
-def test_apply_variant_installs_when_needed_then_updates_st_settings(tmp_path):
-    library_root = tmp_path / 'data' / 'library' / 'beautify'
-    st_user_dir = tmp_path / 'SillyTavern' / 'data' / 'default-user'
-    (st_user_dir / 'themes').mkdir(parents=True)
-    (st_user_dir / 'backgrounds').mkdir(parents=True)
-    settings_path = st_user_dir / 'settings.json'
-    settings_path.write_text(
-        json.dumps(
-            {
-                'power_user': {'theme': 'Old Theme'},
-                'background': {'name': 'old.png', 'url': "url('backgrounds/old.png')"},
-            },
-            ensure_ascii=False,
-        ),
-        encoding='utf-8',
-    )
+def test_beautify_service_removes_dead_st_client_and_wallpaper_index_helpers():
+    source = (ROOT / 'core/services/beautify_service.py').read_text(encoding='utf-8')
 
-    ui_data = {}
-    theme_file = tmp_path / 'theme_mobile.json'
-    theme_file.write_text(
-        json.dumps({'name': 'Mobile Demo', 'main_text_color': '#fff'}, ensure_ascii=False),
-        encoding='utf-8',
-    )
-    wallpaper_file = tmp_path / 'mobile-bg.png'
-    Image.new('RGB', (1080, 1920), '#112233').save(wallpaper_file)
-
-    service = BeautifyService(
-        library_root=library_root,
-        st_data_dir=str(st_user_dir),
-        ui_data_loader=lambda: ui_data,
-        ui_data_saver=lambda data: ui_data.clear() or ui_data.update(data),
-    )
-    imported_theme = service.import_theme(str(theme_file), platform='mobile')
-    imported_wallpaper = service.import_wallpaper(
-        imported_theme['package']['id'],
-        imported_theme['variant']['id'],
-        str(wallpaper_file),
-    )
-
-    result = service.apply_variant(
-        imported_theme['package']['id'],
-        imported_theme['variant']['id'],
-        imported_wallpaper['wallpaper']['id'],
-    )
-
-    saved_settings = json.loads(settings_path.read_text(encoding='utf-8'))
-    assert saved_settings['power_user']['theme'] == 'Mobile Demo'
-    assert saved_settings['background']['name'] == result['wallpaper_filename']
-    assert saved_settings['background']['url'] == f"url('backgrounds/{result['wallpaper_filename']}')"
-
-    package_info = service.get_package(imported_theme['package']['id'])
-    assert package_info['install_state']['installed_variant_id'] == imported_theme['variant']['id']
-    assert package_info['install_state']['applied_variant_id'] == imported_theme['variant']['id']
-    assert package_info['install_state']['applied_wallpaper_id'] == imported_wallpaper['wallpaper']['id']
+    assert 'self.st_client =' not in source
+    assert '_wallpaper_index_for_variant' not in source

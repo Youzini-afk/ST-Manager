@@ -320,7 +320,6 @@ export function initState() {
     beautifyList: [],
     beautifySearch: "",
     beautifyPlatformFilter: "all",
-    beautifyInstallFilter: "all",
     beautifySelectedPackageId: "",
     beautifySelectedVariantId: "",
     beautifySelectedWallpaperId: "",

@@ -1,16 +1,14 @@
 import {
-  applyBeautifyVariant,
   buildBeautifyPreviewAssetUrl,
   deleteBeautifyPackage,
   getBeautifyPackage,
   importBeautifyTheme,
   importBeautifyWallpaper,
-  installBeautifyVariant,
   listBeautifyPackages,
   updateBeautifyVariant,
 } from "../api/beautify.js";
 
-function filterPackages(items, search, platformFilter, installFilter) {
+function filterPackages(items, search, platformFilter) {
   const keyword = String(search || "")
     .trim()
     .toLowerCase();
@@ -23,15 +21,7 @@ function filterPackages(items, search, platformFilter, installFilter) {
     const platformMatch =
       platformFilter === "all" ||
       (item.platforms || []).includes(platformFilter);
-    const installState = item.install_state || {};
-    const isInstalled = !!installState.installed_variant_id;
-    const isApplied = !!installState.applied_variant_id;
-    const installMatch =
-      installFilter === "all" ||
-      (installFilter === "installed" && isInstalled) ||
-      (installFilter === "applied" && isApplied) ||
-      (installFilter === "uninstalled" && !isInstalled);
-    return nameMatch && platformMatch && installMatch;
+    return nameMatch && platformMatch;
   });
 }
 
@@ -65,15 +55,6 @@ export default function beautifyGrid() {
 
     set platformFilter(val) {
       this.$store.global.beautifyPlatformFilter = val;
-      return true;
-    },
-
-    get installFilter() {
-      return this.$store.global.beautifyInstallFilter || "all";
-    },
-
-    set installFilter(val) {
-      this.$store.global.beautifyInstallFilter = val;
       return true;
     },
 
@@ -134,7 +115,6 @@ export default function beautifyGrid() {
         this.packages,
         this.beautifySearch,
         this.platformFilter,
-        this.installFilter,
       );
     },
 
@@ -380,54 +360,6 @@ export default function beautifyGrid() {
         });
         this.selectWallpaper(res.wallpaper?.id || "");
         this.$store.global.showToast("壁纸已导入并绑定到当前变体", 2200);
-      } catch (error) {
-        this.$store.global.showToast(String(error.message || error), 3200);
-      } finally {
-        this.isActionLoading = false;
-      }
-    },
-
-    async installCurrentSelection() {
-      if (!this.selectedPackageId || !this.selectedVariantId) return;
-      this.isActionLoading = true;
-      try {
-        const res = await installBeautifyVariant({
-          package_id: this.selectedPackageId,
-          variant_id: this.selectedVariantId,
-          wallpaper_id: this.selectedWallpaperId || undefined,
-        });
-        if (!res?.success) {
-          throw new Error(res?.error || "安装失败");
-        }
-        await this.fetchPackages();
-        await this.selectPackage(this.selectedPackageId, {
-          preserveSelection: true,
-        });
-        this.$store.global.showToast("已安装到 SillyTavern", 2200);
-      } catch (error) {
-        this.$store.global.showToast(String(error.message || error), 3200);
-      } finally {
-        this.isActionLoading = false;
-      }
-    },
-
-    async applyCurrentSelection() {
-      if (!this.selectedPackageId || !this.selectedVariantId) return;
-      this.isActionLoading = true;
-      try {
-        const res = await applyBeautifyVariant({
-          package_id: this.selectedPackageId,
-          variant_id: this.selectedVariantId,
-          wallpaper_id: this.selectedWallpaperId || undefined,
-        });
-        if (!res?.success) {
-          throw new Error(res?.error || "应用失败");
-        }
-        await this.fetchPackages();
-        await this.selectPackage(this.selectedPackageId, {
-          preserveSelection: true,
-        });
-        this.$store.global.showToast("主题与壁纸已应用到 ST", 2200);
       } catch (error) {
         this.$store.global.showToast(String(error.message || error), 3200);
       } finally {

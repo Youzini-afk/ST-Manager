@@ -5,40 +5,18 @@ import {
 } from "../runtime/renderRuntime.js";
 import { buildBeautifyPreviewDocument } from "./beautifyPreviewDocument.js";
 
-let previewBaseCssPromise = null;
-
-async function loadPreviewBaseCss() {
-  if (!previewBaseCssPromise) {
-    previewBaseCssPromise = fetch("/static/css/modules/st-preview-base.css")
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`Failed to load preview base CSS: ${res.status}`);
-        }
-        return res.text();
-      })
-      .catch((error) => {
-        previewBaseCssPromise = null;
-        throw error;
-      });
-  }
-  return previewBaseCssPromise;
+function resolvePreviewRenderMinHeight(platform) {
+  return platform === "mobile" ? 420 : 520;
 }
 
-async function resolvePreviewBaseCss() {
-  try {
-    return await loadPreviewBaseCss();
-  } catch (error) {
-    console.warn(
-      "Beautify preview base CSS unavailable, using inline preview styles only.",
-      error,
-    );
-    return "";
-  }
-}
+const MAX_PREVIEW_HOST_RETRIES = 3;
 
 export default function beautifyPreviewFrame() {
   return {
-    previewBaseCss: "",
+    isPreviewLoaded: false,
+    previewHostRetryCount: 0,
+    previewHostFrameRetryPending: false,
+    previewHostObserver: null,
 
     get previewHostEl() {
       if (this.$refs?.previewHost) {
@@ -51,39 +29,99 @@ export default function beautifyPreviewFrame() {
       return this.$store.global.beautifyPreviewDevice || "pc";
     },
 
-    get previewApproximateNoticeVisible() {
-      const variant = this.$store.global.beautifyActiveVariant || {};
-      const hint = variant.preview_hint || {};
-      return hint.preview_accuracy === "approx";
+    get hasActiveDetail() {
+      return Boolean(this.$store.global.beautifyActiveDetail);
     },
 
     init() {
+      this.startPreviewHostObserver();
       this.$watch("$store.global.beautifyActiveDetail", (detail) => {
         if (!detail) {
+          this.isPreviewLoaded = false;
           this.destroy();
           return;
         }
-        this.$nextTick(() => {
-          this.renderPreview();
-        });
+        if (this.isPreviewLoaded) {
+          this.$nextTick(() => this.renderPreview());
+        }
       });
-      this.$watch("$store.global.beautifyActiveVariant", () =>
-        this.renderPreview(),
-      );
-      this.$watch("$store.global.beautifyActiveWallpaper", () =>
-        this.renderPreview(),
-      );
-      this.$watch("$store.global.beautifyPreviewDevice", () =>
-        this.renderPreview(),
-      );
-      this.renderPreview();
-      this.$nextTick(() => {
+      this.$watch("$store.global.beautifyActiveVariant", () => {
+        if (this.isPreviewLoaded) this.renderPreview();
+      });
+      this.$watch("$store.global.beautifyActiveWallpaper", () => {
+        if (this.isPreviewLoaded) this.renderPreview();
+      });
+      this.$watch("$store.global.beautifyPreviewDevice", () => {
+        if (this.isPreviewLoaded) this.renderPreview();
+      });
+    },
+
+    startPreviewHostObserver() {
+      if (
+        this.previewHostObserver ||
+        typeof MutationObserver === "undefined" ||
+        !this.$el
+      ) {
+        return;
+      }
+
+      this.previewHostObserver = new MutationObserver(() => {
+        if (!this.isPreviewLoaded || !this.previewHostEl) {
+          return;
+        }
         this.renderPreview();
       });
-      resolvePreviewBaseCss().then((css) => {
-        this.previewBaseCss = css;
-        this.renderPreview();
+
+      this.previewHostObserver.observe(this.$el, {
+        childList: true,
+        subtree: true,
       });
+    },
+
+    loadPreview() {
+      if (!this.hasActiveDetail) {
+        return;
+      }
+      this.previewHostRetryCount = 0;
+      this.previewHostFrameRetryPending = false;
+      this.isPreviewLoaded = true;
+      this.$nextTick(() => this.renderPreview());
+    },
+
+    schedulePreviewHostFrameRetry() {
+      if (this.previewHostFrameRetryPending || !this.isPreviewLoaded) {
+        return;
+      }
+
+      this.previewHostFrameRetryPending = true;
+
+      let finished = false;
+
+      const onFrame = () => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        this.previewHostFrameRetryPending = false;
+        this.renderPreview();
+      };
+
+      if (typeof window !== "undefined") {
+        if (typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(onFrame);
+          if (typeof window.setTimeout === "function") {
+            window.setTimeout(onFrame, 48);
+          }
+          return;
+        }
+
+        if (typeof window.setTimeout === "function") {
+          window.setTimeout(onFrame, 16);
+          return;
+        }
+      }
+
+      onFrame();
     },
 
     resolvePreviewState() {
@@ -99,25 +137,44 @@ export default function beautifyPreviewFrame() {
     },
 
     renderPreview() {
-      const host = this.previewHostEl;
-      if (!host) {
+      if (!this.isPreviewLoaded) {
         return;
       }
 
+      if (!this.hasActiveDetail) {
+        return;
+      }
+
+      const host = this.previewHostEl;
+      if (!host) {
+        if (this.previewHostRetryCount < MAX_PREVIEW_HOST_RETRIES) {
+          this.previewHostRetryCount += 1;
+          this.$nextTick(() => this.renderPreview());
+        } else {
+          this.schedulePreviewHostFrameRetry();
+        }
+        return;
+      }
+
+      this.previewHostRetryCount = 0;
+      this.previewHostFrameRetryPending = false;
+
       const state = this.resolvePreviewState();
-      const documentHtml = buildBeautifyPreviewDocument({
-        ...state,
-        baseCss: this.previewBaseCss,
-      });
+      const documentHtml = buildBeautifyPreviewDocument(state);
 
       renderIsolatedHtml(host, {
         htmlPayload: documentHtml,
-        minHeight: state.platform === "mobile" ? 760 : 900,
-        maxHeight: state.platform === "mobile" ? 3200 : 4800,
+        minHeight: resolvePreviewRenderMinHeight(state.platform),
       });
     },
 
     destroy() {
+      this.previewHostRetryCount = 0;
+      this.previewHostFrameRetryPending = false;
+      if (this.previewHostObserver) {
+        this.previewHostObserver.disconnect();
+        this.previewHostObserver = null;
+      }
       const host = this.previewHostEl;
       if (host) {
         clearIsolatedHtml(host, { clearShadow: true });

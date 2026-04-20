@@ -115,38 +115,6 @@ def update_variant():
         return _error(str(exc))
 
 
-@bp.route('/install', methods=['POST'])
-def install_variant():
-    payload = request.get_json(silent=True) or {}
-    package_id = str(payload.get('package_id') or '').strip()
-    variant_id = str(payload.get('variant_id') or '').strip()
-    wallpaper_id = str(payload.get('wallpaper_id') or '').strip() or None
-    if not package_id or not variant_id:
-        return _error('缺少 package_id 或 variant_id')
-
-    try:
-        result = get_beautify_service().install_variant(package_id, variant_id, wallpaper_id)
-        return jsonify({'success': True, **result})
-    except ValueError as exc:
-        return _error(str(exc))
-
-
-@bp.route('/apply', methods=['POST'])
-def apply_variant():
-    payload = request.get_json(silent=True) or {}
-    package_id = str(payload.get('package_id') or '').strip()
-    variant_id = str(payload.get('variant_id') or '').strip()
-    wallpaper_id = str(payload.get('wallpaper_id') or '').strip() or None
-    if not package_id or not variant_id:
-        return _error('缺少 package_id 或 variant_id')
-
-    try:
-        result = get_beautify_service().apply_variant(package_id, variant_id, wallpaper_id)
-        return jsonify({'success': True, **result})
-    except ValueError as exc:
-        return _error(str(exc))
-
-
 @bp.route('/delete-package', methods=['POST'])
 def delete_package():
     payload = request.get_json(silent=True) or {}

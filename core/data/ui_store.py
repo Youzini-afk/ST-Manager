@@ -553,25 +553,6 @@ def _normalize_beautify_wallpaper(raw_wallpaper, wallpaper_id):
     }
 
 
-def _normalize_beautify_install_state(raw_install_state):
-    source = raw_install_state if isinstance(raw_install_state, dict) else {}
-
-    def _to_int(value):
-        try:
-            return max(0, int(float(value)))
-        except (TypeError, ValueError):
-            return 0
-
-    return {
-        'installed_variant_id': _normalize_beautify_string(source.get('installed_variant_id')),
-        'installed_theme_file': _normalize_beautify_string(source.get('installed_theme_file')),
-        'installed_wallpaper_file': _normalize_beautify_string(source.get('installed_wallpaper_file')),
-        'applied_variant_id': _normalize_beautify_string(source.get('applied_variant_id')),
-        'applied_wallpaper_id': _normalize_beautify_string(source.get('applied_wallpaper_id')),
-        'last_installed_at': _to_int(source.get('last_installed_at')),
-    }
-
-
 def _normalize_beautify_package(raw_package, package_id):
     source = raw_package if isinstance(raw_package, dict) else {}
 
@@ -617,7 +598,6 @@ def _normalize_beautify_package(raw_package, package_id):
         'updated_at': _to_int(source.get('updated_at')),
         'variants': dict(sorted(variants.items(), key=lambda item: item[0])),
         'wallpapers': dict(sorted(wallpapers.items(), key=lambda item: item[0])),
-        'install_state': _normalize_beautify_install_state(source.get('install_state')),
     }
 
 

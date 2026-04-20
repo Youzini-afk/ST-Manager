@@ -27,13 +27,13 @@ class FakeBeautifyService:
 
     def list_packages(self):
         self.calls.append(('list_packages',))
-        return [{'id': 'pkg_demo', 'name': 'Demo', 'platforms': ['pc'], 'install_state': {}}]
+        return [{'id': 'pkg_demo', 'name': 'Demo', 'platforms': ['pc']}]
 
     def get_package(self, package_id):
         self.calls.append(('get_package', package_id))
         if package_id == 'missing':
             return None
-        return {'id': package_id, 'name': 'Demo', 'variants': {}, 'wallpapers': {}, 'install_state': {}}
+        return {'id': package_id, 'name': 'Demo', 'variants': {}, 'wallpapers': {}}
 
     def import_theme(self, source_path, package_id=None, platform=None, source_name=None):
         self.calls.append(('import_theme', source_path, package_id, platform, source_name))
@@ -53,14 +53,6 @@ class FakeBeautifyService:
     def update_variant(self, package_id, variant_id, platform):
         self.calls.append(('update_variant', package_id, variant_id, platform))
         return {'id': variant_id, 'platform': platform}
-
-    def install_variant(self, package_id, variant_id, wallpaper_id=None):
-        self.calls.append(('install_variant', package_id, variant_id, wallpaper_id))
-        return {'theme_filename': 'demo.json', 'wallpaper_filename': 'demo.webp'}
-
-    def apply_variant(self, package_id, variant_id, wallpaper_id=None):
-        self.calls.append(('apply_variant', package_id, variant_id, wallpaper_id))
-        return {'theme_filename': 'demo.json', 'wallpaper_filename': 'demo.webp'}
 
     def delete_package(self, package_id):
         self.calls.append(('delete_package', package_id))
@@ -164,19 +156,17 @@ def test_update_variant_endpoint_rejects_invalid_platform(monkeypatch):
     assert payload['success'] is False
 
 
-def test_install_and_apply_endpoints_forward_wallpaper_selection(monkeypatch):
+def test_install_and_apply_endpoints_are_removed(monkeypatch):
     app = _make_test_app()
     client = app.test_client()
     fake_service = FakeBeautifyService()
     monkeypatch.setattr(beautify_api, 'get_beautify_service', lambda: fake_service)
 
-    install_response = client.post('/api/beautify/install', json={'package_id': 'pkg_demo', 'variant_id': 'var_demo', 'wallpaper_id': 'wp_demo'})
-    apply_response = client.post('/api/beautify/apply', json={'package_id': 'pkg_demo', 'variant_id': 'var_demo', 'wallpaper_id': 'wp_demo'})
+    install_response = client.post('/api/beautify/install', json={'package_id': 'pkg_demo', 'variant_id': 'var_demo'})
+    apply_response = client.post('/api/beautify/apply', json={'package_id': 'pkg_demo', 'variant_id': 'var_demo'})
 
-    assert install_response.status_code == 200
-    assert apply_response.status_code == 200
-    assert ('install_variant', 'pkg_demo', 'var_demo', 'wp_demo') in fake_service.calls
-    assert ('apply_variant', 'pkg_demo', 'var_demo', 'wp_demo') in fake_service.calls
+    assert install_response.status_code in (404, 405)
+    assert apply_response.status_code in (404, 405)
 
 
 def test_delete_package_endpoint_requires_package_id(monkeypatch):

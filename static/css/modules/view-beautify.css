@@ -263,7 +263,8 @@
 .beautify-stage-placeholder {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  min-height: 0;
+  height: 100%;
 }
 
 .beautify-stage-shell {
@@ -284,6 +285,11 @@
   min-height: 0;
 }
 
+.beautify-preview-column {
+  display: flex;
+  flex-direction: column;
+}
+
 .beautify-detail-column {
   display: flex;
   flex-direction: column;
@@ -295,6 +301,18 @@
   border-radius: 16px;
   background: rgba(15, 23, 42, 0.5);
   padding: 0.95rem;
+}
+
+.beautify-preview-unloaded-card {
+  min-height: 280px;
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.25rem;
 }
 
 .beautify-preview-notice {
@@ -309,9 +327,12 @@
 
 .beautify-preview-frame-shell {
   position: relative;
+  display: flex;
+  flex-direction: column;
   border-radius: 26px;
-  min-height: 900px;
-  overflow: visible;
+  min-height: 0;
+  block-size: clamp(760px, calc(100vh - 290px), 1080px);
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: linear-gradient(
     180deg,
@@ -321,20 +342,19 @@
 }
 
 .beautify-preview-frame-shell.is-mobile {
+  block-size: clamp(760px, calc(100vh - 250px), 900px);
   max-width: 420px;
   margin: 0 auto;
 }
 
 .beautify-preview-host {
   display: block;
+  flex: 1;
   width: 100%;
-  min-height: 900px;
+  min-height: 0;
+  height: 100%;
   border: 0;
   background: transparent;
-}
-
-.beautify-preview-frame-shell.is-mobile .beautify-preview-host {
-  min-height: 760px;
 }
 
 .beautify-wallpaper-item {

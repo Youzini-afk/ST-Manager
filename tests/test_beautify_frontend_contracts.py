@@ -1,3 +1,6 @@
+import json
+import subprocess
+import textwrap
 from pathlib import Path
 
 
@@ -10,6 +13,49 @@ def read_project_file(relative_path):
 
 def assert_contains_any(text, variants):
     assert any(variant in text for variant in variants), f'Missing expected variants: {variants}'
+
+
+def run_beautify_preview_frame_runtime_check(script_body):
+    source_path = PROJECT_ROOT / 'static/js/components/beautifyPreviewFrame.js'
+    node_script = textwrap.dedent(
+        f"""
+        import {{ readFileSync }} from 'node:fs';
+
+        const sourcePath = {json.dumps(str(source_path))};
+        let source = readFileSync(sourcePath, 'utf8');
+            source = source.replace(/^import[\\s\\S]*?;\\r?\\n/gm, '');
+        source = source.replace('export default function beautifyPreviewFrame()', 'function beautifyPreviewFrame()');
+
+        const stubs = `
+        const buildBeautifyPreviewAssetUrl = (value) => String(value || '');
+        const clearIsolatedHtml = (host, options = {{}}) => {{
+          if (!host.__events) host.__events = [];
+          host.__events.push({{ type: 'clear', options }});
+          host.innerHTML = '';
+        }};
+        const renderIsolatedHtml = (host, options = {{}}) => {{
+          if (!host.__events) host.__events = [];
+          host.__events.push({{ type: 'render', options }});
+          host.innerHTML = String(options.htmlPayload || '');
+        }};
+        const buildBeautifyPreviewDocument = (options = {{}}) => JSON.stringify(options);
+        `;
+
+        const module = await import(
+          'data:text/javascript,' + encodeURIComponent(stubs + source + '\\nexport default beautifyPreviewFrame;'),
+        );
+
+        {textwrap.dedent(script_body)}
+        """
+    )
+    result = subprocess.run(
+        ['node', '--input-type=module', '-e', node_script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_index_template_lifts_beautify_scope_to_main_container_above_shared_includes():
@@ -40,13 +86,18 @@ def test_sidebar_template_hosts_beautify_toolbar_filters_and_package_list_contra
     assert 'beautify-package-list custom-scrollbar' in sidebar_template
     assert 'x-model.debounce.200ms="beautifySearch"' in sidebar_template
     assert 'x-model="platformFilter"' in sidebar_template
-    assert 'x-model="installFilter"' in sidebar_template
+    assert 'x-model="installFilter"' not in sidebar_template
     assert '@click="fetchPackages()"' in sidebar_template
     assert any(handler in sidebar_template for handler in theme_change_handlers)
     assert any(handler in sidebar_template for handler in wallpaper_change_handlers)
     assert 'filteredPackages' in sidebar_template
     assert '@click="selectPackage(item.id)"' in sidebar_template
     assert 'selectedPackageId === item.id' in sidebar_template
+    assert 'beautify-status-pill' not in sidebar_template
+    assert 'item.install_state' not in sidebar_template
+    assert '当前应用中' not in sidebar_template
+    assert '已安装' not in sidebar_template
+    assert '未安装' not in sidebar_template
 
 
 def test_app_js_registers_beautify_runtime_components():
@@ -67,8 +118,6 @@ def test_beautify_api_exports_core_runtime_helpers():
         'importBeautifyTheme',
         'importBeautifyWallpaper',
         'updateBeautifyVariant',
-        'installBeautifyVariant',
-        'applyBeautifyVariant',
         'deleteBeautifyPackage',
         'buildBeautifyPreviewAssetUrl',
     )
@@ -83,6 +132,50 @@ def test_beautify_api_exports_core_runtime_helpers():
         )
 
 
+def test_beautify_api_removes_install_and_apply_client_exports():
+    beautify_api = read_project_file('static/js/api/beautify.js')
+
+    assert 'export async function installBeautifyVariant(' not in beautify_api
+    assert 'export async function applyBeautifyVariant(' not in beautify_api
+
+
+def test_native_st_vendor_assets_are_present_with_attribution():
+    vendor_root = PROJECT_ROOT / 'static/vendor/sillytavern'
+
+    assert (vendor_root / 'LICENSE').exists()
+    assert (vendor_root / 'SOURCE.md').exists()
+    assert (vendor_root / 'style.css').exists()
+    assert (vendor_root / 'css/mobile-styles.css').exists()
+
+
+def test_native_st_vendor_popup_css_uses_vendored_dialog_polyfill_path():
+    popup_css = read_project_file('static/vendor/sillytavern/css/popup.css')
+
+    assert "@import url('/lib/dialog-polyfill.css');" not in popup_css
+    assert '../lib/dialog-polyfill.css' in popup_css
+
+
+def test_beautify_grid_removes_install_and_apply_selection_methods():
+    grid_source = read_project_file('static/js/components/beautifyGrid.js')
+
+    assert 'async installCurrentSelection()' not in grid_source
+    assert 'async applyCurrentSelection()' not in grid_source
+    assert 'function filterPackages(items, search, platformFilter, installFilter)' not in grid_source
+    assert 'get installFilter()' not in grid_source
+    assert 'set installFilter(val)' not in grid_source
+    assert 'item.install_state' not in grid_source
+    assert 'beautifyInstallFilter' not in grid_source
+
+
+def test_beautify_grid_platform_selector_does_not_optimistically_mutate_active_variant_platform():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert 'x-model="activeVariant.platform"' not in template
+    assert "x-model='activeVariant.platform'" not in template
+    assert '@change="updateCurrentVariantPlatform($event.target.value)"' in template or "@change='updateCurrentVariantPlatform($event.target.value)'" in template
+    assert ':value="activeVariant?.platform || \"pc\""' in template or ":value='activeVariant?.platform || \"pc\"'" in template or ':value="activeVariant?.platform || \'pc\'"' in template
+
+
 def test_state_js_keeps_beautify_store_keys():
     state_js = read_project_file('static/js/state.js')
 
@@ -90,7 +183,6 @@ def test_state_js_keeps_beautify_store_keys():
         'beautifyList',
         'beautifySearch',
         'beautifyPlatformFilter',
-        'beautifyInstallFilter',
         'beautifySelectedPackageId',
         'beautifySelectedVariantId',
         'beautifySelectedWallpaperId',
@@ -102,6 +194,8 @@ def test_state_js_keeps_beautify_store_keys():
 
     for key in expected_keys:
         assert_contains_any(state_js, (f'{key}:', f'"{key}":', f"'{key}':"))
+
+    assert 'beautifyInstallFilter' not in state_js
 
 
 def test_header_js_binds_beautify_search_and_mobile_upload_mode():
@@ -146,26 +240,18 @@ def test_beautify_preview_frame_uses_render_isolated_html_and_preview_document_b
     assert 'buildBeautifyPreviewDocument' in source
     assert 'buildBeautifyPreviewAssetUrl' in source
     assert 'customCssMarkup()' not in source
-    assert 'minHeight: state.platform === \'mobile\' ? 760 : 900' in source or 'minHeight: state.platform === "mobile" ? 760 : 900' in source
-    assert 'maxHeight: state.platform === \'mobile\' ? 3200 : 4800' in source or 'maxHeight: state.platform === "mobile" ? 3200 : 4800' in source
+    assert 'function resolvePreviewRenderMinHeight(platform)' in source
+    assert 'return platform === "mobile" ? 420 : 520;' in source or "return platform === 'mobile' ? 420 : 520;" in source
+    assert 'minHeight: resolvePreviewRenderMinHeight(state.platform),' in source
+    assert 'maxHeight:' not in source
 
 
-def test_beautify_preview_frame_resets_css_cache_after_load_failures():
+def test_beautify_preview_frame_keeps_preview_unloaded_until_user_requests_it():
     source = read_project_file('static/js/components/beautifyPreviewFrame.js')
 
-    assert 'if (!res.ok)' in source
-    assert 'previewBaseCssPromise = null;' in source
-    assert '.catch((error) => {' in source
-
-
-def test_beautify_preview_frame_gracefully_degrades_when_base_css_loading_fails():
-    source = read_project_file('static/js/components/beautifyPreviewFrame.js')
-
-    assert 'async function resolvePreviewBaseCss() {' in source
-    assert "console.warn('Beautify preview base CSS unavailable, using inline preview styles only.'" in source
-    assert 'resolvePreviewBaseCss().then((css) => {' in source
-    assert 'this.previewBaseCss = css;' in source
-    assert 'if (!host) {' in source
+    assert 'isPreviewLoaded' in source
+    assert 'loadPreview()' in source
+    assert 'if (!this.isPreviewLoaded) {' in source
 
 
 def test_beautify_preview_frame_retries_render_after_preview_host_ref_appears():
@@ -173,16 +259,23 @@ def test_beautify_preview_frame_retries_render_after_preview_host_ref_appears():
 
     assert 'this.$nextTick(() =>' in source
     assert 'this.renderPreview();' in source
-    assert "this.$watch('$store.global.beautifyActiveDetail'" in source
-    assert "this.$watch('$store.global.beautifyActiveVariant'" in source
-    assert "this.$watch('$store.global.beautifyActiveWallpaper'" in source
-    assert "this.$watch('$store.global.beautifyPreviewDevice'" in source
+    assert_contains_any(source, ('this.$watch("$store.global.beautifyActiveDetail"', "this.$watch('$store.global.beautifyActiveDetail'"))
+    assert_contains_any(source, ('this.$watch("$store.global.beautifyActiveVariant"', "this.$watch('$store.global.beautifyActiveVariant'"))
+    assert_contains_any(source, ('this.$watch("$store.global.beautifyActiveWallpaper"', "this.$watch('$store.global.beautifyActiveWallpaper'"))
+    assert_contains_any(source, ('this.$watch("$store.global.beautifyPreviewDevice"', "this.$watch('$store.global.beautifyPreviewDevice'"))
+    assert 'if (!host) {' in source
 
 
 def test_beautify_preview_frame_clears_runtime_when_active_detail_disappears():
     source = read_project_file('static/js/components/beautifyPreviewFrame.js')
 
-    assert "this.$watch('$store.global.beautifyActiveDetail', (detail) => {" in source
+    assert_contains_any(
+        source,
+        (
+            'this.$watch("$store.global.beautifyActiveDetail", (detail) => {',
+            "this.$watch('$store.global.beautifyActiveDetail', (detail) => {",
+        ),
+    )
     assert 'if (!detail) {' in source
     assert 'this.destroy();' in source
 
@@ -192,3 +285,247 @@ def test_beautify_preview_frame_falls_back_to_dom_query_when_alpine_ref_is_unava
 
     assert 'this.$refs.previewHost' in source
     assert "querySelector('.beautify-preview-host')" in source or 'querySelector(".beautify-preview-host")' in source
+
+
+def test_beautify_preview_frame_does_not_render_until_load_preview_is_called():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyActiveDetail: { id: 'detail-1' },
+            beautifyActiveVariant: { theme_data: {} },
+            beautifyActiveWallpaper: {},
+            beautifyPreviewDevice: 'pc',
+          },
+        };
+        component.$refs = { previewHost: host };
+        component.$watch = () => {};
+        component.$nextTick = (callback) => callback();
+
+        component.init();
+
+        if (host.__events.some((entry) => entry.type === 'render')) {
+          throw new Error('preview should not render before manual activation');
+        }
+
+        component.loadPreview();
+
+        if (!host.__events.some((entry) => entry.type === 'render')) {
+          throw new Error('preview should render after manual activation');
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_retries_after_load_when_host_is_not_ready_on_first_tick():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyActiveDetail: { id: 'detail-1' },
+            beautifyActiveVariant: { theme_data: {} },
+            beautifyActiveWallpaper: {},
+            beautifyPreviewDevice: 'pc',
+          },
+        };
+
+        let nextTickCount = 0;
+        component.$refs = {};
+        component.$el = {
+          querySelector: () => (nextTickCount >= 2 ? host : null),
+        };
+        component.$watch = () => {};
+        component.$nextTick = (callback) => {
+          nextTickCount += 1;
+          callback();
+        };
+
+        component.init();
+        component.loadPreview();
+
+        const renderEvents = host.__events.filter((entry) => entry.type === 'render');
+        if (renderEvents.length !== 1) {
+          throw new Error(`expected one delayed render after host mount, got ${renderEvents.length}`);
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_retries_on_next_paint_when_host_mounts_after_next_tick_budget_is_exhausted():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyActiveDetail: { id: 'detail-1' },
+            beautifyActiveVariant: { theme_data: {} },
+            beautifyActiveWallpaper: {},
+            beautifyPreviewDevice: 'pc',
+          },
+        };
+
+        let paintReady = false;
+        component.$refs = {};
+        component.$el = {
+          querySelector: () => (paintReady ? host : null),
+        };
+        globalThis.window = {
+          requestAnimationFrame: (callback) => {
+            paintReady = true;
+            callback();
+            return 1;
+          },
+          setTimeout: (callback) => {
+            paintReady = true;
+            callback();
+            return 1;
+          },
+        };
+        component.$watch = () => {};
+        component.$nextTick = (callback) => callback();
+
+        component.init();
+        component.loadPreview();
+
+        const renderEvents = host.__events.filter((entry) => entry.type === 'render');
+        if (renderEvents.length !== 1) {
+          throw new Error(`expected one render after next paint host mount, got ${renderEvents.length}`);
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_uses_timeout_backup_when_frame_retry_callback_never_fires():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyActiveDetail: { id: 'detail-1' },
+            beautifyActiveVariant: { theme_data: {} },
+            beautifyActiveWallpaper: {},
+            beautifyPreviewDevice: 'pc',
+          },
+        };
+
+        let timeoutReady = false;
+        component.$refs = {};
+        component.$el = {
+          querySelector: () => (timeoutReady ? host : null),
+        };
+        globalThis.window = {
+          requestAnimationFrame: () => 1,
+          setTimeout: (callback) => {
+            timeoutReady = true;
+            callback();
+            return 1;
+          },
+        };
+        component.$watch = () => {};
+        component.$nextTick = (callback) => callback();
+
+        component.init();
+        component.loadPreview();
+
+        const renderEvents = host.__events.filter((entry) => entry.type === 'render');
+        if (renderEvents.length !== 1) {
+          throw new Error(`expected one render after timeout backup, got ${renderEvents.length}`);
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_renders_when_preview_host_is_inserted_after_activation():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyActiveDetail: { id: 'detail-1' },
+            beautifyActiveVariant: { theme_data: {} },
+            beautifyActiveWallpaper: {},
+            beautifyPreviewDevice: 'pc',
+          },
+        };
+
+        let hostReady = false;
+        const observers = [];
+        component.$refs = {};
+        component.$el = {
+          querySelector: () => (hostReady ? host : null),
+        };
+        globalThis.MutationObserver = class MutationObserver {
+          constructor(callback) {
+            this.callback = callback;
+            observers.push(this);
+          }
+          observe() {}
+          disconnect() {}
+        };
+        globalThis.window = {
+          requestAnimationFrame: () => 1,
+          setTimeout: () => 1,
+        };
+        component.$watch = () => {};
+        component.$nextTick = (callback) => callback();
+
+        component.init();
+        component.loadPreview();
+
+        hostReady = true;
+        for (const observer of observers) {
+          observer.callback([{ type: 'childList' }]);
+        }
+
+        const renderEvents = host.__events.filter((entry) => entry.type === 'render');
+        if (renderEvents.length !== 1) {
+          throw new Error(`expected one render after host insertion, got ${renderEvents.length}`);
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_re_renders_when_beautify_mode_becomes_visible_after_hidden_init():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const watchers = new Map();
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        component.$store = {
+          global: {
+            currentMode: 'chat',
+            beautifyActiveDetail: { id: 'detail-1' },
+            beautifyActiveVariant: { theme_data: {} },
+            beautifyActiveWallpaper: {},
+            beautifyPreviewDevice: 'pc',
+          },
+        };
+        component.$refs = { previewHost: host };
+        component.$watch = (key, callback) => watchers.set(key, callback);
+        component.$nextTick = (callback) => callback();
+
+        component.init();
+        component.loadPreview();
+
+        const initialRenderCount = host.__events.filter((entry) => entry.type === 'render').length;
+        const variantWatcher = watchers.get('$store.global.beautifyActiveVariant');
+        if (typeof variantWatcher !== 'function') {
+          throw new Error('expected active variant watcher to be registered');
+        }
+
+        component.$store.global.beautifyActiveVariant = { theme_data: { custom_css: 'body{color:red;}' } };
+        variantWatcher(component.$store.global.beautifyActiveVariant);
+
+        const renderCountAfterVariantChange = host.__events.filter((entry) => entry.type === 'render').length;
+        if (renderCountAfterVariantChange !== initialRenderCount + 1) {
+          throw new Error(`expected one rerender after active variant change, got ${renderCountAfterVariantChange - initialRenderCount}`);
+        }
+        '''
+    )
