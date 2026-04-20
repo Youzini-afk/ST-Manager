@@ -144,3 +144,17 @@ def test_beautify_grid_template_mobile_css_drops_grid_area_layout():
 
     assert 'grid-template-areas' not in mobile_block
     assert '.sidebar-mobile .beautify-sidebar-panel {' in mobile_block
+
+
+def test_beautify_stage_header_actions_keep_delete_button_horizontal():
+    css = read_project_file('static/css/modules/view-beautify.css')
+    header_actions_block = css.split('.beautify-stage-header-actions {', 1)[1].split('}', 1)[0]
+    delete_button_block = css.split('.beautify-stage-header-actions .beautify-soft-btn {', 1)[1].split('}', 1)[0]
+    platform_select_block = css.split('.beautify-stage-header-actions .beautify-filter-select {', 1)[1].split('}', 1)[0]
+
+    assert 'flex-wrap: nowrap;' in header_actions_block
+    assert 'justify-content: flex-end;' in header_actions_block
+    assert 'white-space: nowrap;' in delete_button_block
+    assert 'flex: 0 0 auto;' in delete_button_block
+    assert 'width: auto;' in platform_select_block
+    assert 'flex: 0 1 220px;' in platform_select_block
