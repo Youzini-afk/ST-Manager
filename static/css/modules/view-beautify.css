@@ -1,10 +1,59 @@
 .beautify-layout {
+  --beautify-shell-bg: var(--bg-body);
+  --beautify-panel-bg: var(--bg-panel);
+  --beautify-panel-bg-strong: var(--bg-sub);
+  --beautify-panel-bg-soft: var(--bg-sub);
+  --beautify-control-bg: var(--bg-sub);
+  --beautify-control-bg-hover: var(--bg-hover);
+  --beautify-stage-surface: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent-main) 10%, var(--beautify-panel-bg)) 0%,
+    var(--beautify-panel-bg) 220px
+  );
+  --beautify-card-surface: var(--beautify-panel-bg-soft);
+  --beautify-muted-surface: color-mix(
+    in srgb,
+    var(--beautify-panel-bg-soft) 82%,
+    var(--bg-body)
+  );
+  --beautify-thumbnail-border: color-mix(
+    in srgb,
+    var(--border-light) 78%,
+    var(--text-dim)
+  );
+  --beautify-shell-frame-border: color-mix(
+    in srgb,
+    var(--border-light) 70%,
+    rgba(2, 6, 23, 0.75)
+  );
+  --beautify-shell-frame-bg: linear-gradient(
+    180deg,
+    color-mix(
+      in srgb,
+      var(--beautify-panel-bg-strong) 88%,
+      rgba(255, 255, 255, 0.08)
+    ),
+    color-mix(in srgb, var(--beautify-panel-bg) 74%, rgba(2, 6, 23, 0.9))
+  );
+  --beautify-active-bg: color-mix(
+    in srgb,
+    var(--accent-main) 14%,
+    var(--beautify-card-surface)
+  );
+  --beautify-active-border: color-mix(
+    in srgb,
+    var(--accent-main) 72%,
+    var(--border-light)
+  );
+  --beautify-active-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-main) 30%, transparent),
+    0 12px 30px color-mix(in srgb, var(--accent-main) 16%, transparent);
   display: flex;
   flex: 1;
   min-width: 0;
   min-height: 0;
   padding: 1rem;
-  background: var(--bg-body);
+  background: var(--beautify-shell-bg);
 }
 
 .beautify-sidebar-panel {
@@ -13,11 +62,7 @@
   min-height: 0;
   border: 1px solid var(--border-light);
   border-radius: 18px;
-  background: linear-gradient(
-    180deg,
-    rgba(15, 23, 42, 0.94),
-    rgba(15, 23, 42, 0.82)
-  );
+  background: var(--beautify-panel-bg);
   overflow: hidden;
 }
 
@@ -58,7 +103,7 @@
   padding: 0.2rem;
   border: 1px solid var(--border-light);
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.4);
+  background: var(--beautify-panel-bg-strong);
 }
 
 .beautify-workspace-switch {
@@ -123,7 +168,7 @@
 .beautify-primary-btn,
 .beautify-device-btn {
   border: 1px solid var(--border-light);
-  background: rgba(15, 23, 42, 0.55);
+  background: var(--beautify-control-bg);
   color: var(--text-main);
   border-radius: 12px;
   min-height: 40px;
@@ -198,7 +243,7 @@
 .beautify-package-card:hover,
 .beautify-wallpaper-item:hover {
   border-color: var(--accent-light);
-  background: rgba(30, 41, 59, 0.8);
+  background: var(--beautify-control-bg-hover);
 }
 
 .beautify-primary-btn:hover {
@@ -228,12 +273,7 @@
   border: 1px solid var(--border-light);
   border-radius: 16px;
   padding: 0.95rem;
-  background: rgba(15, 23, 42, 0.62);
-}
-
-.beautify-package-card.is-active {
-  border-color: var(--accent-main);
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.28);
+  background: var(--beautify-card-surface);
 }
 
 .beautify-package-chips,
@@ -265,20 +305,21 @@
 
 .beautify-status-pill.is-installed {
   background: rgba(59, 130, 246, 0.18);
-  color: #bfdbfe;
+  color: var(--text-main);
 }
 
 .beautify-status-pill.is-applied {
   background: rgba(16, 185, 129, 0.18);
-  color: #a7f3d0;
+  color: var(--text-main);
 }
 
 .beautify-thumb,
-.beautify-wallpaper-thumb {
+.beautify-wallpaper-thumb,
+.beautify-screenshot-thumb {
   background-size: cover;
   background-position: center;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--beautify-thumbnail-border);
 }
 
 .beautify-thumb {
@@ -292,9 +333,7 @@
   min-height: 0;
   border: 1px solid var(--border-light);
   border-radius: 20px;
-  background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 34%),
-    rgba(15, 23, 42, 0.9);
+  background: var(--beautify-stage-surface);
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -339,7 +378,7 @@
 .beautify-detail-card {
   border: 1px solid var(--border-light);
   border-radius: 16px;
-  background: rgba(15, 23, 42, 0.5);
+  background: var(--beautify-card-surface);
   padding: 0.95rem;
 }
 
@@ -352,11 +391,18 @@
   gap: 1rem;
 }
 
+.beautify-preview-unloaded-card,
+.beautify-screenshot-stage,
+.beautify-screenshot-item,
+.beautify-wallpaper-item,
+.beautify-settings-textarea {
+  background: var(--beautify-muted-surface);
+}
+
 .beautify-preview-unloaded-card {
   min-height: 280px;
   border: 1px solid var(--border-light);
   border-radius: 20px;
-  background: rgba(15, 23, 42, 0.55);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -368,7 +414,7 @@
   margin-bottom: 0.65rem;
   border: 1px solid rgba(251, 191, 36, 0.3);
   background: rgba(251, 191, 36, 0.08);
-  color: #fde68a;
+  color: var(--text-main);
   border-radius: 12px;
   padding: 0.7rem 0.8rem;
   font-size: 0.82rem;
@@ -382,12 +428,8 @@
   min-height: 0;
   block-size: clamp(760px, calc(100vh - 290px), 1080px);
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(
-    180deg,
-    rgba(15, 23, 42, 0.92),
-    rgba(2, 6, 23, 0.98)
-  );
+  border: 1px solid var(--beautify-shell-frame-border);
+  background: var(--beautify-shell-frame-bg);
 }
 
 .beautify-preview-frame-shell.is-mobile {
@@ -410,7 +452,6 @@
   min-height: 320px;
   border: 1px solid var(--border-light);
   border-radius: 20px;
-  background: rgba(15, 23, 42, 0.55);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -449,22 +490,12 @@
   padding: 0.55rem;
   border: 1px solid var(--border-light);
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.42);
-}
-
-.beautify-screenshot-item.is-active {
-  border-color: var(--accent-main);
-  background: rgba(30, 41, 59, 0.76);
 }
 
 .beautify-screenshot-thumb {
   width: 64px;
   height: 44px;
   flex-shrink: 0;
-  background-size: cover;
-  background-position: center;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .beautify-settings-preview-card {
@@ -494,7 +525,6 @@
   padding: 0.65rem 0.8rem;
   border: 1px solid var(--border-light);
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.55);
   color: var(--text-main);
 }
 
@@ -511,12 +541,16 @@
   padding: 0.55rem;
   border: 1px solid var(--border-light);
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.42);
 }
 
+.beautify-device-btn.is-active,
+.beautify-workspace-btn.is-active,
+.beautify-package-card.is-active,
+.beautify-screenshot-item.is-active,
 .beautify-wallpaper-item.is-active {
-  border-color: var(--accent-main);
-  background: rgba(30, 41, 59, 0.76);
+  border-color: var(--beautify-active-border);
+  background: var(--beautify-active-bg);
+  box-shadow: var(--beautify-active-shadow);
 }
 
 .beautify-wallpaper-thumb {

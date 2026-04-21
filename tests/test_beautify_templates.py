@@ -9,6 +9,43 @@ def read_project_file(relative_path):
     return (PROJECT_ROOT / relative_path).read_text(encoding='utf-8')
 
 
+def extract_css_block(css, selector_pattern):
+    match = re.search(rf'{selector_pattern}\s*\{{(?P<body>.*?)\}}', css, re.DOTALL)
+    assert match, f'Expected CSS block matching {selector_pattern!r}'
+    return match.group('body')
+
+
+def extract_css_block_for_selector(css, selector):
+    pattern = re.compile(r'(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}', re.DOTALL)
+    normalized_selector = selector.strip()
+
+    for match in pattern.finditer(css):
+        selectors = [item.strip() for item in match.group('selectors').split(',')]
+        if normalized_selector in selectors:
+            return match.group('body')
+
+    raise AssertionError(f'Expected CSS block containing selector {selector!r}')
+
+
+def has_css_declaration(block, property_name, value_fragment):
+    return re.search(rf'{re.escape(property_name)}\s*:\s*[^;]*{re.escape(value_fragment)}[^;]*;', block) is not None
+
+
+def assert_has_css_declaration(block, property_name, value_fragment):
+    assert has_css_declaration(block, property_name, value_fragment), (
+        f'Expected {property_name!r} declaration containing {value_fragment!r}'
+    )
+
+
+def test_beautify_css_helpers_match_shared_selector_blocks_independent_of_selector_order():
+    css = '.second, .first, .third { border: 1px solid var(--border-light); background: var(--bg-sub); }'
+
+    block = extract_css_block_for_selector(css, '.first')
+
+    assert has_css_declaration(block, 'border', 'var(--border-light)')
+    assert has_css_declaration(block, 'background', 'var(--bg-sub)')
+
+
 def test_sidebar_template_places_beautify_last_in_second_resource_row():
     template = read_project_file('templates/components/sidebar.html')
 
@@ -181,6 +218,39 @@ def test_beautify_layout_css_uses_shared_sidebar_flex_contract():
     assert '.beautify-sidebar-pane {' not in css
 
 
+def test_beautify_layout_css_replaces_dark_shell_colors_with_theme_driven_surfaces():
+    css = read_project_file('static/css/modules/view-beautify.css')
+    layout_block = css.split('.beautify-layout {', 1)[1].split('}', 1)[0]
+    sidebar_block = css.split('.beautify-sidebar-panel {', 1)[1].split('}', 1)[0]
+    switcher_block = css.split('.beautify-workspace-switcher {', 1)[1].split('}', 1)[0]
+    frame_shell_block = extract_css_block_for_selector(css, '.beautify-preview-frame-shell')
+    control_block = extract_css_block_for_selector(css, '.beautify-primary-btn')
+    primary_button_block = css.split('.beautify-primary-btn {', 1)[1].split('}', 1)[0]
+
+    assert '--beautify-shell-bg:' in layout_block
+    assert '--beautify-panel-bg:' in layout_block
+    assert '--beautify-panel-bg-strong:' in layout_block
+    assert '--beautify-control-bg:' in layout_block
+    assert '--beautify-control-bg-hover:' in layout_block
+    assert_has_css_declaration(layout_block, 'background', 'var(--beautify-shell-bg)')
+    assert_has_css_declaration(sidebar_block, 'background', 'var(--beautify-panel-bg)')
+    assert_has_css_declaration(switcher_block, 'background', 'var(--beautify-panel-bg-strong)')
+    assert_has_css_declaration(control_block, 'background', 'var(--beautify-control-bg)')
+    assert '--beautify-shell-frame-bg:' in layout_block
+    assert '--beautify-shell-frame-border:' in layout_block
+    # Token definitions may still contain dark fallback mixes, but the shell and controls should not hard-code them.
+    assert 'rgba(15, 23, 42' not in layout_block
+    assert 'rgba(15, 23, 42' not in sidebar_block
+    assert 'rgba(15, 23, 42' not in switcher_block
+    assert 'rgba(15, 23, 42' not in control_block
+    assert 'rgba(30, 41, 59' not in control_block
+    assert_has_css_declaration(frame_shell_block, 'background', 'var(--beautify-shell-frame-bg)')
+    assert_has_css_declaration(frame_shell_block, 'border', 'var(--beautify-shell-frame-border)')
+    assert_has_css_declaration(primary_button_block, 'background', 'var(--accent-main)')
+    assert_has_css_declaration(primary_button_block, 'background', '#8b5cf6')
+    assert_has_css_declaration(primary_button_block, 'border-color', 'transparent')
+
+
 def test_beautify_layout_css_styles_isolated_preview_host_shell():
     css = read_project_file('static/css/modules/view-beautify.css')
     unloaded_block = css.split('.beautify-preview-unloaded-card {', 1)[1].split('}', 1)[0]
@@ -204,6 +274,50 @@ def test_beautify_layout_css_styles_isolated_preview_host_shell():
     assert 'max-width: 420px;' in mobile_shell_block
     assert '.beautify-preview-chat-window {' not in css
     assert '.beautify-preview-inputbar {' not in css
+
+
+def test_beautify_layout_css_uses_theme_driven_stage_cards_and_active_states():
+    css = read_project_file('static/css/modules/view-beautify.css')
+    layout_block = css.split('.beautify-layout {', 1)[1].split('}', 1)[0]
+    thumb_block = extract_css_block_for_selector(css, '.beautify-screenshot-thumb')
+    stage_block = extract_css_block_for_selector(css, '.beautify-stage-pane')
+    detail_card_block = extract_css_block_for_selector(css, '.beautify-detail-card')
+    muted_surface_block = extract_css_block_for_selector(css, '.beautify-settings-textarea')
+    frame_shell_block = extract_css_block_for_selector(css, '.beautify-preview-frame-shell')
+    active_state_block = extract_css_block_for_selector(css, '.beautify-package-card.is-active')
+
+    assert '--beautify-stage-surface:' in layout_block
+    assert '--beautify-card-surface:' in layout_block
+    assert '--beautify-muted-surface:' in layout_block
+    assert '--beautify-thumbnail-border:' in layout_block
+    assert '--beautify-shell-frame-bg:' in layout_block
+    assert '--beautify-shell-frame-border:' in layout_block
+    assert '--beautify-active-bg:' in layout_block
+    assert '--beautify-active-border:' in layout_block
+    assert '--beautify-active-shadow:' in layout_block
+    assert_has_css_declaration(thumb_block, 'border', 'var(--beautify-thumbnail-border)')
+    assert_has_css_declaration(stage_block, 'background', 'var(--beautify-stage-surface)')
+    assert_has_css_declaration(detail_card_block, 'background', 'var(--beautify-card-surface)')
+    assert_has_css_declaration(muted_surface_block, 'background', 'var(--beautify-muted-surface)')
+    assert_has_css_declaration(frame_shell_block, 'border', 'var(--beautify-shell-frame-border)')
+    assert_has_css_declaration(frame_shell_block, 'background', 'var(--beautify-shell-frame-bg)')
+    assert_has_css_declaration(active_state_block, 'border-color', 'var(--beautify-active-border)')
+    assert_has_css_declaration(active_state_block, 'background', 'var(--beautify-active-bg)')
+    assert_has_css_declaration(active_state_block, 'box-shadow', 'var(--beautify-active-shadow)')
+
+
+def test_beautify_layout_css_avoids_fixed_pale_text_colors_for_status_pills_and_preview_notice():
+    css = read_project_file('static/css/modules/view-beautify.css')
+    installed_block = extract_css_block_for_selector(css, '.beautify-status-pill.is-installed')
+    applied_block = extract_css_block_for_selector(css, '.beautify-status-pill.is-applied')
+    preview_notice_block = extract_css_block_for_selector(css, '.beautify-preview-notice')
+
+    assert '#bfdbfe' not in installed_block
+    assert '#a7f3d0' not in applied_block
+    assert '#fde68a' not in preview_notice_block
+    assert_has_css_declaration(installed_block, 'color', 'var(--text-main)')
+    assert_has_css_declaration(applied_block, 'color', 'var(--text-main)')
+    assert_has_css_declaration(preview_notice_block, 'color', 'var(--text-main)')
 
 
 def test_beautify_grid_template_mobile_css_drops_grid_area_layout():
