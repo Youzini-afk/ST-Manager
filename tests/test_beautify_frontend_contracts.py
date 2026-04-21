@@ -107,6 +107,151 @@ def run_beautify_grid_runtime_check(script_body):
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def run_render_runtime_check(script_body):
+    source_path = PROJECT_ROOT / 'static/js/runtime/renderRuntime.js'
+    node_script = textwrap.dedent(
+        """
+        import { readFileSync } from 'node:fs';
+
+        const sourcePath = __SOURCE_PATH__;
+        let source = readFileSync(sourcePath, 'utf8');
+        source = source.replace(/^import[\\s\\S]*?;\\r?\\n/gm, '');
+
+        const stubs = `
+        const buildRenderIframeDocument = (options = {}) => JSON.stringify(options);
+        const RUNTIME_CHANNEL = 'st-manager:render-runtime';
+        const removeRuntime = () => false;
+        const upsertRuntime = (snapshot) => snapshot;
+        class ShadowRootStub {
+          constructor(host) {
+            this.host = host;
+            this.childNodes = [];
+            this._innerHTML = '';
+          }
+          set innerHTML(value) {
+            this._innerHTML = String(value || '');
+            this.childNodes = [];
+          }
+          get innerHTML() {
+            return this._innerHTML;
+          }
+          append(...nodes) {
+            nodes.forEach((node) => this.appendChild(node));
+          }
+          appendChild(node) {
+            if (!node) return node;
+            node.parentNode = this;
+            this.childNodes.push(node);
+            return node;
+          }
+          querySelector(selector) {
+            const match = (node) => {
+              if (!node) return false;
+              if (String(selector || '').startsWith('.')) {
+                const token = String(selector || '').slice(1);
+                return String(node.className || '').split(/\s+/).filter(Boolean).includes(token);
+              }
+              return String(node.tagName || '').toLowerCase() === String(selector || '').toLowerCase();
+            };
+            const stack = [...this.childNodes];
+            while (stack.length) {
+              const node = stack.shift();
+              if (match(node)) {
+                return node;
+              }
+              if (Array.isArray(node?.childNodes) && node.childNodes.length) {
+                stack.unshift(...node.childNodes);
+              }
+            }
+            return null;
+          }
+        }
+        class ElementBase {
+          constructor(tagName = 'div') {
+            this.tagName = String(tagName || 'div').toUpperCase();
+            this.childNodes = [];
+            this.parentNode = null;
+            this.style = {};
+            this.dataset = {};
+            this.className = '';
+            this.attributes = {};
+            this.isConnected = true;
+            this.shadowRoot = null;
+            this.__rectHeight = 0;
+            this.__rectWidth = 0;
+            this.eventListeners = {};
+            this.contentWindow = this.tagName === 'IFRAME'
+              ? { postMessage() {} }
+              : null;
+          }
+          append(...nodes) {
+            nodes.forEach((node) => this.appendChild(node));
+          }
+          appendChild(node) {
+            if (!node) return node;
+            node.parentNode = this;
+            this.childNodes.push(node);
+            return node;
+          }
+          attachShadow() {
+            this.shadowRoot = new ShadowRootStub(this);
+            return this.shadowRoot;
+          }
+          setAttribute(name, value) {
+            this.attributes[String(name || '')] = String(value || '');
+          }
+          addEventListener(type, handler) {
+            this.eventListeners[String(type || '')] = handler;
+          }
+          getBoundingClientRect() {
+            return {
+              width: Number(this.__rectWidth || 0),
+              height: Number(this.__rectHeight || 0),
+            };
+          }
+        }
+        globalThis.window = {
+          innerHeight: 900,
+          addEventListener() {},
+        };
+        globalThis.document = {
+          createElement(tagName) {
+            return new ElementBase(tagName);
+          },
+        };
+        globalThis.URL = {
+          createObjectURL() {
+            return 'blob:runtime-test';
+          },
+          revokeObjectURL() {},
+        };
+        globalThis.Blob = class Blob {
+          constructor(parts = [], options = {}) {
+            this.parts = parts;
+            this.type = options.type || '';
+          }
+        };
+        `;
+
+        const module = await import(
+          'data:text/javascript,' + encodeURIComponent(stubs + source),
+        );
+
+        __SCRIPT_BODY__
+        """
+    ).replace('__SOURCE_PATH__', json.dumps(str(source_path))).replace(
+        '__SCRIPT_BODY__', textwrap.dedent(script_body)
+    )
+    result = subprocess.run(
+        ['node', '--input-type=module', '-e', node_script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 def test_index_template_lifts_beautify_scope_to_main_container_above_shared_includes():
     template = read_project_file('templates/index.html')
 
@@ -759,6 +904,67 @@ def test_beautify_preview_frame_re_renders_when_workspace_or_global_settings_cha
         const renderCount = host.__events.filter((entry) => entry.type === 'render').length;
         if (renderCount < initialRenderCount + 2) {
           throw new Error(`expected rerenders after workspace/global-settings changes, got ${renderCount - initialRenderCount}`);
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_requests_host_filling_runtime_mode_for_native_preview():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'pc',
+            beautifyActiveDetail: { id: 'detail-1', identity_overrides: {} },
+            beautifyActiveVariant: { theme_data: {} },
+            beautifyActiveWallpaper: {},
+            beautifyGlobalSettings: { identities: {}, wallpaper: {} },
+          },
+        };
+        component.$refs = { previewHost: host };
+        component.$watch = () => {};
+        component.$nextTick = (callback) => callback();
+
+        component.init();
+        component.loadPreview();
+
+        const renderEvent = host.__events.find((entry) => entry.type === 'render');
+        if (!renderEvent) {
+          throw new Error('expected preview render event');
+        }
+        if (renderEvent.options?.fillHostHeight !== true) {
+          throw new Error('beautify preview should request host-filling runtime mode');
+        }
+        '''
+    )
+
+
+def test_render_runtime_fill_host_height_locks_iframe_to_host_height():
+    run_render_runtime_check(
+        '''
+        const host = document.createElement('div');
+        host.__rectHeight = 758;
+        host.__rectWidth = 1200;
+
+        const runtime = module.renderIsolatedHtml(host, {
+          htmlPayload: '<div>demo</div>',
+          minHeight: 520,
+          fillHostHeight: true,
+        });
+        const shell = runtime?.shell || null;
+        const iframe = runtime?.iframe || null;
+
+        if (!runtime || !shell || !iframe) {
+          throw new Error('expected render runtime to mount shell and iframe');
+        }
+        if (shell.style.height !== '758px') {
+          throw new Error(`expected shell height to fill host, got ${shell.style.height}`);
+        }
+        if (iframe.style.height !== '758px') {
+          throw new Error(`expected iframe height to fill host, got ${iframe.style.height}`);
         }
         '''
     )

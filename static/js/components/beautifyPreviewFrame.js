@@ -9,7 +9,10 @@ function resolvePreviewRenderMinHeight(platform) {
   return platform === "mobile" ? 420 : 520;
 }
 
-function resolvePreviewIdentityValue(overrideIdentity = {}, globalIdentity = {}) {
+function resolvePreviewIdentityValue(
+  overrideIdentity = {},
+  globalIdentity = {},
+) {
   return {
     name: overrideIdentity.name || globalIdentity.name || "",
     avatarSrc: overrideIdentity.avatar_file
@@ -43,7 +46,7 @@ export default function beautifyPreviewFrame() {
     get hasActiveDetail() {
       return Boolean(
         this.$store.global.beautifyActiveDetail ||
-          this.$store.global.beautifyWorkspace === "settings",
+        this.$store.global.beautifyWorkspace === "settings",
       );
     },
 
@@ -213,6 +216,7 @@ export default function beautifyPreviewFrame() {
       renderIsolatedHtml(host, {
         htmlPayload: documentHtml,
         minHeight: resolvePreviewRenderMinHeight(state.platform),
+        fillHostHeight: true,
       });
     },
 
