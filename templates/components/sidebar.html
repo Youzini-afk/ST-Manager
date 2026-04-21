@@ -705,7 +705,29 @@
         </button>
       </div>
 
-      <div class="beautify-toolbar-filters">
+      <div class="beautify-workspace-switcher beautify-workspace-switch">
+        <button
+          type="button"
+          class="beautify-device-btn beautify-workspace-btn"
+          :class="beautifyWorkspace === 'packages' ? 'is-active' : ''"
+          @click="switchBeautifyWorkspace('packages')"
+        >
+          美化包
+        </button>
+        <button
+          type="button"
+          class="beautify-device-btn beautify-workspace-btn"
+          :class="beautifyWorkspace === 'settings' ? 'is-active' : ''"
+          @click="switchBeautifyWorkspace('settings')"
+        >
+          全局设置
+        </button>
+      </div>
+
+      <div
+        class="beautify-toolbar-filters"
+        x-show="beautifyWorkspace === 'packages'"
+      >
         <input
           x-model.debounce.200ms="beautifySearch"
           type="text"
@@ -720,7 +742,10 @@
         </select>
       </div>
 
-      <div class="beautify-toolbar-actions">
+      <div
+        class="beautify-toolbar-actions"
+        x-show="beautifyWorkspace === 'packages'"
+      >
         <label class="beautify-action-btn cursor-pointer">
           <input
             type="file"
@@ -744,10 +769,27 @@
           />
           导入壁纸
         </label>
+        <label
+          class="beautify-action-btn cursor-pointer"
+          :class="!selectedPackageId ? 'is-disabled' : ''"
+        >
+          <input
+            type="file"
+            class="hidden"
+            accept="image/*"
+            multiple
+            :disabled="!selectedPackageId"
+            @change="handleScreenshotFiles($event.target.files); $event.target.value = ''"
+          />
+          导入截图
+        </label>
       </div>
     </div>
 
-    <div class="beautify-package-list custom-scrollbar">
+    <div
+      class="beautify-package-list custom-scrollbar"
+      x-show="beautifyWorkspace === 'packages'"
+    >
       <template x-for="item in filteredPackages" :key="item.id">
         <button
           type="button"
@@ -802,6 +844,18 @@
         <div class="beautify-empty-title">还没有美化包</div>
         <div class="beautify-empty-copy">
           先导入一个 theme JSON，管理器会自动创建美化包。
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="beautify-settings-shell custom-scrollbar"
+      x-show="beautifyWorkspace === 'settings'"
+    >
+      <div class="beautify-detail-card">
+        <div class="beautify-detail-heading">全局设置</div>
+        <div class="beautify-empty-copy">
+          在这里配置默认壁纸与角色、用户资料，供所有美化包共享。
         </div>
       </div>
     </div>

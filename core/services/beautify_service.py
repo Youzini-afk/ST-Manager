@@ -8,6 +8,7 @@ import time
 from typing import Callable, Dict, Optional
 
 from PIL import Image
+from PIL import UnidentifiedImageError
 
 from core.config import get_beautify_folder
 from core.data.ui_store import get_beautify_library, load_ui_data, save_ui_data, set_beautify_library
@@ -50,12 +51,16 @@ class BeautifyService:
     def load_library(self):
         return get_beautify_library(self._load_ui_data())
 
+    def get_global_settings(self):
+        return copy.deepcopy(self.load_library().get('global_settings', {}))
+
     def list_packages(self):
         library = self.load_library()
         packages = []
         for package_info in library.get('packages', {}).values():
             variants = list(package_info.get('variants', {}).values())
             wallpapers = list(package_info.get('wallpapers', {}).values())
+            screenshots = list(package_info.get('screenshots', {}).values())
             packages.append(
                 {
                     'id': package_info['id'],
@@ -63,6 +68,7 @@ class BeautifyService:
                     'author': package_info.get('author', ''),
                     'variant_count': len(variants),
                     'wallpaper_count': len(wallpapers),
+                    'screenshot_count': len(screenshots),
                     'platforms': sorted({variant.get('platform', 'dual') for variant in variants}),
                     'updated_at': package_info.get('updated_at', 0),
                     'wallpaper_previews': [wallpaper.get('file', '') for wallpaper in wallpapers[:3]],
@@ -179,26 +185,20 @@ class BeautifyService:
         library, package_info, variant = self._load_package_variant(ui_data, package_id, variant_id)
 
         wallpapers_dir = os.path.join(self.library_root, 'packages', package_info['id'], 'wallpapers')
-        os.makedirs(wallpapers_dir, exist_ok=True)
+        try:
+            wallpaper = self._copy_asset_file(wallpapers_dir, source_path, source_name=source_name)
+        except ValueError as exc:
+            raise ValueError('壁纸文件无效') from exc
 
-        original_name = source_name or os.path.basename(source_path)
-        target_name = self._build_unique_filename(wallpapers_dir, original_name)
-        target_file = os.path.join(wallpapers_dir, target_name)
-        shutil.copy2(source_path, target_file)
-
-        with Image.open(target_file) as image:
-            width, height = image.size
-
-        wallpaper_id = f'wp_{self._short_hash(target_file + str(time.time()))}'
-        relative_file = os.path.relpath(target_file, self._project_root_for_library()).replace('\\', '/')
+        wallpaper_id = f'wp_{self._short_hash(wallpaper["file"] + str(time.time()))}'
         package_info['wallpapers'][wallpaper_id] = {
             'id': wallpaper_id,
             'variant_id': variant_id,
-            'file': relative_file,
-            'filename': target_name,
-            'width': width,
-            'height': height,
-            'mtime': int(os.path.getmtime(target_file)),
+            'file': wallpaper['file'],
+            'filename': wallpaper['filename'],
+            'width': wallpaper['width'],
+            'height': wallpaper['height'],
+            'mtime': wallpaper['mtime'],
         }
 
         wallpaper_ids = list(variant.get('wallpaper_ids', []))
@@ -213,6 +213,106 @@ class BeautifyService:
             'package': copy.deepcopy(package_info),
             'variant': copy.deepcopy(variant),
             'wallpaper': copy.deepcopy(package_info['wallpapers'][wallpaper_id]),
+        }
+
+    def update_global_settings(self, payload: Optional[Dict] = None):
+        ui_data = self._load_ui_data()
+        library = get_beautify_library(ui_data)
+        global_settings = copy.deepcopy(library.get('global_settings') or {})
+        identities = copy.deepcopy(global_settings.get('identities') or {})
+        source = payload if isinstance(payload, dict) else {}
+
+        if source.get('clear_wallpaper') is True:
+            self._remove_asset_file((global_settings.get('wallpaper') or {}).get('file', ''))
+            global_settings['wallpaper'] = {}
+
+        for key in ('character', 'user'):
+            current_identity = copy.deepcopy(identities.get(key) or {})
+            name_key = f'{key}_name'
+            if name_key in source:
+                current_identity['name'] = str(source.get(name_key) or '').strip()
+
+            if source.get(f'clear_{key}_avatar') is True:
+                self._remove_asset_file(current_identity.get('avatar_file', ''))
+                current_identity['avatar_file'] = ''
+
+            identities[key] = current_identity
+
+        global_settings['identities'] = identities
+        library['global_settings'] = global_settings
+        self._save_library(ui_data, library)
+        return copy.deepcopy(get_beautify_library(ui_data).get('global_settings', {}))
+
+    def import_global_wallpaper(self, source_path: str, source_name: Optional[str] = None):
+        if not source_path or not os.path.isfile(source_path):
+            raise ValueError('壁纸文件不存在')
+
+        ui_data = self._load_ui_data()
+        library = get_beautify_library(ui_data)
+        global_settings = copy.deepcopy(library.get('global_settings') or {})
+        wallpapers_dir = os.path.join(self.library_root, 'global', 'wallpapers')
+        try:
+            wallpaper = self._copy_asset_to_slot(wallpapers_dir, 'wallpaper', source_path, source_name=source_name)
+        except ValueError as exc:
+            raise ValueError('壁纸文件无效') from exc
+
+        global_settings['wallpaper'] = wallpaper
+        library['global_settings'] = global_settings
+        self._save_library(ui_data, library)
+        return {'wallpaper': copy.deepcopy(wallpaper)}
+
+    def import_global_avatar(self, target: str, source_path: str, source_name: Optional[str] = None):
+        return {'identity': self._import_identity_avatar(None, target, source_path, source_name=source_name)}
+
+    def import_screenshot(self, package_id: str, source_path: str, source_name: Optional[str] = None):
+        if not source_path or not os.path.isfile(source_path):
+            raise ValueError('截图文件不存在')
+
+        ui_data = self._load_ui_data()
+        library, package_info = self._load_package(ui_data, package_id)
+        screenshots_dir = os.path.join(self.library_root, 'packages', package_info['id'], 'screenshots')
+        try:
+            screenshot = self._copy_asset_file(screenshots_dir, source_path, source_name=source_name)
+        except ValueError as exc:
+            raise ValueError('截图文件无效') from exc
+        screenshot_id = f'shot_{self._short_hash(screenshot["file"] + str(time.time()))}'
+        screenshot['id'] = screenshot_id
+
+        screenshots = copy.deepcopy(package_info.get('screenshots') or {})
+        screenshots[screenshot_id] = screenshot
+        package_info['screenshots'] = screenshots
+        package_info['updated_at'] = int(time.time())
+        library['packages'][package_info['id']] = package_info
+        self._save_library(ui_data, library)
+        return {'package': copy.deepcopy(package_info), 'screenshot': copy.deepcopy(screenshot)}
+
+    def update_package_identities(self, package_id: str, identities_payload: Optional[Dict] = None):
+        ui_data = self._load_ui_data()
+        library, package_info = self._load_package(ui_data, package_id)
+        identity_overrides = copy.deepcopy(package_info.get('identity_overrides') or {})
+        source = identities_payload if isinstance(identities_payload, dict) else {}
+
+        for key in ('character', 'user'):
+            current_identity = copy.deepcopy(identity_overrides.get(key) or {})
+            name_key = f'{key}_name'
+            if name_key in source:
+                current_identity['name'] = str(source.get(name_key) or '').strip()
+
+            if source.get(f'clear_{key}_avatar') is True:
+                self._remove_asset_file(current_identity.get('avatar_file', ''))
+                current_identity['avatar_file'] = ''
+
+            identity_overrides[key] = current_identity
+
+        package_info['identity_overrides'] = identity_overrides
+        package_info['updated_at'] = int(time.time())
+        library['packages'][package_info['id']] = package_info
+        self._save_library(ui_data, library)
+        return copy.deepcopy(package_info)
+
+    def import_package_avatar(self, package_id: str, target: str, source_path: str, source_name: Optional[str] = None):
+        return {
+            'identity': self._import_identity_avatar(package_id, target, source_path, source_name=source_name)
         }
 
     def delete_package(self, package_id: str):
@@ -295,6 +395,8 @@ class BeautifyService:
             'cover_variant_id': '',
             'created_at': int(time.time()),
             'updated_at': int(time.time()),
+            'screenshots': {},
+            'identity_overrides': {},
             'variants': {},
             'wallpapers': {},
         }
@@ -331,12 +433,8 @@ class BeautifyService:
         return os.path.join(self._project_root_for_library(), relative_path.replace('/', os.sep))
 
     def _load_package_variant(self, ui_data: Dict, package_id: str, variant_id: str):
-        library = get_beautify_library(ui_data)
-        resolved_package_id = str(package_id or '').strip()
+        library, package_info = self._load_package(ui_data, package_id)
         resolved_variant_id = str(variant_id or '').strip()
-        package_info = copy.deepcopy(library.get('packages', {}).get(resolved_package_id))
-        if not package_info:
-            raise ValueError('美化包不存在')
 
         variant = copy.deepcopy(package_info.get('variants', {}).get(resolved_variant_id))
         if not variant:
@@ -344,8 +442,17 @@ class BeautifyService:
 
         return library, package_info, variant
 
+    def _load_package(self, ui_data: Dict, package_id: str):
+        library = get_beautify_library(ui_data)
+        resolved_package_id = str(package_id or '').strip()
+        package_info = copy.deepcopy(library.get('packages', {}).get(resolved_package_id))
+        if not package_info:
+            raise ValueError('美化包不存在')
+        return library, package_info
+
     def _build_unique_filename(self, target_dir: str, filename: str):
-        base_name, ext = os.path.splitext(filename or '')
+        sanitized_name = os.path.basename(str(filename or '').replace('\\', '/'))
+        base_name, ext = os.path.splitext(sanitized_name)
         safe_base = base_name.strip() or 'wallpaper'
         safe_ext = ext or '.png'
         candidate = f'{safe_base}{safe_ext}'
@@ -364,6 +471,150 @@ class BeautifyService:
             if variant.get('platform') == platform:
                 return copy.deepcopy(variant)
         return None
+
+    def _normalize_identity_target(self, target: str):
+        resolved_target = str(target or '').strip().lower()
+        if resolved_target not in ('character', 'user'):
+            raise ValueError('无效的身份类型')
+        return resolved_target
+
+    def _copy_asset_to_slot(self, target_dir: str, slot_name: str, source_path: str, source_name: Optional[str] = None):
+        original_name = source_name or os.path.basename(source_path)
+        _, ext = os.path.splitext(original_name or '')
+        slot_filename = f'{slot_name}{ext or ".png"}'
+        os.makedirs(target_dir, exist_ok=True)
+        target_file = os.path.join(target_dir, slot_filename)
+        temp_file = os.path.join(target_dir, f'__incoming__{slot_filename}')
+        try:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        except OSError:
+            pass
+        shutil.copy2(source_path, temp_file)
+
+        try:
+            with Image.open(temp_file) as image:
+                width, height = image.size
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            self._remove_asset_file(os.path.relpath(temp_file, self._project_root_for_library()).replace('\\', '/'))
+            raise ValueError('图片文件无效') from exc
+
+        self._remove_slot_files(target_dir, slot_name, keep_filename=slot_filename)
+        try:
+            os.replace(temp_file, target_file)
+        except OSError as exc:
+            self._remove_asset_file(os.path.relpath(temp_file, self._project_root_for_library()).replace('\\', '/'))
+            raise ValueError('图片文件无效') from exc
+
+        return {
+            'file': os.path.relpath(target_file, self._project_root_for_library()).replace('\\', '/'),
+            'filename': slot_filename,
+            'width': width,
+            'height': height,
+            'mtime': int(os.path.getmtime(target_file)),
+        }
+
+    def _remove_slot_files(self, target_dir: str, slot_name: str, keep_filename: str = ''):
+        if not os.path.isdir(target_dir):
+            return
+
+        prefix = f'{slot_name}.'
+        keep_name = str(keep_filename or '').strip().lower()
+        for entry in os.listdir(target_dir):
+            normalized = entry.lower()
+            if not normalized.startswith(prefix):
+                continue
+            if keep_name and normalized == keep_name:
+                continue
+            try:
+                os.remove(os.path.join(target_dir, entry))
+            except OSError:
+                continue
+
+    def _remove_asset_file(self, relative_path: str):
+        path = self._resolve_project_relative_path(relative_path)
+        if not path or not os.path.isfile(path):
+            return
+        try:
+            if os.path.commonpath([os.path.abspath(path), self.library_root]) != self.library_root:
+                return
+        except ValueError:
+            return
+        try:
+            os.remove(path)
+        except OSError:
+            return
+
+    def _copy_asset_file(self, target_dir: str, source_path: str, source_name: Optional[str] = None):
+        os.makedirs(target_dir, exist_ok=True)
+        original_name = source_name or os.path.basename(source_path)
+        target_name = self._build_unique_filename(target_dir, original_name)
+        target_file = os.path.join(target_dir, target_name)
+        shutil.copy2(source_path, target_file)
+
+        try:
+            with Image.open(target_file) as image:
+                width, height = image.size
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            self._remove_asset_file(os.path.relpath(target_file, self._project_root_for_library()).replace('\\', '/'))
+            raise ValueError('图片文件无效') from exc
+
+        return {
+            'file': os.path.relpath(target_file, self._project_root_for_library()).replace('\\', '/'),
+            'filename': target_name,
+            'width': width,
+            'height': height,
+            'mtime': int(os.path.getmtime(target_file)),
+        }
+
+    def _import_identity_avatar(self, package_id: Optional[str], target: str, source_path: str, source_name: Optional[str] = None):
+        if not source_path or not os.path.isfile(source_path):
+            raise ValueError('头像文件不存在')
+
+        resolved_target = self._normalize_identity_target(target)
+        ui_data = self._load_ui_data()
+        library = get_beautify_library(ui_data)
+
+        if package_id is None:
+            global_settings = copy.deepcopy(library.get('global_settings') or {})
+            identities = copy.deepcopy(global_settings.get('identities') or {})
+            identity = copy.deepcopy(identities.get(resolved_target) or {})
+            avatars_dir = os.path.join(self.library_root, 'global', 'avatars')
+            try:
+                identity['avatar_file'] = self._copy_asset_to_slot(
+                    avatars_dir,
+                    resolved_target,
+                    source_path,
+                    source_name=source_name,
+                )['file']
+            except ValueError as exc:
+                raise ValueError('头像文件无效') from exc
+            identities[resolved_target] = identity
+            global_settings['identities'] = identities
+            library['global_settings'] = global_settings
+        else:
+            library, package_info = self._load_package(ui_data, package_id)
+            identity_overrides = copy.deepcopy(package_info.get('identity_overrides') or {})
+            identity = copy.deepcopy(identity_overrides.get(resolved_target) or {})
+            avatars_dir = os.path.join(self.library_root, 'packages', package_info['id'], 'avatars')
+            try:
+                identity['avatar_file'] = self._copy_asset_to_slot(
+                    avatars_dir,
+                    resolved_target,
+                    source_path,
+                    source_name=source_name,
+                )['file']
+            except ValueError as exc:
+                raise ValueError('头像文件无效') from exc
+            identity_overrides[resolved_target] = identity
+            package_info['identity_overrides'] = identity_overrides
+            package_info['updated_at'] = int(time.time())
+            library['packages'][package_info['id']] = package_info
+
+        self._save_library(ui_data, library)
+        if package_id is None:
+            return copy.deepcopy(get_beautify_library(ui_data).get('global_settings', {}).get('identities', {}).get(resolved_target, {}))
+        return copy.deepcopy(get_beautify_library(ui_data).get('packages', {}).get(str(package_id).strip(), {}).get('identity_overrides', {}).get(resolved_target, {}))
 
     def _load_theme_data(self, theme_file: str):
         path = self._resolve_project_relative_path(theme_file)

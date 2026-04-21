@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -25,6 +26,16 @@ def test_sidebar_template_keeps_live_beautify_sidebar_panel_hook():
     template = read_project_file('templates/components/sidebar.html')
 
     assert 'beautify-sidebar-panel' in template
+
+
+def test_sidebar_template_adds_beautify_workspace_switcher_and_screenshot_import():
+    template = read_project_file('templates/components/sidebar.html')
+
+    assert 'beautifyWorkspace' in template
+    assert 'switchBeautifyWorkspace(' in template
+    assert '导入截图' in template
+    assert 'handleScreenshotFiles($event.target.files)' in template
+    assert ':disabled="!selectedPackageId"' in template or ":disabled='!selectedPackageId'" in template
 
 
 def test_index_template_includes_dedicated_beautify_grid_view():
@@ -55,6 +66,53 @@ def test_beautify_grid_template_keeps_stage_only_markup_and_controls():
     assert 'selectedVariantPlatform === \'mobile\'' in template or 'selectedVariantPlatform === "mobile"' in template
 
 
+def test_beautify_grid_template_supports_screenshot_stage_and_global_settings_form():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert 'stageMode === "preview"' in template or "stageMode === 'preview'" in template
+    assert 'stageMode === "screenshot"' in template or "stageMode === 'screenshot'" in template
+    assert '全局壁纸' in template
+    assert '角色默认资料' in template
+    assert '用户默认资料' in template
+    assert '角色与用户覆盖' in template
+    assert '截图查看' in template
+    assert 'activeScreenshot' in template
+    assert 'beautifyWorkspace === "settings"' in template or "beautifyWorkspace === 'settings'" in template
+
+
+def test_beautify_grid_template_adds_screenshot_picker_package_identity_bindings_and_avatar_actions():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert 'x-for="screenshot in screenshotOptions"' in template or "x-for='screenshot in screenshotOptions'" in template
+    assert '@click="selectScreenshot(screenshot.id)"' in template or "@click='selectScreenshot(screenshot.id)'" in template
+    assert 'x-model="packageCharacterName"' in template or "x-model='packageCharacterName'" in template
+    assert 'x-model="packageUserName"' in template or "x-model='packageUserName'" in template
+    assert "handlePackageAvatarFile('character', $event.target.files)" in template or 'handlePackageAvatarFile("character", $event.target.files)' in template
+    assert "handlePackageAvatarFile('user', $event.target.files)" in template or 'handlePackageAvatarFile("user", $event.target.files)' in template
+    assert '@click="clearPackageCharacterAvatar()"' in template or "@click='clearPackageCharacterAvatar()'" in template
+    assert '@click="clearPackageUserAvatar()"' in template or "@click='clearPackageUserAvatar()'" in template
+    assert '未设置，将使用全局默认角色资料' in template
+    assert '未设置，将使用全局默认用户资料' in template
+    assert '当前角色头像已覆盖全局设置' in template
+    assert '当前用户头像已覆盖全局设置' in template
+
+
+def test_beautify_grid_template_settings_workspace_keeps_global_preview_surface():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert '全局默认预览' in template
+    assert '不会带入当前包的主题与覆盖' in template
+
+
+def test_beautify_grid_template_disables_preview_only_controls_in_screenshot_mode():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert ":disabled=\"stageMode === 'screenshot' || !hasPcVariant\"" in template or ':disabled="stageMode === \"screenshot\" || !hasPcVariant"' in template
+    assert ":disabled=\"stageMode === 'screenshot' || !hasMobileVariant\"" in template or ':disabled="stageMode === \"screenshot\" || !hasMobileVariant"' in template
+    assert ":disabled=\"stageMode === 'screenshot' || !hasDualVariant\"" in template or ':disabled="stageMode === \"screenshot\" || !hasDualVariant"' in template
+    assert ":disabled=\"stageMode === 'screenshot' || wallpaperOptions.length === 0\"" in template or ':disabled="stageMode === \"screenshot\" || wallpaperOptions.length === 0"' in template
+
+
 def test_beautify_grid_template_removes_install_and_apply_actions_and_approximation_copy():
     template = read_project_file('templates/components/grid_beautify.html')
 
@@ -74,10 +132,19 @@ def test_beautify_grid_template_uses_manual_native_preview_trigger():
     assert 'previewApproximateNoticeVisible' not in template
 
 
+def test_beautify_grid_template_wraps_package_preview_states_in_single_root():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert re.search(
+        r'<template x-if="stageMode === [\'"]preview[\'"]">\s*<div class="beautify-preview-stage">',
+        template,
+    )
+
+
 def test_beautify_grid_template_keeps_unavailable_device_button_disabled_instead_of_hidden():
     template = read_project_file('templates/components/grid_beautify.html')
-    assert ':disabled="!hasPcVariant"' in template or ":disabled='!hasPcVariant'" in template
-    assert ':disabled="!hasMobileVariant"' in template or ":disabled='!hasMobileVariant'" in template
+    assert '!hasPcVariant' in template
+    assert '!hasMobileVariant' in template
 
 
 def test_beautify_grid_template_uses_isolated_preview_host_instead_of_inline_preview_dom():
@@ -109,6 +176,8 @@ def test_beautify_layout_css_uses_shared_sidebar_flex_contract():
     assert 'flex: 1;' in stage_block
     assert 'min-width: 0;' in stage_block
     assert 'min-height: 0;' in stage_block
+    assert 'overflow-y: auto;' in stage_block
+    assert 'overflow-x: hidden;' in stage_block
     assert '.beautify-sidebar-pane {' not in css
 
 

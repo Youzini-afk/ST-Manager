@@ -12,27 +12,30 @@ function escapeCssText(value) {
 
 function sanitizePreviewCustomCss(value) {
   return String(value ?? "")
-    .replace(/@import\s+url\((['"]?)https?:\/\/[^)]+\1\)\s*;?/gi, '')
-    .replace(/@import\s+(['"])https?:\/\/[^;]+\1\s*;?/gi, '');
+    .replace(
+      /@import\s+url\((['"]?)(?:https?:)?\/\/[^)]+\1\)(?:\s+[^;]+)?\s*;?/gi,
+      "",
+    )
+    .replace(/@import\s+(['"])(?:https?:)?\/\/[^;]+\1(?:\s+[^;]+)?\s*;?/gi, "");
 }
 
 function buildPreviewContentSecurityPolicy() {
   const localResourceOrigins = [
     "'self'",
-    'data:',
-    'blob:',
-    'http://127.0.0.1:5000',
-    'https://127.0.0.1:5000',
+    "data:",
+    "blob:",
+    "http://127.0.0.1:5000",
+    "https://127.0.0.1:5000",
   ];
-  const imageOrigins = [...localResourceOrigins, 'http:', 'https:'];
+  const imageOrigins = [...localResourceOrigins, "http:", "https:"];
 
   return [
     "default-src 'none'",
     "script-src 'unsafe-inline'",
-    "style-src 'unsafe-inline' http://127.0.0.1:5000 https://127.0.0.1:5000",
-    `font-src ${localResourceOrigins.join(' ')}`,
-    `img-src ${imageOrigins.join(' ')}`,
-  ].join('; ');
+    "style-src 'self' 'unsafe-inline' http://127.0.0.1:5000 https://127.0.0.1:5000",
+    `font-src ${localResourceOrigins.join(" ")}`,
+    `img-src ${imageOrigins.join(" ")}`,
+  ].join("; ");
 }
 
 function escapeCssUrl(value) {
@@ -113,7 +116,11 @@ function buildInlineAvatarDataUri({
   return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}' viewBox='0 0 ${size} ${size}'%3E%3Crect width='${size}' height='${size}' rx='${radius}' fill='${encodeURIComponent(background)}'/%3E%3Ctext x='50%25' y='55%25' font-size='${fontSize}' text-anchor='middle' fill='${encodeURIComponent(foreground)}' font-family='Arial'%3E${encodeURIComponent(label)}%3C/text%3E%3C/svg%3E`;
 }
 
-function resolvePreviewAvatarSrc({ avatarSrc = "", avatarLabel = "", size = 96 }) {
+function resolvePreviewAvatarSrc({
+  avatarSrc = "",
+  avatarLabel = "",
+  size = 96,
+}) {
   if (avatarSrc) {
     return avatarSrc;
   }
@@ -125,19 +132,22 @@ function resolvePreviewAvatarSrc({ avatarSrc = "", avatarLabel = "", size = 96 }
   });
 }
 
-function buildPreviewIdentities() {
+function buildPreviewIdentities(identities = {}) {
+  const character = identities.character || {};
+  const user = identities.user || {};
+
   return {
     system: {
       name: "SillyTavern System",
       avatarLabel: "ST",
     },
     character: {
-      name: "栖梧",
-      avatarSrc: PREVIEW_IDENTITY_ASSET_PATHS.character,
+      name: character.name || "栖梧",
+      avatarSrc: character.avatarSrc || PREVIEW_IDENTITY_ASSET_PATHS.character,
     },
     user: {
-      name: "春岚",
-      avatarSrc: PREVIEW_IDENTITY_ASSET_PATHS.user,
+      name: user.name || "春岚",
+      avatarSrc: user.avatarSrc || PREVIEW_IDENTITY_ASSET_PATHS.user,
     },
   };
 }
@@ -431,9 +441,13 @@ export function buildBeautifyPreviewThemeVars(theme = {}, wallpaperUrl = "") {
   };
 }
 
-export function buildBeautifyPreviewSampleMarkup(platform = "pc", theme = {}) {
+export function buildBeautifyPreviewSampleMarkup(
+  platform = "pc",
+  theme = {},
+  identities = {},
+) {
   const normalizedPlatform = platform === "mobile" ? "mobile" : "pc";
-  const previewIdentities = buildPreviewIdentities();
+  const previewIdentities = buildPreviewIdentities(identities);
   const sendFormClasses = ["no-connection"];
 
   if (theme.compact_input_area) {
@@ -854,6 +868,7 @@ export function buildBeautifyPreviewDocument({
   theme = {},
   wallpaperUrl = "",
   platform = "pc",
+  identities = {},
 } = {}) {
   const normalizedPlatform = platform === "mobile" ? "mobile" : "pc";
   const themeVars = buildBeautifyPreviewThemeVars(theme, wallpaperUrl);
@@ -862,8 +877,14 @@ export function buildBeautifyPreviewDocument({
     ? ` class="${escapeHtml(bodyClasses.join(" "))}"`
     : "";
   const serializedVars = serializeCssVars(themeVars);
-  const customCss = escapeCssText(sanitizePreviewCustomCss(theme.custom_css || ""));
-  const markup = buildBeautifyPreviewSampleMarkup(normalizedPlatform, theme);
+  const customCss = escapeCssText(
+    sanitizePreviewCustomCss(theme.custom_css || ""),
+  );
+  const markup = buildBeautifyPreviewSampleMarkup(
+    normalizedPlatform,
+    theme,
+    identities,
+  );
   const behaviorScript = buildPreviewBehaviorScript();
   const contentSecurityPolicy = escapeHtml(buildPreviewContentSecurityPolicy());
   const mobileStylesheetMarkup =

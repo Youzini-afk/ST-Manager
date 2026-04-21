@@ -5,7 +5,136 @@
   class="beautify-layout"
 >
   <section class="beautify-stage-pane" x-data="beautifyPreviewFrame">
-    <template x-if="activePackage">
+    <template x-if="beautifyWorkspace === 'settings'">
+      <div class="beautify-settings-shell custom-scrollbar">
+        <div class="beautify-detail-card">
+          <div class="beautify-detail-heading">全局壁纸</div>
+          <div class="beautify-stage-actions">
+            <label class="beautify-action-btn cursor-pointer">
+              <input
+                type="file"
+                class="hidden"
+                accept="image/*"
+                @change="handleGlobalWallpaperFiles($event.target.files); $event.target.value = ''"
+              />
+              上传全局壁纸
+            </label>
+            <button
+              type="button"
+              class="beautify-soft-btn"
+              @click="clearGlobalWallpaper()"
+            >
+              清除全局壁纸
+            </button>
+          </div>
+        </div>
+
+        <div class="beautify-detail-card">
+          <div class="beautify-detail-heading">角色默认资料</div>
+          <div class="beautify-settings-form-grid">
+            <input
+              type="text"
+              class="beautify-filter-input"
+              x-model="globalCharacterName"
+              placeholder="角色默认名称"
+            />
+            <div class="beautify-stage-actions">
+              <label class="beautify-action-btn cursor-pointer">
+                <input
+                  type="file"
+                  class="hidden"
+                  accept="image/*"
+                  @change="handleGlobalAvatarFile('character', $event.target.files); $event.target.value = ''"
+                />
+                上传角色头像
+              </label>
+              <button
+                type="button"
+                class="beautify-soft-btn"
+                @click="clearGlobalCharacterAvatar()"
+              >
+                清除角色头像
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="beautify-detail-card">
+          <div class="beautify-detail-heading">用户默认资料</div>
+          <div class="beautify-settings-form-grid">
+            <input
+              type="text"
+              class="beautify-filter-input"
+              x-model="globalUserName"
+              placeholder="用户默认名称"
+            />
+            <div class="beautify-stage-actions">
+              <label class="beautify-action-btn cursor-pointer">
+                <input
+                  type="file"
+                  class="hidden"
+                  accept="image/*"
+                  @change="handleGlobalAvatarFile('user', $event.target.files); $event.target.value = ''"
+                />
+                上传用户头像
+              </label>
+              <button
+                type="button"
+                class="beautify-soft-btn"
+                @click="clearGlobalUserAvatar()"
+              >
+                清除用户头像
+              </button>
+            </div>
+          </div>
+          <div class="beautify-stage-actions">
+            <button
+              type="button"
+              class="beautify-primary-btn"
+              @click="saveGlobalSettings()"
+            >
+              保存全局设置
+            </button>
+          </div>
+        </div>
+
+        <div class="beautify-detail-card">
+          <div class="beautify-detail-heading">全局默认预览</div>
+          <div class="beautify-empty-copy">
+            不会带入当前包的主题与覆盖，只显示全局默认效果。
+          </div>
+          <template x-if="!isPreviewLoaded">
+            <div
+              class="beautify-preview-unloaded-card beautify-settings-preview-card"
+            >
+              <button
+                type="button"
+                class="beautify-primary-btn"
+                @click="loadPreview()"
+              >
+                加载全局默认预览
+              </button>
+            </div>
+          </template>
+          <template x-if="isPreviewLoaded">
+            <div
+              class="beautify-preview-frame-shell beautify-settings-preview-shell"
+              :class="previewShellMode === 'mobile' ? 'is-mobile' : 'is-pc'"
+            >
+              <div
+                x-ref="previewHost"
+                class="beautify-preview-host"
+                :data-preview-platform="previewShellMode"
+                data-runtime-owner="beautify-preview"
+                data-runtime-label="Beautify Native ST Preview"
+              ></div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="beautifyWorkspace !== 'settings' && activePackage">
       <div class="beautify-stage-shell">
         <div class="beautify-stage-header">
           <div>
@@ -38,12 +167,33 @@
         </div>
 
         <div class="beautify-stage-controls">
+          <div class="beautify-workspace-switcher beautify-stage-mode-switches">
+            <div class="beautify-workspace-switch">
+              <button
+                type="button"
+                class="beautify-device-btn"
+                :class="stageMode === 'preview' ? 'is-active' : ''"
+                @click="setStageMode('preview')"
+              >
+                原生预览
+              </button>
+              <button
+                type="button"
+                class="beautify-device-btn"
+                :class="stageMode === 'screenshot' ? 'is-active' : ''"
+                :disabled="screenshotOptions.length === 0"
+                @click="setStageMode('screenshot')"
+              >
+                截图查看
+              </button>
+            </div>
+          </div>
           <div class="beautify-device-switches">
             <button
               type="button"
               class="beautify-device-btn"
               :class="selectedVariantPlatform === 'pc' ? 'is-active' : ''"
-              :disabled="!hasPcVariant"
+              :disabled="stageMode === 'screenshot' || !hasPcVariant"
               @click="previewPlatform('pc')"
             >
               PC
@@ -52,7 +202,7 @@
               type="button"
               class="beautify-device-btn"
               :class="selectedVariantPlatform === 'mobile' ? 'is-active' : ''"
-              :disabled="!hasMobileVariant"
+              :disabled="stageMode === 'screenshot' || !hasMobileVariant"
               @click="previewPlatform('mobile')"
             >
               移动端
@@ -61,7 +211,7 @@
               type="button"
               class="beautify-device-btn"
               :class="activeVariant?.platform === 'dual' ? 'is-active' : ''"
-              :disabled="!hasDualVariant"
+              :disabled="stageMode === 'screenshot' || !hasDualVariant"
               @click="previewPlatform('pc')"
             >
               双端
@@ -72,7 +222,7 @@
               type="button"
               class="beautify-soft-btn"
               @click="cycleWallpaper()"
-              :disabled="wallpaperOptions.length === 0"
+              :disabled="stageMode === 'screenshot' || wallpaperOptions.length === 0"
             >
               壁纸切换
             </button>
@@ -81,34 +231,61 @@
 
         <div class="beautify-stage-body">
           <div class="beautify-preview-column">
-            <template x-if="!isPreviewLoaded">
-              <div class="beautify-preview-unloaded-card">
-                <div class="beautify-detail-heading">原生 ST 预览</div>
-                <div class="beautify-empty-copy">
-                  预览默认不加载。点击后会按需加载原生 ST 样式、图标和相关资源。
-                </div>
-                <button
-                  type="button"
-                  class="beautify-primary-btn"
-                  @click="loadPreview()"
-                >
-                  加载原生 ST 预览
-                </button>
+            <template x-if="stageMode === 'preview'">
+              <div class="beautify-preview-stage">
+                <template x-if="!isPreviewLoaded">
+                  <div class="beautify-preview-unloaded-card">
+                    <div class="beautify-detail-heading">原生 ST 预览</div>
+                    <div class="beautify-empty-copy">
+                      预览默认不加载。点击后会按需加载原生 ST
+                      样式、图标和相关资源。
+                    </div>
+                    <button
+                      type="button"
+                      class="beautify-primary-btn"
+                      @click="loadPreview()"
+                    >
+                      加载原生 ST 预览
+                    </button>
+                  </div>
+                </template>
+
+                <template x-if="isPreviewLoaded">
+                  <div
+                    class="beautify-preview-frame-shell"
+                    :class="previewShellMode === 'mobile' ? 'is-mobile' : 'is-pc'"
+                  >
+                    <div
+                      x-ref="previewHost"
+                      class="beautify-preview-host"
+                      :data-preview-platform="previewShellMode"
+                      data-runtime-owner="beautify-preview"
+                      data-runtime-label="Beautify Native ST Preview"
+                    ></div>
+                  </div>
+                </template>
               </div>
             </template>
 
-            <template x-if="isPreviewLoaded">
-              <div
-                class="beautify-preview-frame-shell"
-                :class="previewShellMode === 'mobile' ? 'is-mobile' : 'is-pc'"
-              >
-                <div
-                  x-ref="previewHost"
-                  class="beautify-preview-host"
-                  :data-preview-platform="previewShellMode"
-                  data-runtime-owner="beautify-preview"
-                  data-runtime-label="Beautify Native ST Preview"
-                ></div>
+            <template x-if="stageMode === 'screenshot'">
+              <div class="beautify-screenshot-stage">
+                <template x-if="activeScreenshot">
+                  <img
+                    class="beautify-screenshot-stage-image"
+                    :src="wallpaperPreviewUrl(activeScreenshot?.file || '')"
+                    :alt="activeScreenshot?.filename || '截图预览'"
+                  />
+                </template>
+
+                <template x-if="!activeScreenshot">
+                  <div class="beautify-screenshot-stage-copy">
+                    <div class="beautify-detail-heading">截图查看</div>
+                    <div class="beautify-empty-copy">
+                      从侧边栏导入截图后，可在这里对照当前美化包的效果。
+                    </div>
+                    <div class="beautify-empty-inline">暂未选择截图。</div>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
@@ -172,12 +349,128 @@
                 当前变体还没有绑定壁纸。
               </div>
             </div>
+
+            <div class="beautify-detail-card">
+              <div class="beautify-detail-heading">截图</div>
+              <div
+                class="beautify-screenshot-list"
+                x-show="screenshotOptions.length > 0"
+              >
+                <template
+                  x-for="screenshot in screenshotOptions"
+                  :key="screenshot.id"
+                >
+                  <button
+                    type="button"
+                    class="beautify-screenshot-item cursor-pointer"
+                    :class="activeScreenshot?.id === screenshot.id ? 'is-active' : ''"
+                    @click="selectScreenshot(screenshot.id)"
+                  >
+                    <span
+                      class="beautify-screenshot-thumb"
+                      :style="`background-image:url('${wallpaperPreviewUrl(screenshot.file)}')`"
+                    ></span>
+                    <span class="beautify-wallpaper-info">
+                      <span
+                        class="beautify-wallpaper-name"
+                        x-text="screenshot.filename"
+                      ></span>
+                      <span
+                        class="beautify-wallpaper-size"
+                        x-text="`${screenshot.width} × ${screenshot.height}`"
+                      ></span>
+                    </span>
+                  </button>
+                </template>
+              </div>
+              <div
+                class="beautify-empty-inline"
+                x-show="screenshotOptions.length === 0"
+              >
+                还没有导入截图。
+              </div>
+            </div>
+
+            <div class="beautify-detail-card">
+              <div class="beautify-detail-heading">角色与用户覆盖</div>
+              <div class="beautify-settings-form-grid">
+                <label class="beautify-settings-field">
+                  <span>角色覆盖</span>
+                  <textarea
+                    class="beautify-settings-textarea"
+                    x-model="packageCharacterName"
+                    placeholder="未设置，将使用全局默认角色资料"
+                  ></textarea>
+                  <div
+                    class="beautify-empty-inline"
+                    x-text="activePackage?.identity_overrides?.character?.avatar_file ? '当前角色头像已覆盖全局设置' : '未设置，将使用全局默认角色资料'"
+                  ></div>
+                  <div class="beautify-stage-actions">
+                    <label class="beautify-action-btn cursor-pointer">
+                      <input
+                        type="file"
+                        class="hidden"
+                        accept="image/*"
+                        @change="handlePackageAvatarFile('character', $event.target.files); $event.target.value = ''"
+                      />
+                      上传角色头像
+                    </label>
+                    <button
+                      type="button"
+                      class="beautify-soft-btn"
+                      @click="clearPackageCharacterAvatar()"
+                    >
+                      清除角色头像
+                    </button>
+                  </div>
+                </label>
+                <label class="beautify-settings-field">
+                  <span>用户覆盖</span>
+                  <textarea
+                    class="beautify-settings-textarea"
+                    x-model="packageUserName"
+                    placeholder="未设置，将使用全局默认用户资料"
+                  ></textarea>
+                  <div
+                    class="beautify-empty-inline"
+                    x-text="activePackage?.identity_overrides?.user?.avatar_file ? '当前用户头像已覆盖全局设置' : '未设置，将使用全局默认用户资料'"
+                  ></div>
+                  <div class="beautify-stage-actions">
+                    <label class="beautify-action-btn cursor-pointer">
+                      <input
+                        type="file"
+                        class="hidden"
+                        accept="image/*"
+                        @change="handlePackageAvatarFile('user', $event.target.files); $event.target.value = ''"
+                      />
+                      上传用户头像
+                    </label>
+                    <button
+                      type="button"
+                      class="beautify-soft-btn"
+                      @click="clearPackageUserAvatar()"
+                    >
+                      清除用户头像
+                    </button>
+                  </div>
+                </label>
+              </div>
+              <div class="beautify-stage-actions">
+                <button
+                  type="button"
+                  class="beautify-primary-btn"
+                  @click="savePackageIdentityOverrides()"
+                >
+                  保存覆盖
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </template>
 
-    <template x-if="!activePackage">
+    <template x-if="beautifyWorkspace !== 'settings' && !activePackage">
       <div class="beautify-stage-placeholder">
         <div class="beautify-empty-title">选择一个美化包开始预览</div>
         <div class="beautify-empty-copy">

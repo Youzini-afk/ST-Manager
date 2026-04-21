@@ -12,6 +12,20 @@ export async function getBeautifyPackage(packageId) {
   return parseJson(res);
 }
 
+export async function getBeautifySettings() {
+  const res = await fetch("/api/beautify/settings");
+  return parseJson(res);
+}
+
+export async function updateBeautifySettings(payload) {
+  const res = await fetch("/api/beautify/update-settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
 export async function importBeautifyTheme(file, options = {}) {
   const formData = new FormData();
   formData.append("file", file);
@@ -32,6 +46,63 @@ export async function importBeautifyWallpaper(file, packageId, variantId) {
   formData.append("variant_id", variantId);
 
   const res = await fetch("/api/beautify/import-wallpaper", {
+    method: "POST",
+    body: formData,
+  });
+  return parseJson(res);
+}
+
+export async function importGlobalBeautifyWallpaper(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/beautify/import-global-wallpaper", {
+    method: "POST",
+    body: formData,
+  });
+  return parseJson(res);
+}
+
+export async function importGlobalBeautifyAvatar(file, target) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("target", target);
+
+  const res = await fetch("/api/beautify/import-global-avatar", {
+    method: "POST",
+    body: formData,
+  });
+  return parseJson(res);
+}
+
+export async function importBeautifyScreenshot(file, packageId) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("package_id", packageId);
+
+  const res = await fetch("/api/beautify/import-screenshot", {
+    method: "POST",
+    body: formData,
+  });
+  return parseJson(res);
+}
+
+export async function updateBeautifyPackageIdentities(payload) {
+  const res = await fetch("/api/beautify/update-package-identities", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson(res);
+}
+
+export async function importBeautifyPackageAvatar(file, packageId, target) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("package_id", packageId);
+  formData.append("target", target);
+
+  const res = await fetch("/api/beautify/import-package-avatar", {
     method: "POST",
     body: formData,
   });

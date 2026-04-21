@@ -61,6 +61,48 @@ def test_build_beautify_preview_document_loads_mobile_stylesheet_only_for_mobile
     )
 
 
+def test_build_beautify_preview_document_uses_explicit_identity_names_and_avatar_urls():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewDocument({
+          platform: 'pc',
+          theme: {},
+          wallpaperUrl: '',
+          identities: {
+            character: { name: '包角色', avatarSrc: '/api/beautify/preview-asset/packages/pkg_demo/avatars/character.png' },
+            user: { name: '访客', avatarSrc: '/api/beautify/preview-asset/global/avatars/user.png' },
+          },
+        });
+
+        if (!html.includes('包角色')) throw new Error('missing package character name');
+        if (!html.includes('访客')) throw new Error('missing user name');
+        if (!html.includes('/api/beautify/preview-asset/packages/pkg_demo/avatars/character.png')) throw new Error('missing character avatar src');
+        if (!html.includes('/api/beautify/preview-asset/global/avatars/user.png')) throw new Error('missing user avatar src');
+        '''
+    )
+
+
+def test_build_beautify_preview_document_uses_builtin_identity_defaults_when_none_resolved():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewDocument({
+          platform: 'pc',
+          theme: {},
+          wallpaperUrl: '',
+          identities: {
+            character: { name: '', avatarSrc: '' },
+            user: { name: '', avatarSrc: '' },
+          },
+        });
+
+        if (!html.includes('栖梧')) throw new Error('missing built-in character fallback');
+        if (!html.includes('春岚')) throw new Error('missing built-in user fallback');
+        if (!html.includes('/static/images/beautify-preview/qiwu.png')) throw new Error('missing built-in character avatar fallback');
+        if (!html.includes('/static/images/beautify-preview/chunlan.png')) throw new Error('missing built-in user avatar fallback');
+        '''
+    )
+
+
 def test_build_beautify_preview_document_preserves_theme_variables_and_platform_markers():
     run_preview_document_check(
         '''
@@ -183,7 +225,7 @@ def test_build_beautify_preview_document_blocks_external_theme_resource_loads_wi
           '<meta http-equiv="Content-Security-Policy"',
           "default-src 'none'",
           "script-src 'unsafe-inline'",
-          "style-src 'unsafe-inline' http://127.0.0.1:5000 https://127.0.0.1:5000",
+          "style-src 'self' 'unsafe-inline' http://127.0.0.1:5000 https://127.0.0.1:5000",
           "font-src 'self' data: blob: http://127.0.0.1:5000 https://127.0.0.1:5000",
           "img-src 'self' data: blob: http://127.0.0.1:5000 https://127.0.0.1:5000 http: https:",
         ]) {
@@ -216,6 +258,23 @@ def test_build_beautify_preview_document_strips_remote_theme_imports_but_keeps_r
         ]) {
           if (html.includes(token)) throw new Error(`unexpected remote resource token: ${token}`);
         }
+        '''
+    )
+
+
+def test_build_beautify_preview_document_strips_protocol_relative_and_layered_remote_imports():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewDocument({
+          theme: {
+            custom_css: '@import "//example.com/base.css"; @import url(https://example.com/layered.css) layer(theme); #chat { color: rgb(1, 2, 3); }',
+          },
+          platform: 'pc',
+        });
+
+        if (!html.includes('color: rgb(1, 2, 3);')) throw new Error('expected local css to remain');
+        if (html.includes('@import "//example.com/base.css"')) throw new Error('protocol-relative import should be stripped');
+        if (html.includes('@import url(https://example.com/layered.css) layer(theme)')) throw new Error('layered remote import should be stripped');
         '''
     )
 

@@ -553,6 +553,71 @@ def _normalize_beautify_wallpaper(raw_wallpaper, wallpaper_id):
     }
 
 
+def _normalize_beautify_asset(raw_asset):
+    source = raw_asset if isinstance(raw_asset, dict) else {}
+
+    def _to_int(value):
+        try:
+            return max(0, int(float(value)))
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        'file': _normalize_beautify_path(source.get('file')),
+        'filename': _normalize_beautify_string(source.get('filename')),
+        'width': _to_int(source.get('width')),
+        'height': _to_int(source.get('height')),
+        'mtime': _to_int(source.get('mtime')),
+    }
+
+
+def _normalize_beautify_identity(raw_identity):
+    source = raw_identity if isinstance(raw_identity, dict) else {}
+    return {
+        'name': _normalize_beautify_string(source.get('name')),
+        'avatar_file': _normalize_beautify_path(source.get('avatar_file')),
+    }
+
+
+def _normalize_beautify_identities(raw):
+    source = raw if isinstance(raw, dict) else {}
+    return {
+        'character': _normalize_beautify_identity(source.get('character')),
+        'user': _normalize_beautify_identity(source.get('user')),
+    }
+
+
+def _normalize_beautify_screenshots(raw):
+    if not isinstance(raw, dict):
+        return {}
+
+    screenshots = {}
+    for raw_screenshot_id, raw_screenshot in raw.items():
+        screenshot_id = _normalize_beautify_string(raw_screenshot_id)
+        if not screenshot_id:
+            continue
+
+        screenshot = _normalize_beautify_asset(raw_screenshot)
+        screenshots[screenshot_id] = {
+            'id': screenshot_id,
+            'file': screenshot['file'],
+            'filename': screenshot['filename'],
+            'width': screenshot['width'],
+            'height': screenshot['height'],
+            'mtime': screenshot['mtime'],
+        }
+
+    return dict(sorted(screenshots.items(), key=lambda item: item[0]))
+
+
+def _normalize_beautify_global_settings(raw):
+    source = raw if isinstance(raw, dict) else {}
+    return {
+        'wallpaper': _normalize_beautify_asset(source.get('wallpaper')),
+        'identities': _normalize_beautify_identities(source.get('identities')),
+    }
+
+
 def _normalize_beautify_package(raw_package, package_id):
     source = raw_package if isinstance(raw_package, dict) else {}
 
@@ -596,6 +661,8 @@ def _normalize_beautify_package(raw_package, package_id):
         'cover_variant_id': _normalize_beautify_string(source.get('cover_variant_id')),
         'created_at': _to_int(source.get('created_at')),
         'updated_at': _to_int(source.get('updated_at')),
+        'screenshots': _normalize_beautify_screenshots(source.get('screenshots')),
+        'identity_overrides': _normalize_beautify_identities(source.get('identity_overrides')),
         'variants': dict(sorted(variants.items(), key=lambda item: item[0])),
         'wallpapers': dict(sorted(wallpapers.items(), key=lambda item: item[0])),
     }
@@ -618,13 +685,19 @@ def _normalize_beautify_library(raw):
         updated_at = 0
 
     return {
+        'global_settings': _normalize_beautify_global_settings(source.get('global_settings')),
         'packages': dict(sorted(packages.items(), key=lambda item: item[0])),
         'updated_at': updated_at,
     }
 
 
 def _is_beautify_library_equal(left, right):
-    return _normalize_beautify_library(left).get('packages') == _normalize_beautify_library(right).get('packages')
+    left_norm = _normalize_beautify_library(left)
+    right_norm = _normalize_beautify_library(right)
+    return (
+        left_norm.get('global_settings') == right_norm.get('global_settings')
+        and left_norm.get('packages') == right_norm.get('packages')
+    )
 
 
 def get_isolated_categories(ui_data):

@@ -58,6 +58,55 @@ def run_beautify_preview_frame_runtime_check(script_body):
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def run_beautify_grid_runtime_check(script_body):
+    source_path = PROJECT_ROOT / 'static/js/components/beautifyGrid.js'
+    node_script = textwrap.dedent(
+        f"""
+        import {{ readFileSync }} from 'node:fs';
+
+        const sourcePath = {json.dumps(str(source_path))};
+        let source = readFileSync(sourcePath, 'utf8');
+        source = source.replace(/^import[\\s\\S]*?;\\r?\\n/gm, '');
+        source = source.replace('export default function beautifyGrid()', 'function beautifyGrid()');
+
+        const stubs = `
+        const getGridStub = (name, fallback) => (...args) => {{
+          const fn = globalThis.__gridStubs?.[name];
+          return typeof fn === 'function' ? fn(...args) : fallback(...args);
+        }};
+        const buildBeautifyPreviewAssetUrl = getGridStub('buildBeautifyPreviewAssetUrl', (value) => String(value || ''));
+        const deleteBeautifyPackage = getGridStub('deleteBeautifyPackage', async () => ({{ success: true }}));
+        const getBeautifySettings = getGridStub('getBeautifySettings', async () => ({{ success: true, item: null }}));
+        const getBeautifyPackage = getGridStub('getBeautifyPackage', async () => ({{ success: true, item: null }}));
+        const importBeautifyScreenshot = getGridStub('importBeautifyScreenshot', async () => ({{ success: true, screenshot: {{ id: '' }} }}));
+        const importBeautifyTheme = getGridStub('importBeautifyTheme', async () => ({{ success: true, package: {{ id: '' }} }}));
+        const importBeautifyPackageAvatar = getGridStub('importBeautifyPackageAvatar', async () => ({{ success: true, item: {{}} }}));
+        const importGlobalBeautifyAvatar = getGridStub('importGlobalBeautifyAvatar', async () => ({{ success: true, item: null }}));
+        const importGlobalBeautifyWallpaper = getGridStub('importGlobalBeautifyWallpaper', async () => ({{ success: true, item: null }}));
+        const importBeautifyWallpaper = getGridStub('importBeautifyWallpaper', async () => ({{ success: true, wallpaper: {{ id: '' }} }}));
+        const listBeautifyPackages = getGridStub('listBeautifyPackages', async () => ({{ success: true, items: [] }}));
+        const updateBeautifyPackageIdentities = getGridStub('updateBeautifyPackageIdentities', async () => ({{ success: true, item: {{}} }}));
+        const updateBeautifySettings = getGridStub('updateBeautifySettings', async () => ({{ success: true, item: null }}));
+        const updateBeautifyVariant = getGridStub('updateBeautifyVariant', async () => ({{ success: true, item: null }}));
+        `;
+
+        const module = await import(
+          'data:text/javascript,' + encodeURIComponent(stubs + source + '\\nexport default beautifyGrid;'),
+        );
+
+        {textwrap.dedent(script_body)}
+        """
+    )
+    result = subprocess.run(
+        ['node', '--input-type=module', '-e', node_script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 def test_index_template_lifts_beautify_scope_to_main_container_above_shared_includes():
     template = read_project_file('templates/index.html')
 
@@ -132,6 +181,41 @@ def test_beautify_api_exports_core_runtime_helpers():
         )
 
 
+def test_beautify_api_exports_settings_and_screenshot_helpers():
+    beautify_api = read_project_file('static/js/api/beautify.js')
+
+    expected_exports = (
+        'getBeautifySettings',
+        'updateBeautifySettings',
+        'importGlobalBeautifyWallpaper',
+        'importGlobalBeautifyAvatar',
+        'importBeautifyScreenshot',
+        'updateBeautifyPackageIdentities',
+        'importBeautifyPackageAvatar',
+    )
+
+    for export_name in expected_exports:
+        assert_contains_any(
+            beautify_api,
+            (
+                f'export async function {export_name}(',
+                f'export function {export_name}(',
+            ),
+        )
+
+    assert '/api/beautify/settings' in beautify_api
+    assert '/api/beautify/update-settings' in beautify_api
+    assert '/api/beautify/import-global-wallpaper' in beautify_api
+    assert '/api/beautify/import-global-avatar' in beautify_api
+    assert '/api/beautify/import-screenshot' in beautify_api
+    assert '/api/beautify/update-package-identities' in beautify_api
+    assert '/api/beautify/import-package-avatar' in beautify_api
+
+    assert beautify_api.count('headers: { "Content-Type": "application/json" }') >= 2
+    assert 'formData.append("package_id", packageId);' in beautify_api
+    assert 'formData.append("target", target);' in beautify_api
+
+
 def test_beautify_api_removes_install_and_apply_client_exports():
     beautify_api = read_project_file('static/js/api/beautify.js')
 
@@ -176,6 +260,239 @@ def test_beautify_grid_platform_selector_does_not_optimistically_mutate_active_v
     assert ':value="activeVariant?.platform || \"pc\""' in template or ":value='activeVariant?.platform || \"pc\"'" in template or ':value="activeVariant?.platform || \'pc\'"' in template
 
 
+def test_beautify_grid_source_tracks_workspace_screenshot_and_settings_methods():
+    grid_source = read_project_file('static/js/components/beautifyGrid.js')
+
+    for token in (
+        'get workspace()',
+        'set workspace(val)',
+        'get stageMode()',
+        'set stageMode(val)',
+        'get screenshotOptions()',
+        'get activeScreenshot()',
+        'async fetchGlobalSettings()',
+        'async handleScreenshotFiles(fileList)',
+        'async saveGlobalSettings()',
+        'async savePackageIdentityOverrides()',
+        'async handleGlobalWallpaperFiles(fileList)',
+        'async handleGlobalAvatarFile(target, fileList)',
+        'async handlePackageAvatarFile(target, fileList)',
+        'async clearGlobalWallpaper()',
+        'async clearGlobalCharacterAvatar()',
+        'async clearGlobalUserAvatar()',
+        'async clearPackageCharacterAvatar()',
+        'async clearPackageUserAvatar()',
+        'switchBeautifyWorkspace(workspace)',
+        'setStageMode(mode)',
+        'selectScreenshot(screenshotId)',
+    ):
+        assert token in grid_source
+
+
+def test_beautify_grid_exposes_beautify_workspace_alias_for_templates():
+    grid_source = read_project_file('static/js/components/beautifyGrid.js')
+
+    assert 'get beautifyWorkspace()' in grid_source
+    assert 'set beautifyWorkspace(val)' in grid_source
+
+
+def test_beautify_grid_switching_to_settings_workspace_refetches_global_settings():
+    run_beautify_grid_runtime_check(
+        '''
+        let settingsFetches = 0;
+        globalThis.__gridStubs = {
+          getBeautifySettings: async () => {
+            settingsFetches += 1;
+            return {
+              success: true,
+              item: {
+                identities: {
+                  character: { name: '全局角色', avatar_file: '' },
+                  user: { name: '全局用户', avatar_file: '' },
+                },
+              },
+            };
+          },
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            showToast: () => {},
+          },
+        };
+
+        component.switchBeautifyWorkspace('settings');
+        await Promise.resolve();
+
+        if (settingsFetches !== 1) {
+          throw new Error(`expected one settings refetch, got ${settingsFetches}`);
+        }
+        '''
+    )
+
+
+def test_beautify_grid_preserves_existing_screenshot_selection_when_importing_more_images():
+    run_beautify_grid_runtime_check(
+        '''
+        let imported = 0;
+        globalThis.__gridStubs = {
+          importBeautifyScreenshot: async () => {
+            imported += 1;
+            return { success: true, screenshot: { id: `shot_new_${imported}` } };
+          },
+          getBeautifyPackage: async () => ({
+            success: true,
+            item: {
+              id: 'pkg_demo',
+              variants: {},
+              wallpapers: {},
+              screenshots: {
+                shot_existing: { id: 'shot_existing', file: 'existing.png' },
+                shot_new_1: { id: 'shot_new_1', file: 'new-1.png' },
+                shot_new_2: { id: 'shot_new_2', file: 'new-2.png' },
+              },
+              identity_overrides: {},
+            },
+          }),
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifySelectedPackageId: 'pkg_demo',
+            beautifySelectedScreenshotId: 'shot_existing',
+            showToast: () => {},
+          },
+        };
+
+        await component.handleScreenshotFiles([{ name: 'one.png' }, { name: 'two.png' }]);
+
+        if (component.$store.global.beautifySelectedScreenshotId !== 'shot_existing') {
+          throw new Error(`expected existing screenshot selection to be preserved, got ${component.$store.global.beautifySelectedScreenshotId}`);
+        }
+        '''
+    )
+
+
+def test_beautify_grid_activates_first_imported_screenshot_when_none_was_selected():
+    run_beautify_grid_runtime_check(
+        '''
+        let imported = 0;
+        globalThis.__gridStubs = {
+          importBeautifyScreenshot: async () => {
+            imported += 1;
+            return { success: true, screenshot: { id: `shot_new_${imported}` } };
+          },
+          getBeautifyPackage: async () => ({
+            success: true,
+            item: {
+              id: 'pkg_demo',
+              variants: {},
+              wallpapers: {},
+              screenshots: {
+                shot_old: { id: 'shot_old', file: 'old.png' },
+                shot_new_1: { id: 'shot_new_1', file: 'new-1.png' },
+                shot_new_2: { id: 'shot_new_2', file: 'new-2.png' },
+              },
+              identity_overrides: {},
+            },
+          }),
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifySelectedPackageId: 'pkg_demo',
+            beautifySelectedScreenshotId: '',
+            showToast: () => {},
+          },
+        };
+
+        await component.handleScreenshotFiles([{ name: 'one.png' }, { name: 'two.png' }]);
+
+        if (component.$store.global.beautifySelectedScreenshotId !== 'shot_new_1') {
+          throw new Error(`expected first imported screenshot to become active, got ${component.$store.global.beautifySelectedScreenshotId}`);
+        }
+        '''
+    )
+
+
+def test_beautify_grid_preserves_global_name_drafts_during_avatar_uploads():
+    run_beautify_grid_runtime_check(
+        '''
+        globalThis.__gridStubs = {
+          importGlobalBeautifyAvatar: async () => ({
+            success: true,
+            item: {
+              identities: {
+                character: { name: '已保存角色', avatar_file: 'character.png' },
+                user: { name: '已保存用户', avatar_file: '' },
+              },
+            },
+          }),
+        };
+
+        const component = module.default();
+        component.$store = { global: { showToast: () => {} } };
+        component.globalCharacterName = '草稿角色';
+        component.globalUserName = '草稿用户';
+
+        await component.handleGlobalAvatarFile('character', [{ name: 'avatar.png' }]);
+
+        if (component.globalCharacterName !== '草稿角色' || component.globalUserName !== '草稿用户') {
+          throw new Error('global draft names should survive avatar uploads');
+        }
+        '''
+    )
+
+
+def test_beautify_grid_preserves_package_name_drafts_during_avatar_uploads():
+    run_beautify_grid_runtime_check(
+        '''
+        globalThis.__gridStubs = {
+          importBeautifyPackageAvatar: async () => ({
+            success: true,
+            item: {
+              avatar_file: 'character.png',
+            },
+          }),
+          getBeautifyPackage: async () => ({
+            success: true,
+            item: {
+              id: 'pkg_demo',
+              variants: {},
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {
+                character: { name: '已保存角色', avatar_file: 'character.png' },
+                user: { name: '已保存用户', avatar_file: '' },
+              },
+            },
+          }),
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifySelectedPackageId: 'pkg_demo',
+            beautifySelectedScreenshotId: '',
+            showToast: () => {},
+          },
+        };
+        component.packageCharacterName = '草稿角色';
+        component.packageUserName = '草稿用户';
+
+        await component.handlePackageAvatarFile('character', [{ name: 'avatar.png' }]);
+
+        if (component.packageCharacterName !== '草稿角色' || component.packageUserName !== '草稿用户') {
+          throw new Error('package draft names should survive avatar uploads');
+        }
+        '''
+    )
+
+
 def test_state_js_keeps_beautify_store_keys():
     state_js = read_project_file('static/js/state.js')
 
@@ -196,6 +513,15 @@ def test_state_js_keeps_beautify_store_keys():
         assert_contains_any(state_js, (f'{key}:', f'"{key}":', f"'{key}':"))
 
     assert 'beautifyInstallFilter' not in state_js
+
+
+def test_state_js_keeps_extended_beautify_store_keys():
+    state_js = read_project_file('static/js/state.js')
+
+    assert 'beautifyWorkspace: "packages"' in state_js
+    assert 'beautifySelectedScreenshotId: ""' in state_js
+    assert 'beautifyStageMode: "preview"' in state_js
+    assert 'beautifyGlobalSettings: null' in state_js
 
 
 def test_header_js_binds_beautify_search_and_mobile_upload_mode():
@@ -244,6 +570,198 @@ def test_beautify_preview_frame_uses_render_isolated_html_and_preview_document_b
     assert 'return platform === "mobile" ? 420 : 520;' in source or "return platform === 'mobile' ? 420 : 520;" in source
     assert 'minHeight: resolvePreviewRenderMinHeight(state.platform),' in source
     assert 'maxHeight:' not in source
+
+
+def test_beautify_preview_frame_prefers_package_assets_then_global_settings():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'pc',
+            beautifyActiveDetail: {
+              identity_overrides: {
+                character: { name: '包角色', avatar_file: 'data/library/beautify/packages/pkg_demo/avatars/character.png' },
+                user: { name: '', avatar_file: '' },
+              },
+            },
+            beautifyActiveVariant: { theme_data: { name: 'Demo' } },
+            beautifyActiveWallpaper: null,
+            beautifyGlobalSettings: {
+              wallpaper: { file: 'data/library/beautify/global/wallpapers/wallpaper.png' },
+              identities: {
+                character: { name: '全局角色', avatar_file: 'data/library/beautify/global/avatars/character.png' },
+                user: { name: '全局用户', avatar_file: 'data/library/beautify/global/avatars/user.png' },
+              },
+            },
+          },
+        };
+
+        const state = component.resolvePreviewState();
+        if (state.wallpaperUrl !== 'data/library/beautify/global/wallpapers/wallpaper.png') throw new Error('missing global wallpaper fallback');
+        if (state.identities.character.name !== '包角色') throw new Error('package override should win');
+        if (state.identities.user.name !== '全局用户') throw new Error('global user fallback should win');
+        '''
+    )
+
+
+def test_beautify_preview_frame_prefers_selected_package_wallpaper_over_global_fallback():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'pc',
+            beautifyActiveDetail: { identity_overrides: {} },
+            beautifyActiveVariant: { theme_data: { name: 'Demo' } },
+            beautifyActiveWallpaper: {
+              file: 'data/library/beautify/packages/pkg_demo/wallpapers/package.png',
+            },
+            beautifyGlobalSettings: {
+              wallpaper: { file: 'data/library/beautify/global/wallpapers/global.png' },
+              identities: {
+                character: { name: '全局角色', avatar_file: '' },
+                user: { name: '全局用户', avatar_file: '' },
+              },
+            },
+          },
+        };
+
+        const state = component.resolvePreviewState();
+        if (state.wallpaperUrl !== 'data/library/beautify/packages/pkg_demo/wallpapers/package.png') {
+          throw new Error('selected package wallpaper should win');
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_uses_global_only_preview_in_settings_workspace():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'settings',
+            beautifyPreviewDevice: 'mobile',
+            beautifyActiveDetail: {
+              identity_overrides: {
+                character: { name: '包角色', avatar_file: 'data/library/beautify/packages/pkg_demo/avatars/character.png' },
+                user: { name: '包用户', avatar_file: 'data/library/beautify/packages/pkg_demo/avatars/user.png' },
+              },
+            },
+            beautifyActiveVariant: { theme_data: { name: 'Package Theme' } },
+            beautifyActiveWallpaper: {
+              file: 'data/library/beautify/packages/pkg_demo/wallpapers/package.png',
+            },
+            beautifyGlobalSettings: {
+              wallpaper: { file: 'data/library/beautify/global/wallpapers/global.png' },
+              identities: {
+                character: { name: '全局角色', avatar_file: 'data/library/beautify/global/avatars/character.png' },
+                user: { name: '全局用户', avatar_file: 'data/library/beautify/global/avatars/user.png' },
+              },
+            },
+          },
+        };
+
+        const state = component.resolvePreviewState();
+        if (state.platform !== 'mobile') throw new Error('settings workspace should still respect preview shell mode');
+        if (state.theme.name) throw new Error('settings workspace should ignore package theme data');
+        if (state.wallpaperUrl !== 'data/library/beautify/global/wallpapers/global.png') throw new Error('settings workspace should use global wallpaper');
+        if (state.identities.character.name !== '全局角色') throw new Error('settings workspace should ignore package character override');
+        if (state.identities.user.name !== '全局用户') throw new Error('settings workspace should ignore package user override');
+        '''
+    )
+
+
+def test_beautify_preview_frame_allows_settings_workspace_preview_without_active_package():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'settings',
+            beautifyPreviewDevice: 'pc',
+            beautifyActiveDetail: null,
+            beautifyActiveVariant: null,
+            beautifyActiveWallpaper: null,
+            beautifyGlobalSettings: {
+              wallpaper: { file: 'data/library/beautify/global/wallpapers/global.png' },
+              identities: {
+                character: { name: '全局角色', avatar_file: '' },
+                user: { name: '全局用户', avatar_file: '' },
+              },
+            },
+          },
+        };
+        component.$refs = { previewHost: host };
+        component.$watch = () => {};
+        component.$nextTick = (callback) => callback();
+
+        component.init();
+        component.loadPreview();
+
+        if (!host.__events.some((entry) => entry.type === 'render')) {
+          throw new Error('settings workspace preview should render without active package detail');
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_re_renders_when_workspace_or_global_settings_change():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const watchers = new Map();
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'pc',
+            beautifyActiveDetail: { id: 'detail-1', identity_overrides: {} },
+            beautifyActiveVariant: { theme_data: {} },
+            beautifyActiveWallpaper: {},
+            beautifyGlobalSettings: {
+              wallpaper: { file: 'data/library/beautify/global/wallpapers/one.png' },
+              identities: {
+                character: { name: '角色一', avatar_file: '' },
+                user: { name: '用户一', avatar_file: '' },
+              },
+            },
+          },
+        };
+        component.$refs = { previewHost: host };
+        component.$watch = (key, callback) => watchers.set(key, callback);
+        component.$nextTick = (callback) => callback();
+
+        component.init();
+        component.loadPreview();
+
+        const initialRenderCount = host.__events.filter((entry) => entry.type === 'render').length;
+        const workspaceWatcher = watchers.get('$store.global.beautifyWorkspace');
+        const settingsWatcher = watchers.get('$store.global.beautifyGlobalSettings');
+        if (typeof workspaceWatcher !== 'function') throw new Error('expected workspace watcher');
+        if (typeof settingsWatcher !== 'function') throw new Error('expected global settings watcher');
+
+        component.$store.global.beautifyWorkspace = 'settings';
+        workspaceWatcher('settings');
+        component.$store.global.beautifyGlobalSettings = {
+          wallpaper: { file: 'data/library/beautify/global/wallpapers/two.png' },
+          identities: {
+            character: { name: '角色二', avatar_file: '' },
+            user: { name: '用户二', avatar_file: '' },
+          },
+        };
+        settingsWatcher(component.$store.global.beautifyGlobalSettings);
+
+        const renderCount = host.__events.filter((entry) => entry.type === 'render').length;
+        if (renderCount < initialRenderCount + 2) {
+          throw new Error(`expected rerenders after workspace/global-settings changes, got ${renderCount - initialRenderCount}`);
+        }
+        '''
+    )
 
 
 def test_beautify_preview_frame_keeps_preview_unloaded_until_user_requests_it():
@@ -488,6 +1006,56 @@ def test_beautify_preview_frame_renders_when_preview_host_is_inserted_after_acti
         if (renderEvents.length !== 1) {
           throw new Error(`expected one render after host insertion, got ${renderEvents.length}`);
         }
+        '''
+    )
+
+
+def test_beautify_preview_frame_restarts_observer_after_destroy_and_reload():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const watchers = new Map();
+        const host = { innerHTML: '', __events: [] };
+        const component = module.default();
+        const observers = [];
+        component.$store = {
+          global: {
+            beautifyActiveDetail: { id: 'detail-1', identity_overrides: {} },
+            beautifyActiveVariant: { theme_data: {} },
+            beautifyActiveWallpaper: {},
+            beautifyGlobalSettings: { identities: {}, wallpaper: {} },
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'pc',
+          },
+        };
+        component.$refs = { previewHost: host };
+        component.$el = { querySelector: () => host };
+        component.$watch = (key, callback) => watchers.set(key, callback);
+        component.$nextTick = (callback) => callback();
+        globalThis.MutationObserver = class MutationObserver {
+          constructor(callback) {
+            this.callback = callback;
+            this.disconnected = false;
+            observers.push(this);
+          }
+          observe() {}
+          disconnect() { this.disconnected = true; }
+        };
+
+        component.init();
+        component.loadPreview();
+
+        const detailWatcher = watchers.get('$store.global.beautifyActiveDetail');
+        if (typeof detailWatcher !== 'function') throw new Error('expected active detail watcher');
+
+        detailWatcher(null);
+        if (!observers[0]?.disconnected) throw new Error('expected first observer to disconnect on destroy');
+
+        component.$store.global.beautifyActiveDetail = { id: 'detail-2', identity_overrides: {} };
+        detailWatcher(component.$store.global.beautifyActiveDetail);
+        component.loadPreview();
+
+        if (observers.length < 2) throw new Error('expected observer to restart on reload');
+        if (observers[1].disconnected) throw new Error('new observer should stay connected after reload');
         '''
     )
 

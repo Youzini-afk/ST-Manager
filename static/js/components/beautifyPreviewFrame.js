@@ -9,6 +9,17 @@ function resolvePreviewRenderMinHeight(platform) {
   return platform === "mobile" ? 420 : 520;
 }
 
+function resolvePreviewIdentityValue(overrideIdentity = {}, globalIdentity = {}) {
+  return {
+    name: overrideIdentity.name || globalIdentity.name || "",
+    avatarSrc: overrideIdentity.avatar_file
+      ? buildBeautifyPreviewAssetUrl(overrideIdentity.avatar_file)
+      : globalIdentity.avatar_file
+        ? buildBeautifyPreviewAssetUrl(globalIdentity.avatar_file)
+        : "",
+  };
+}
+
 const MAX_PREVIEW_HOST_RETRIES = 3;
 
 export default function beautifyPreviewFrame() {
@@ -30,15 +41,24 @@ export default function beautifyPreviewFrame() {
     },
 
     get hasActiveDetail() {
-      return Boolean(this.$store.global.beautifyActiveDetail);
+      return Boolean(
+        this.$store.global.beautifyActiveDetail ||
+          this.$store.global.beautifyWorkspace === "settings",
+      );
     },
 
     init() {
       this.startPreviewHostObserver();
       this.$watch("$store.global.beautifyActiveDetail", (detail) => {
         if (!detail) {
-          this.isPreviewLoaded = false;
-          this.destroy();
+          if (this.$store.global.beautifyWorkspace !== "settings") {
+            this.isPreviewLoaded = false;
+            this.destroy();
+            return;
+          }
+          if (this.isPreviewLoaded) {
+            this.$nextTick(() => this.renderPreview());
+          }
           return;
         }
         if (this.isPreviewLoaded) {
@@ -49,6 +69,12 @@ export default function beautifyPreviewFrame() {
         if (this.isPreviewLoaded) this.renderPreview();
       });
       this.$watch("$store.global.beautifyActiveWallpaper", () => {
+        if (this.isPreviewLoaded) this.renderPreview();
+      });
+      this.$watch("$store.global.beautifyWorkspace", () => {
+        if (this.isPreviewLoaded) this.renderPreview();
+      });
+      this.$watch("$store.global.beautifyGlobalSettings", () => {
         if (this.isPreviewLoaded) this.renderPreview();
       });
       this.$watch("$store.global.beautifyPreviewDevice", () => {
@@ -82,6 +108,7 @@ export default function beautifyPreviewFrame() {
       if (!this.hasActiveDetail) {
         return;
       }
+      this.startPreviewHostObserver();
       this.previewHostRetryCount = 0;
       this.previewHostFrameRetryPending = false;
       this.isPreviewLoaded = true;
@@ -125,14 +152,35 @@ export default function beautifyPreviewFrame() {
     },
 
     resolvePreviewState() {
+      const workspace = this.$store.global.beautifyWorkspace || "packages";
+      const globalSettings = this.$store.global.beautifyGlobalSettings || {};
+      const detail = this.$store.global.beautifyActiveDetail || {};
       const variant = this.$store.global.beautifyActiveVariant || {};
       const wallpaper = this.$store.global.beautifyActiveWallpaper || {};
+      const globalWallpaper = globalSettings.wallpaper || {};
+      const packageIdentities = detail.identity_overrides || {};
+      const globalIdentities = globalSettings.identities || {};
+      const useGlobalOnly = workspace === "settings";
+      const resolvedWallpaperFile = useGlobalOnly
+        ? globalWallpaper.file
+        : wallpaper.file || globalWallpaper.file;
+
       return {
         platform: this.previewShellMode === "mobile" ? "mobile" : "pc",
-        theme: variant.theme_data || {},
-        wallpaperUrl: wallpaper.file
-          ? buildBeautifyPreviewAssetUrl(wallpaper.file)
+        theme: useGlobalOnly ? {} : variant.theme_data || {},
+        wallpaperUrl: resolvedWallpaperFile
+          ? buildBeautifyPreviewAssetUrl(resolvedWallpaperFile)
           : "",
+        identities: {
+          character: resolvePreviewIdentityValue(
+            useGlobalOnly ? {} : packageIdentities.character || {},
+            globalIdentities.character || {},
+          ),
+          user: resolvePreviewIdentityValue(
+            useGlobalOnly ? {} : packageIdentities.user || {},
+            globalIdentities.user || {},
+          ),
+        },
       };
     },
 

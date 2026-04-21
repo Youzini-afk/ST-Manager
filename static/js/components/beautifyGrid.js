@@ -1,10 +1,17 @@
 import {
   buildBeautifyPreviewAssetUrl,
   deleteBeautifyPackage,
+  getBeautifySettings,
   getBeautifyPackage,
+  importBeautifyScreenshot,
   importBeautifyTheme,
+  importBeautifyPackageAvatar,
+  importGlobalBeautifyAvatar,
+  importGlobalBeautifyWallpaper,
   importBeautifyWallpaper,
   listBeautifyPackages,
+  updateBeautifyPackageIdentities,
+  updateBeautifySettings,
   updateBeautifyVariant,
 } from "../api/beautify.js";
 
@@ -30,6 +37,10 @@ export default function beautifyGrid() {
     isLoading: false,
     isActionLoading: false,
     importTargetPackageId: "",
+    globalCharacterName: "",
+    globalUserName: "",
+    packageCharacterName: "",
+    packageUserName: "",
 
     get packages() {
       return this.$store.global.beautifyList || [];
@@ -94,6 +105,33 @@ export default function beautifyGrid() {
       return true;
     },
 
+    get workspace() {
+      return this.$store.global.beautifyWorkspace || "packages";
+    },
+
+    set workspace(val) {
+      this.$store.global.beautifyWorkspace = val;
+      return true;
+    },
+
+    get beautifyWorkspace() {
+      return this.workspace;
+    },
+
+    set beautifyWorkspace(val) {
+      this.workspace = val;
+      return true;
+    },
+
+    get stageMode() {
+      return this.$store.global.beautifyStageMode || "preview";
+    },
+
+    set stageMode(val) {
+      this.$store.global.beautifyStageMode = val;
+      return true;
+    },
+
     get activeDetail() {
       return this.$store.global.beautifyActiveDetail || null;
     },
@@ -108,6 +146,20 @@ export default function beautifyGrid() {
 
     get activeWallpaper() {
       return this.$store.global.beautifyActiveWallpaper || null;
+    },
+
+    get screenshotOptions() {
+      return Object.values(this.activeDetail?.screenshots || {});
+    },
+
+    get activeScreenshot() {
+      return (
+        this.activeDetail?.screenshots?.[
+          this.$store.global.beautifySelectedScreenshotId
+        ] ||
+        this.screenshotOptions[0] ||
+        null
+      );
     },
 
     get filteredPackages() {
@@ -149,6 +201,7 @@ export default function beautifyGrid() {
       this.$watch("$store.global.currentMode", (mode) => {
         if (mode === "beautify") {
           this.fetchPackages();
+          this.fetchGlobalSettings();
         }
       });
 
@@ -168,6 +221,33 @@ export default function beautifyGrid() {
         this.handleThemeFiles(files);
       if (this.$store.global.currentMode === "beautify") {
         this.fetchPackages();
+        this.fetchGlobalSettings();
+      }
+    },
+
+    syncGlobalSettingsFields() {
+      const globalSettings = this.$store.global.beautifyGlobalSettings || {};
+      const identities = globalSettings.identities || {};
+      this.globalCharacterName = identities.character?.name || "";
+      this.globalUserName = identities.user?.name || "";
+    },
+
+    syncPackageIdentityFields() {
+      const identities = this.activeDetail?.identity_overrides || {};
+      this.packageCharacterName = identities.character?.name || "";
+      this.packageUserName = identities.user?.name || "";
+    },
+
+    async fetchGlobalSettings() {
+      try {
+        const res = await getBeautifySettings();
+        if (!res?.success) {
+          throw new Error(res?.error || "加载全局设置失败");
+        }
+        this.$store.global.beautifyGlobalSettings = res.item || null;
+        this.syncGlobalSettingsFields();
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
       }
     },
 
@@ -200,6 +280,7 @@ export default function beautifyGrid() {
 
       this.selectedPackageId = targetId;
       this.$store.global.beautifyActiveDetail = res.item;
+      this.syncPackageIdentityFields();
 
       const preserveSelection = !!options.preserveSelection;
       let nextVariant = null;
@@ -214,6 +295,14 @@ export default function beautifyGrid() {
       }
 
       this.applyActiveVariant(nextVariant);
+
+      const nextScreenshotId = preserveSelection
+        ? this.$store.global.beautifySelectedScreenshotId
+        : "";
+      this.$store.global.beautifySelectedScreenshotId =
+        nextScreenshotId && res.item.screenshots?.[nextScreenshotId]
+          ? nextScreenshotId
+          : Object.values(res.item.screenshots || {})[0]?.id || "";
     },
 
     resolveDefaultVariant(detail) {
@@ -288,6 +377,23 @@ export default function beautifyGrid() {
       }
     },
 
+    switchBeautifyWorkspace(workspace) {
+      this.workspace = workspace === "settings" ? "settings" : "packages";
+      if (this.workspace === "settings") {
+        this.stageMode = "preview";
+        this.fetchGlobalSettings();
+      }
+    },
+
+    setStageMode(mode) {
+      this.stageMode = mode === "screenshot" ? "screenshot" : "preview";
+    },
+
+    selectScreenshot(screenshotId) {
+      this.$store.global.beautifySelectedScreenshotId = screenshotId || "";
+      this.stageMode = "screenshot";
+    },
+
     selectWallpaper(wallpaperId) {
       const wallpaper = this.activeDetail?.wallpapers?.[wallpaperId] || null;
       this.$store.global.beautifyActiveWallpaper = wallpaper;
@@ -303,6 +409,43 @@ export default function beautifyGrid() {
       const next =
         options[(currentIndex + 1 + options.length) % options.length];
       this.selectWallpaper(next.id);
+    },
+
+    async handleScreenshotFiles(fileList) {
+      const files = Array.from(fileList || []).filter(Boolean);
+      if (!files.length || !this.selectedPackageId) {
+        this.$store.global.showToast("请先选择一个美化包后再导入截图", 2400);
+        return;
+      }
+
+      this.isActionLoading = true;
+      try {
+        const hadSelection = !!this.$store.global.beautifySelectedScreenshotId;
+        let firstImportedScreenshotId = "";
+        for (const file of files) {
+          const res = await importBeautifyScreenshot(
+            file,
+            this.selectedPackageId,
+          );
+          if (!res?.success) {
+            throw new Error(res?.error || "导入截图失败");
+          }
+          if (!firstImportedScreenshotId) {
+            firstImportedScreenshotId = res.screenshot?.id || "";
+          }
+        }
+        await this.selectPackage(this.selectedPackageId, {
+          preserveSelection: true,
+        });
+        if (!hadSelection && firstImportedScreenshotId) {
+          this.selectScreenshot(firstImportedScreenshotId);
+        }
+        this.$store.global.showToast(`已导入 ${files.length} 张截图`, 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
     },
 
     async handleThemeFiles(fileList) {
@@ -360,6 +503,242 @@ export default function beautifyGrid() {
         });
         this.selectWallpaper(res.wallpaper?.id || "");
         this.$store.global.showToast("壁纸已导入并绑定到当前变体", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async handleGlobalWallpaperFiles(fileList) {
+      const file = Array.from(fileList || [])[0];
+      if (!file) return;
+
+      const draftCharacterName = this.globalCharacterName;
+      const draftUserName = this.globalUserName;
+      this.isActionLoading = true;
+      try {
+        const res = await importGlobalBeautifyWallpaper(file);
+        if (!res?.success) {
+          throw new Error(res?.error || "上传全局壁纸失败");
+        }
+        const currentSettings = this.$store.global.beautifyGlobalSettings || {};
+        this.$store.global.beautifyGlobalSettings = {
+          ...currentSettings,
+          wallpaper: res.wallpaper || currentSettings.wallpaper || {},
+        };
+        this.globalCharacterName = draftCharacterName;
+        this.globalUserName = draftUserName;
+        this.$store.global.showToast("全局壁纸已更新", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async handleGlobalAvatarFile(target, fileList) {
+      const file = Array.from(fileList || [])[0];
+      if (!file) return;
+
+      const draftCharacterName = this.globalCharacterName;
+      const draftUserName = this.globalUserName;
+      this.isActionLoading = true;
+      try {
+        const res = await importGlobalBeautifyAvatar(file, target);
+        if (!res?.success) {
+          throw new Error(res?.error || "上传全局头像失败");
+        }
+        const currentSettings = this.$store.global.beautifyGlobalSettings || {};
+        const currentIdentities = currentSettings.identities || {};
+        this.$store.global.beautifyGlobalSettings = {
+          ...currentSettings,
+          identities: {
+            ...currentIdentities,
+            [target]: {
+              ...(currentIdentities[target] || {}),
+              ...(res.identity || {}),
+            },
+          },
+        };
+        this.globalCharacterName = draftCharacterName;
+        this.globalUserName = draftUserName;
+        this.$store.global.showToast("全局头像已更新", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async handlePackageAvatarFile(target, fileList) {
+      const file = Array.from(fileList || [])[0];
+      if (!file || !this.selectedPackageId) {
+        this.$store.global.showToast("请先选择一个美化包后再上传头像", 2400);
+        return;
+      }
+
+      const draftCharacterName = this.packageCharacterName;
+      const draftUserName = this.packageUserName;
+      this.isActionLoading = true;
+      try {
+        const res = await importBeautifyPackageAvatar(
+          file,
+          this.selectedPackageId,
+          target,
+        );
+        if (!res?.success) {
+          throw new Error(res?.error || "上传包头像失败");
+        }
+        await this.selectPackage(this.selectedPackageId, {
+          preserveSelection: true,
+        });
+        this.packageCharacterName = draftCharacterName;
+        this.packageUserName = draftUserName;
+        this.$store.global.showToast("包级头像已更新", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async saveGlobalSettings() {
+      this.isActionLoading = true;
+      try {
+        const res = await updateBeautifySettings({
+          character_name: this.globalCharacterName,
+          user_name: this.globalUserName,
+        });
+        if (!res?.success) {
+          throw new Error(res?.error || "保存全局设置失败");
+        }
+        this.$store.global.beautifyGlobalSettings = res.item || null;
+        this.syncGlobalSettingsFields();
+        this.$store.global.showToast("全局设置已保存", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async savePackageIdentityOverrides() {
+      if (!this.selectedPackageId) return;
+
+      this.isActionLoading = true;
+      try {
+        const res = await updateBeautifyPackageIdentities({
+          package_id: this.selectedPackageId,
+          character_name: this.packageCharacterName,
+          user_name: this.packageUserName,
+        });
+        if (!res?.success) {
+          throw new Error(res?.error || "保存包级资料失败");
+        }
+        await this.selectPackage(this.selectedPackageId, {
+          preserveSelection: true,
+        });
+        this.$store.global.showToast("包级资料已保存", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async clearGlobalWallpaper() {
+      this.isActionLoading = true;
+      try {
+        const res = await updateBeautifySettings({ clear_wallpaper: true });
+        if (!res?.success) {
+          throw new Error(res?.error || "清除全局壁纸失败");
+        }
+        this.$store.global.beautifyGlobalSettings = res.item || null;
+        this.syncGlobalSettingsFields();
+        this.$store.global.showToast("全局壁纸已清除", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async clearGlobalCharacterAvatar() {
+      this.isActionLoading = true;
+      try {
+        const res = await updateBeautifySettings({
+          clear_character_avatar: true,
+        });
+        if (!res?.success) {
+          throw new Error(res?.error || "清除角色头像失败");
+        }
+        this.$store.global.beautifyGlobalSettings = res.item || null;
+        this.syncGlobalSettingsFields();
+        this.$store.global.showToast("角色头像已清除", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async clearGlobalUserAvatar() {
+      this.isActionLoading = true;
+      try {
+        const res = await updateBeautifySettings({ clear_user_avatar: true });
+        if (!res?.success) {
+          throw new Error(res?.error || "清除用户头像失败");
+        }
+        this.$store.global.beautifyGlobalSettings = res.item || null;
+        this.syncGlobalSettingsFields();
+        this.$store.global.showToast("用户头像已清除", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async clearPackageCharacterAvatar() {
+      if (!this.selectedPackageId) return;
+
+      this.isActionLoading = true;
+      try {
+        const res = await updateBeautifyPackageIdentities({
+          package_id: this.selectedPackageId,
+          clear_character_avatar: true,
+        });
+        if (!res?.success) {
+          throw new Error(res?.error || "清除角色头像失败");
+        }
+        await this.selectPackage(this.selectedPackageId, {
+          preserveSelection: true,
+        });
+        this.$store.global.showToast("包级角色头像已清除", 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async clearPackageUserAvatar() {
+      if (!this.selectedPackageId) return;
+
+      this.isActionLoading = true;
+      try {
+        const res = await updateBeautifyPackageIdentities({
+          package_id: this.selectedPackageId,
+          clear_user_avatar: true,
+        });
+        if (!res?.success) {
+          throw new Error(res?.error || "清除用户头像失败");
+        }
+        await this.selectPackage(this.selectedPackageId, {
+          preserveSelection: true,
+        });
+        this.$store.global.showToast("包级用户头像已清除", 2200);
       } catch (error) {
         this.$store.global.showToast(String(error.message || error), 3200);
       } finally {
