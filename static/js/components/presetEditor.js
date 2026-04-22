@@ -128,6 +128,9 @@ export default function presetEditor() {
     uiFilter: "all",
     showMobileSidebar: false,
     showRightPanel: true,
+    presetEditorMobileHeaderCompact: false,
+    presetEditorLastScrollTop: 0,
+    showMobileHeaderMoreMenu: false,
     showPromptTriggers: false,
     hasUnsavedChanges: false,
     dirtyPaths: {},
@@ -204,6 +207,12 @@ export default function presetEditor() {
 
       this.$watch("searchTerm", () => this.refreshEditorCollections());
       this.$watch("uiFilter", () => this.refreshEditorCollections());
+      this.$watch("$store.global.deviceType", (deviceType) => {
+        this.resetMobileHeaderState();
+        this.showMobileSidebar = false;
+        this.showRightPanel = deviceType !== "mobile";
+        this.updatePresetEditorLayoutMetrics();
+      });
     },
 
     get isDirty() {
@@ -218,6 +227,123 @@ export default function presetEditor() {
 
     get presetKind() {
       return this.editingPresetFile?.preset_kind || "";
+    },
+
+    getMobileHeaderMetaLine() {
+      const kind =
+        this.editingPresetFile?.preset_kind_label ||
+        this.presetKind ||
+        this.editingPresetFile?.type ||
+        "预设";
+      const path =
+        this.editingPresetFile?.path ||
+        this.editingPresetFile?.file_path ||
+        this.editingPresetFile?.name ||
+        "未定位文件";
+      return `${kind} · ${path}`;
+    },
+
+    getCompactHeaderStatusLabel() {
+      if (this.hasConflict) return "存在冲突";
+      if (this.isSaving) return "保存中";
+      if (this.isDirty) return "未保存";
+      return "已同步";
+    },
+
+    resetMobileHeaderState() {
+      this.showMobileHeaderMoreMenu = false;
+      this.presetEditorMobileHeaderCompact = false;
+      this.presetEditorLastScrollTop = 0;
+    },
+
+    revealMobileHeader() {
+      const changed =
+        this.presetEditorMobileHeaderCompact ||
+        this.presetEditorLastScrollTop !== 0;
+      this.presetEditorMobileHeaderCompact = false;
+      this.presetEditorLastScrollTop = 0;
+      if (changed) {
+        this.updatePresetEditorLayoutMetrics();
+      }
+    },
+
+    toggleMobileHeaderMoreMenu() {
+      this.revealMobileHeader();
+      this.showMobileHeaderMoreMenu = !this.showMobileHeaderMoreMenu;
+      this.updatePresetEditorLayoutMetrics();
+    },
+
+    openMobileSidebar() {
+      this.revealMobileHeader();
+      this.showMobileHeaderMoreMenu = false;
+      this.showMobileSidebar = true;
+      this.updatePresetEditorLayoutMetrics();
+    },
+
+    closeMobileSidebar() {
+      this.showMobileSidebar = false;
+      this.showMobileHeaderMoreMenu = false;
+      this.updatePresetEditorLayoutMetrics();
+    },
+
+    toggleMobileRightPanel() {
+      this.revealMobileHeader();
+      this.showMobileHeaderMoreMenu = false;
+      this.showRightPanel = !this.showRightPanel;
+      this.updatePresetEditorLayoutMetrics();
+    },
+
+    closeMobileRightPanel() {
+      this.showRightPanel = false;
+      this.showMobileHeaderMoreMenu = false;
+      this.updatePresetEditorLayoutMetrics();
+    },
+
+    updatePresetEditorLayoutMetrics() {
+      if (typeof document === "undefined") return;
+      const root = document.querySelector(".detail-preset-full-screen");
+      if (!root?.style?.setProperty) return;
+      const header = root.querySelector(".preset-editor-mobile-header");
+      const height =
+        typeof header?.offsetHeight === "number" ? header.offsetHeight : 0;
+      root.style.setProperty("--preset-editor-header-height", `${height}px`);
+    },
+
+    syncPresetEditorMobileHeaderCompactState(container) {
+      if (this.$store?.global?.deviceType !== "mobile") return;
+      if (!container || typeof container.scrollTop !== "number") return;
+      if (typeof Element !== "undefined" && !(container instanceof Element)) {
+        return;
+      }
+      if (
+        this.showMobileSidebar ||
+        this.showRightPanel ||
+        this.showMobileHeaderMoreMenu
+      ) {
+        return;
+      }
+
+      const scrollTop = Math.max(0, Number(container.scrollTop) || 0);
+      const delta = scrollTop - this.presetEditorLastScrollTop;
+      const previousCompact = this.presetEditorMobileHeaderCompact;
+
+      if (scrollTop <= 24 || delta < -14) {
+        this.presetEditorMobileHeaderCompact = false;
+      } else if (delta > 18 && scrollTop > 72) {
+        this.presetEditorMobileHeaderCompact = true;
+      }
+
+      this.presetEditorLastScrollTop = scrollTop;
+
+      if (previousCompact !== this.presetEditorMobileHeaderCompact) {
+        this.updatePresetEditorLayoutMetrics();
+      }
+    },
+
+    handleMobileEditorContentScroll(event) {
+      this.syncPresetEditorMobileHeaderCompactState(
+        event?.target || event?.currentTarget || null,
+      );
     },
 
     get editorView() {
@@ -1209,6 +1335,7 @@ export default function presetEditor() {
     },
 
     selectGroup(groupId) {
+      this.revealMobileHeader();
       const previousItemId = this.activeItemId;
       this.activeGroup = groupId || "all";
       this.refreshEditorCollections();
@@ -1231,6 +1358,7 @@ export default function presetEditor() {
     },
 
     selectWorkspace(workspaceId) {
+      this.revealMobileHeader();
       this.activeWorkspace =
         workspaceId || (this.isPromptWorkspaceEditor ? "prompts" : "all");
       if (!this.isPromptWorkspaceEditor) {
@@ -1251,12 +1379,14 @@ export default function presetEditor() {
     },
 
     selectItem(itemId) {
+      this.revealMobileHeader();
       this.activeItemId = itemId || "";
       this.activeGenericItemId = itemId || "";
       this.syncActiveEditorSelections();
     },
 
     selectPrompt(promptId) {
+      this.revealMobileHeader();
       this.activeWorkspace = "prompts";
       this.activePromptId = String(promptId || "");
       this.showPromptTriggers = false;
@@ -1331,6 +1461,7 @@ export default function presetEditor() {
     },
 
     selectMirroredField(fieldId) {
+      this.revealMobileHeader();
       this.activeMirroredFieldId = String(fieldId || "");
       this.syncActiveMirroredField();
     },
@@ -1634,7 +1765,8 @@ export default function presetEditor() {
         this.activeGenericItemId = "";
         this.activeItemId = "";
         this.showMobileSidebar = false;
-        this.showRightPanel = true;
+        this.showRightPanel = this.$store?.global?.deviceType !== "mobile";
+        this.resetMobileHeaderState();
         this.showPromptTriggers = false;
         this.markClean();
         this.selectGroup("all");
@@ -1662,6 +1794,7 @@ export default function presetEditor() {
               this.persistLocalDraft();
             },
           );
+          this.updatePresetEditorLayoutMetrics();
         });
       } catch (error) {
         console.error(error);
@@ -1692,6 +1825,9 @@ export default function presetEditor() {
       this.activePromptId = "";
       this.activeGenericItemId = "";
       this.activeItemId = "";
+      this.showMobileSidebar = false;
+      this.showRightPanel = this.$store?.global?.deviceType !== "mobile";
+      this.resetMobileHeaderState();
       this.showPromptTriggers = false;
       this.promptItemsCache = [];
       this.orderedPromptItemsCache = [];

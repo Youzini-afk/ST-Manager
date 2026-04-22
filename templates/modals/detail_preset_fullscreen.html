@@ -7,7 +7,9 @@
 >
   <div class="flex flex-col h-full w-full overflow-hidden">
     <div
-      class="h-12 border-b border-[var(--border-main)] bg-[var(--bg-panel)] px-4 flex items-center justify-between gap-4 flex-shrink-0"
+      x-show="$store.global.deviceType !== 'mobile'"
+      x-cloak
+      class="flex h-12 border-b border-[var(--border-main)] bg-[var(--bg-panel)] px-4 items-center justify-between gap-4 flex-shrink-0"
     >
       <div class="flex items-center gap-3 min-w-0">
         <div class="text-[var(--accent-main)] font-bold text-sm">
@@ -98,10 +100,106 @@
       </div>
     </div>
 
+    <div
+      x-show="$store.global.deviceType === 'mobile'"
+      x-cloak
+      class="preset-editor-mobile-header"
+      :class="presetEditorMobileHeaderCompact ? 'is-compact' : ''"
+      x-ref="presetEditorMobileHeader"
+    >
+      <div class="preset-editor-mobile-header-top">
+        <button
+          @click="closeEditor()"
+          class="btn-secondary px-3 py-1.5 text-xs rounded shrink-0"
+        >
+          关闭
+        </button>
+
+        <div class="preset-editor-mobile-title-block">
+          <div class="preset-editor-mobile-title" x-text="presetTitle"></div>
+          <div
+            class="preset-editor-mobile-subtitle"
+            x-text="getMobileHeaderMetaLine()"
+          ></div>
+        </div>
+
+        <button
+          @click="saveOverwrite()"
+          :disabled="isSaving"
+          class="btn-primary px-3 py-1.5 text-xs rounded shrink-0"
+        >
+          保存
+        </button>
+
+        <button
+          @click="toggleMobileHeaderMoreMenu()"
+          class="btn-secondary px-3 py-1.5 text-xs rounded shrink-0"
+        >
+          更多
+        </button>
+      </div>
+
+      <div class="preset-editor-mobile-header-bottom">
+        <span
+          class="preset-editor-mobile-status-chip"
+          :class="hasConflict ? 'is-danger' : (isDirty ? 'is-warn' : 'is-ok')"
+          x-text="getCompactHeaderStatusLabel()"
+        ></span>
+        <span
+          x-show="draftState.savedAt"
+          class="preset-editor-mobile-status-text"
+          x-text="`草稿 ${formatDate(draftState.savedAt, { includeYear: true })}`"
+        ></span>
+      </div>
+    </div>
+
+    <div
+      x-show="$store.global.deviceType === 'mobile' && showMobileHeaderMoreMenu"
+      x-cloak
+      class="preset-editor-mobile-more-menu"
+    >
+      <button
+        @click="saveAs()"
+        class="btn-secondary px-3 py-2 text-sm rounded-xl"
+      >
+        另存为
+      </button>
+      <button
+        @click="renamePreset()"
+        class="btn-secondary px-3 py-2 text-sm rounded-xl"
+      >
+        重命名
+      </button>
+      <button
+        @click="deletePreset()"
+        class="btn-secondary px-3 py-2 text-sm rounded-xl text-red-300"
+      >
+        删除
+      </button>
+      <button
+        @click="createSnapshot()"
+        class="btn-secondary px-3 py-2 text-sm rounded-xl"
+      >
+        创建快照
+      </button>
+      <button
+        @click="openRollback()"
+        class="btn-secondary px-3 py-2 text-sm rounded-xl"
+      >
+        回滚
+      </button>
+      <button
+        @click="openAdvancedExtensions()"
+        class="btn-secondary px-3 py-2 text-sm rounded-xl"
+      >
+        编辑扩展
+      </button>
+    </div>
+
     <div class="flex-1 flex overflow-hidden bg-[var(--bg-body)]">
       <aside
-        class="border-r border-[var(--border-main)] bg-[var(--bg-sub)] flex-shrink-0 overflow-y-auto custom-scrollbar"
-        :class="showMobileSidebar || $store.global.deviceType !== 'mobile' ? 'w-full max-w-[22rem] md:w-80' : 'hidden md:block md:w-80'"
+        class="preset-editor-sidebar border-r border-[var(--border-main)] bg-[var(--bg-sub)] flex-shrink-0 overflow-y-auto custom-scrollbar"
+        :class="$store.global.deviceType === 'mobile' ? (showMobileSidebar ? 'preset-editor-mobile-panel preset-editor-mobile-panel--left w-full max-w-[22rem]' : 'hidden') : 'md:block md:w-80'"
       >
         <div class="p-4 space-y-4">
           <div class="flex items-center justify-between gap-3 md:hidden">
@@ -109,7 +207,7 @@
               字段导航
             </div>
             <button
-              @click="showMobileSidebar = false"
+              @click="closeMobileSidebar()"
               class="btn-secondary px-3 py-1 text-xs rounded"
             >
               收起
@@ -267,17 +365,21 @@
         </div>
       </aside>
 
-      <main class="flex-1 min-w-0 overflow-y-auto custom-scrollbar">
+      <main
+        class="flex-1 min-w-0 overflow-y-auto custom-scrollbar preset-editor-main-scroll"
+        x-ref="presetEditorContentScroll"
+        @scroll.passive="handleMobileEditorContentScroll($event)"
+      >
         <div class="h-full p-4 md:p-6">
           <div class="flex items-center justify-between gap-3 mb-4 md:hidden">
             <button
-              @click="showMobileSidebar = true"
+              @click="openMobileSidebar()"
               class="btn-secondary px-3 py-1.5 text-xs rounded"
             >
               字段导航
             </button>
             <button
-              @click="showRightPanel = !showRightPanel"
+              @click="toggleMobileRightPanel()"
               class="btn-secondary px-3 py-1.5 text-xs rounded"
             >
               详情侧栏
@@ -419,7 +521,7 @@
                     ></div>
                   </div>
                   <button
-                    @click="showRightPanel = !showRightPanel"
+                    @click="toggleMobileRightPanel()"
                     class="btn-secondary px-3 py-1.5 text-xs rounded md:hidden"
                   >
                     右侧信息
@@ -446,7 +548,7 @@
                           提示词基础信息
                         </div>
                         <div class="text-sm text-[var(--text-dim)]">
-                          按提示词管理的常用方式编辑名称、角色、注入位置与触发器。
+                          按常用提示词编辑方式调整名称、角色、注入位置与触发器。
                         </div>
                       </div>
 
@@ -1211,7 +1313,7 @@
                     ></div>
                   </div>
                   <button
-                    @click="showRightPanel = !showRightPanel"
+                    @click="toggleMobileRightPanel()"
                     class="btn-secondary px-3 py-1.5 text-xs rounded md:hidden"
                   >
                     右侧信息
@@ -1524,15 +1626,15 @@
       </main>
 
       <aside
-        class="border-l border-[var(--border-main)] bg-[var(--bg-sub)] flex-shrink-0 overflow-y-auto custom-scrollbar"
+        class="preset-editor-context border-l border-[var(--border-main)] bg-[var(--bg-sub)] flex-shrink-0 overflow-y-auto custom-scrollbar"
         x-show="showRightPanel || $store.global.deviceType !== 'mobile'"
-        :class="$store.global.deviceType === 'mobile' ? 'w-full' : 'w-80'"
+        :class="$store.global.deviceType === 'mobile' ? 'preset-editor-mobile-panel preset-editor-mobile-panel--right w-full' : 'w-80'"
       >
         <div class="p-4 space-y-4">
           <div class="flex items-center justify-between gap-3 md:hidden">
             <div class="text-sm font-bold text-[var(--text-main)]">上下文</div>
             <button
-              @click="showRightPanel = false"
+              @click="closeMobileRightPanel()"
               class="btn-secondary px-3 py-1 text-xs rounded"
             >
               收起

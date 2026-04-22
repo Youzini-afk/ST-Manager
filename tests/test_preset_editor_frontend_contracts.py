@@ -12,6 +12,38 @@ def read_project_file(relative_path):
     return (PROJECT_ROOT / relative_path).read_text(encoding='utf-8')
 
 
+def extract_tag_block(source, marker, tag_name='div'):
+    marker_index = source.find(marker)
+    assert marker_index != -1, f'marker not found: {marker}'
+
+    block_start = source.rfind(f'<{tag_name}', 0, marker_index)
+    assert block_start != -1, f'opening {tag_name} not found for marker: {marker}'
+
+    open_token = f'<{tag_name}'
+    close_token = f'</{tag_name}>'
+    cursor = block_start
+    depth = 0
+
+    while cursor < len(source):
+        next_open = source.find(open_token, cursor)
+        next_close = source.find(close_token, cursor)
+
+        if next_close == -1:
+            break
+
+        if next_open != -1 and next_open < next_close:
+            depth += 1
+            cursor = next_open + len(open_token)
+            continue
+
+        depth -= 1
+        cursor = next_close + len(close_token)
+        if depth == 0:
+            return source[block_start:cursor]
+
+    raise AssertionError(f'failed to extract {tag_name} block for marker: {marker}')
+
+
 def run_preset_editor_runtime_check(script_body):
     source_path = PROJECT_ROOT / 'static/js/components/presetEditor.js'
     node_script = textwrap.dedent(
@@ -295,8 +327,9 @@ def test_preset_editor_template_localizes_remaining_prompt_workspace_copy():
 def test_preset_editor_template_localizes_prompt_manager_guidance_copy():
     source = read_project_file('templates/modals/detail_preset_fullscreen.html')
 
-    assert '按提示词管理的常用方式编辑' in source
+    assert '按常用提示词编辑方式调整' in source
     assert '名称、角色、注入位置与触发器' in source
+    assert '按提示词管理的常用方式编辑' not in source
     assert 'SillyTavern 提示词管理的使用习惯编辑。' not in source
 
 
@@ -1972,13 +2005,216 @@ def test_preset_editor_runtime_normalizes_role_and_trigger_option_object_values(
 def test_preset_editor_template_keeps_right_info_toggle_mobile_only():
     source = read_project_file('templates/modals/detail_preset_fullscreen.html')
 
-    assert re.search(
-        r'<button\s+@click="showRightPanel = !showRightPanel"\s+class="btn-secondary px-3 py-1.5 text-xs rounded md:hidden"\s*>\s*右侧信息\s*</button>',
+    right_info_buttons = re.findall(
+        r'<button\b[^>]*>[\s\S]*?右侧信息\s*</button>',
         source,
     )
-    assert not re.search(
-        r'<button\s+@click="showRightPanel = !showRightPanel"\s+class="btn-secondary px-3 py-1.5 text-xs rounded"\s*>\s*右侧信息\s*</button>',
-        source,
+
+    assert right_info_buttons
+
+    for button in right_info_buttons:
+        assert '@click="toggleMobileRightPanel()"' in button
+        assert 'md:hidden' in button
+
+
+def test_preset_editor_template_adds_mobile_header_shell_and_primary_actions():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+    mobile_header_block = extract_tag_block(source, 'preset-editor-mobile-header')
+
+    assert 'x-show="$store.global.deviceType !== \'mobile\'"' in source
+    assert 'hidden md:flex h-12' not in source
+    assert 'preset-editor-mobile-header' in source
+    assert 'preset-editor-mobile-header-top' in mobile_header_block
+    assert 'preset-editor-mobile-header-bottom' in mobile_header_block
+    assert 'x-ref="presetEditorMobileHeader"' in mobile_header_block
+    assert '@click="closeEditor()"' in mobile_header_block
+    assert '@click="saveOverwrite()"' in mobile_header_block
+    assert '@click="toggleMobileHeaderMoreMenu()"' in mobile_header_block
+    assert 'x-text="presetTitle"' in mobile_header_block
+    assert 'x-text="getMobileHeaderMetaLine()"' in mobile_header_block
+
+
+def test_preset_editor_template_moves_secondary_actions_into_mobile_more_menu_and_marks_scroll_region():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+    mobile_header_block = extract_tag_block(source, 'preset-editor-mobile-header')
+    mobile_more_menu_block = extract_tag_block(source, 'preset-editor-mobile-more-menu')
+
+    assert 'preset-editor-mobile-more-menu' in source
+    assert '@click="saveAs()"' in mobile_more_menu_block
+    assert '@click="renamePreset()"' in mobile_more_menu_block
+    assert '@click="deletePreset()"' in mobile_more_menu_block
+    assert '@click="createSnapshot()"' in mobile_more_menu_block
+    assert '@click="openRollback()"' in mobile_more_menu_block
+    assert '@click="openAdvancedExtensions()"' in mobile_more_menu_block
+    assert 'x-ref="presetEditorContentScroll"' in source
+    assert '@scroll.passive="handleMobileEditorContentScroll($event)"' in source
+
+    assert '@click="saveAs()"' not in mobile_header_block
+    assert '@click="renamePreset()"' not in mobile_header_block
+    assert '@click="deletePreset()"' not in mobile_header_block
+    assert '@click="createSnapshot()"' not in mobile_header_block
+    assert '@click="openRollback()"' not in mobile_header_block
+    assert '@click="openAdvancedExtensions()"' not in mobile_header_block
+
+
+def test_preset_editor_mobile_header_css_uses_safe_area_compact_state_and_header_height_offsets():
+    css_source = read_project_file('static/css/modules/modal-detail.css')
+
+    assert '.detail-preset-full-screen .preset-editor-mobile-header {' in css_source
+    assert '.detail-preset-full-screen .preset-editor-mobile-header.is-compact {' in css_source
+    assert '.detail-preset-full-screen .preset-editor-mobile-header-bottom {' in css_source
+    assert '.detail-preset-full-screen .preset-editor-mobile-more-menu {' in css_source
+    assert '.detail-preset-full-screen .preset-editor-mobile-panel {' in css_source
+    assert '.detail-preset-full-screen .preset-editor-mobile-panel--right {' in css_source
+    assert 'padding: calc(env(safe-area-inset-top, 0px) + 0.75rem)' in css_source
+    assert 'top: var(--preset-editor-header-height);' in css_source
+
+
+def test_preset_editor_js_exposes_mobile_header_state_and_helpers():
+    source = read_project_file('static/js/components/presetEditor.js')
+
+    required_tokens = [
+        'presetEditorMobileHeaderCompact:',
+        'presetEditorLastScrollTop:',
+        'showMobileHeaderMoreMenu:',
+        'getMobileHeaderMetaLine() {',
+        'getCompactHeaderStatusLabel() {',
+        'resetMobileHeaderState() {',
+        'revealMobileHeader() {',
+        'toggleMobileHeaderMoreMenu() {',
+        'openMobileSidebar() {',
+        'closeMobileSidebar() {',
+        'toggleMobileRightPanel() {',
+        'closeMobileRightPanel() {',
+        'updatePresetEditorLayoutMetrics() {',
+        'syncPresetEditorMobileHeaderCompactState(container) {',
+        'handleMobileEditorContentScroll(event) {',
+    ]
+
+    for token in required_tokens:
+        assert token in source, f'missing mobile header state/helper contract token: {token}'
+
+
+def test_preset_editor_runtime_reveals_mobile_header_for_more_menu():
+    run_preset_editor_runtime_check(
+        """
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+
+        editor.presetEditorMobileHeaderCompact = true;
+        editor.showMobileHeaderMoreMenu = false;
+
+        editor.toggleMobileHeaderMoreMenu();
+        if (editor.showMobileHeaderMoreMenu !== true) {
+          throw new Error(`expected more menu to open, got ${editor.showMobileHeaderMoreMenu}`);
+        }
+        if (editor.presetEditorMobileHeaderCompact !== false) {
+          throw new Error(`expected opening more menu to reveal mobile header, got compact=${editor.presetEditorMobileHeaderCompact}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_reveals_mobile_header_for_mobile_sidebar():
+    run_preset_editor_runtime_check(
+        """
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+
+        editor.presetEditorMobileHeaderCompact = true;
+        editor.showMobileSidebar = false;
+
+        editor.openMobileSidebar();
+        if (editor.showMobileSidebar !== true) {
+          throw new Error(`expected mobile sidebar to open, got ${editor.showMobileSidebar}`);
+        }
+        if (editor.presetEditorMobileHeaderCompact !== false) {
+          throw new Error(`expected opening sidebar to reveal mobile header, got compact=${editor.presetEditorMobileHeaderCompact}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_reveals_mobile_header_for_right_panel():
+    run_preset_editor_runtime_check(
+        """
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+
+        editor.presetEditorMobileHeaderCompact = true;
+        editor.showRightPanel = false;
+
+        editor.toggleMobileRightPanel();
+        if (editor.showRightPanel !== true) {
+          throw new Error(`expected right panel to open, got ${editor.showRightPanel}`);
+        }
+        if (editor.presetEditorMobileHeaderCompact !== false) {
+          throw new Error(`expected opening right panel to reveal mobile header, got compact=${editor.presetEditorMobileHeaderCompact}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_compacts_and_expands_mobile_header_from_scroll():
+    run_preset_editor_runtime_check(
+        """
+        globalThis.Element = class Element {};
+
+        const container = new Element();
+        container.scrollTop = 0;
+
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+        editor.showMobileSidebar = false;
+        editor.showRightPanel = false;
+        editor.showMobileHeaderMoreMenu = false;
+        editor.presetEditorMobileHeaderCompact = false;
+        editor.presetEditorLastScrollTop = 0;
+
+        container.scrollTop = 96;
+        editor.handleMobileEditorContentScroll({ target: container });
+        if (editor.presetEditorMobileHeaderCompact !== true) {
+          throw new Error(`expected downward mobile scroll to compact header, got ${editor.presetEditorMobileHeaderCompact}`);
+        }
+
+        container.scrollTop = 8;
+        editor.handleMobileEditorContentScroll({ target: container });
+        if (editor.presetEditorMobileHeaderCompact !== false) {
+          throw new Error(`expected upward or near-top scroll to expand header, got ${editor.presetEditorMobileHeaderCompact}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_clears_mobile_header_state_on_close():
+    run_preset_editor_runtime_check(
+        """
+        globalThis.confirm = () => {
+          throw new Error('confirm should not run when hasUnsavedChanges is false');
+        };
+
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+        editor.showMobileSidebar = true;
+        editor.showRightPanel = true;
+        editor.showMobileHeaderMoreMenu = true;
+        editor.presetEditorMobileHeaderCompact = true;
+        editor.presetEditorLastScrollTop = 96;
+        editor.hasUnsavedChanges = false;
+
+        editor.closeEditor();
+
+        if (editor.showMobileSidebar !== false) {
+          throw new Error(`expected closeEditor to clear mobile sidebar, got ${editor.showMobileSidebar}`);
+        }
+        if (editor.showRightPanel !== false) {
+          throw new Error(`expected closeEditor to clear right panel, got ${editor.showRightPanel}`);
+        }
+        if (editor.showMobileHeaderMoreMenu !== false) {
+          throw new Error(`expected closeEditor to clear mobile more menu, got ${editor.showMobileHeaderMoreMenu}`);
+        }
+        if (editor.presetEditorMobileHeaderCompact !== false) {
+          throw new Error(`expected closeEditor to reveal mobile header, got compact=${editor.presetEditorMobileHeaderCompact}`);
+        }
+        if (editor.presetEditorLastScrollTop !== 0) {
+          throw new Error(`expected closeEditor to reset last scroll position, got ${editor.presetEditorLastScrollTop}`);
+        }
+        """
     )
 
 
