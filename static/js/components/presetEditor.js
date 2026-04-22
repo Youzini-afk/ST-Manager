@@ -128,6 +128,7 @@ export default function presetEditor() {
     uiFilter: "all",
     showMobileSidebar: false,
     showRightPanel: true,
+    showMobilePromptDetailView: false,
     presetEditorMobileHeaderCompact: false,
     presetEditorLastScrollTop: 0,
     showMobileHeaderMoreMenu: false,
@@ -211,6 +212,7 @@ export default function presetEditor() {
         this.resetMobileHeaderState();
         this.showMobileSidebar = false;
         this.showRightPanel = deviceType !== "mobile";
+        this.showMobilePromptDetailView = false;
         this.updatePresetEditorLayoutMetrics();
       });
     },
@@ -296,6 +298,24 @@ export default function presetEditor() {
     closeMobileRightPanel() {
       this.showRightPanel = false;
       this.showMobileHeaderMoreMenu = false;
+      this.updatePresetEditorLayoutMetrics();
+    },
+
+    openMobilePromptDetailView() {
+      this.revealMobileHeader();
+      this.showMobileHeaderMoreMenu = false;
+      this.showMobileSidebar = false;
+      this.showMobilePromptDetailView = true;
+      this.showRightPanel = false;
+      this.updatePresetEditorLayoutMetrics();
+    },
+
+    closeMobilePromptDetailView() {
+      this.revealMobileHeader();
+      this.showMobileHeaderMoreMenu = false;
+      this.showMobileSidebar = false;
+      this.showMobilePromptDetailView = false;
+      this.showRightPanel = false;
       this.updatePresetEditorLayoutMetrics();
     },
 
@@ -1370,9 +1390,13 @@ export default function presetEditor() {
       if (this.activeWorkspace === "prompts") {
         this.activeMirroredFieldId = "";
         this.refreshEditorCollections();
+        if (this.$store?.global?.deviceType !== "mobile") {
+          this.showRightPanel = true;
+        }
         return;
       }
 
+      this.showMobilePromptDetailView = false;
       this.activeGroup = this.activeWorkspace;
       this.refreshEditorCollections();
       this.syncActiveMirroredField();
@@ -1391,6 +1415,9 @@ export default function presetEditor() {
       this.activePromptId = String(promptId || "");
       this.showPromptTriggers = false;
       this.refreshEditorCollections();
+      if (this.$store?.global?.deviceType === "mobile") {
+        this.openMobilePromptDetailView();
+      }
     },
 
     getFieldValue(item) {
@@ -1766,6 +1793,7 @@ export default function presetEditor() {
         this.activeItemId = "";
         this.showMobileSidebar = false;
         this.showRightPanel = this.$store?.global?.deviceType !== "mobile";
+        this.showMobilePromptDetailView = false;
         this.resetMobileHeaderState();
         this.showPromptTriggers = false;
         this.markClean();
@@ -1820,11 +1848,26 @@ export default function presetEditor() {
       if (this.isDirty) {
         this.persistLocalDraft();
       }
+      if (this.pendingLargeEditorSaveHandler) {
+        window.removeEventListener(
+          "large-editor-save",
+          this.pendingLargeEditorSaveHandler,
+        );
+        this.pendingLargeEditorSaveHandler = null;
+      }
+      if (this.pendingAdvancedEditorSaveHandler) {
+        window.removeEventListener(
+          "advanced-editor-save",
+          this.pendingAdvancedEditorSaveHandler,
+        );
+        this.pendingAdvancedEditorSaveHandler = null;
+      }
       this.activeWorkspace = "all";
       this.activeGroup = "all";
       this.activePromptId = "";
       this.activeGenericItemId = "";
       this.activeItemId = "";
+      this.showMobilePromptDetailView = false;
       this.showMobileSidebar = false;
       this.showRightPanel = this.$store?.global?.deviceType !== "mobile";
       this.resetMobileHeaderState();

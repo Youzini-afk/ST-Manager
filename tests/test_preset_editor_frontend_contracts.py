@@ -1389,6 +1389,107 @@ def test_preset_editor_runtime_reopening_advanced_editor_replaces_stale_save_lis
     )
 
 
+def test_preset_editor_runtime_close_editor_clears_pending_large_editor_save_listener():
+    run_preset_editor_runtime_check(
+        """
+        const listeners = {};
+        const events = [];
+        globalThis.confirm = () => true;
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(type, init = {}) {
+            this.type = type;
+            this.detail = init.detail;
+          }
+        };
+        globalThis.window = {
+          dispatchEvent(event) {
+            events.push(event);
+            return true;
+          },
+          addEventListener(type, handler) {
+            listeners[type] = listeners[type] || [];
+            listeners[type].push(handler);
+          },
+          removeEventListener(type, handler) {
+            listeners[type] = (listeners[type] || []).filter((entry) => entry !== handler);
+          },
+        };
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+        editor.editingData = {
+          stop_sequence: ['base'],
+        };
+        editor.editingPresetFile = { id: 'preset-1' };
+        editor.markClean();
+
+        editor.openLargeEditorForItem({ key: 'stop_sequence', label: 'Stop Sequence', value_path: 'stop_sequence' });
+        if ((listeners['large-editor-save'] || []).length !== 1) {
+          throw new Error(`expected pending large editor save listener, got ${(listeners['large-editor-save'] || []).length}`);
+        }
+
+        editor.closeEditor();
+
+        if ((listeners['large-editor-save'] || []).length !== 0) {
+          throw new Error(`expected closeEditor to remove pending large editor save listener, got ${(listeners['large-editor-save'] || []).length}`);
+        }
+        if (editor.pendingLargeEditorSaveHandler !== null) {
+          throw new Error('expected closeEditor to clear pendingLargeEditorSaveHandler reference');
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_close_editor_clears_pending_advanced_editor_save_listener():
+    run_preset_editor_runtime_check(
+        """
+        const listeners = {};
+        const events = [];
+        globalThis.confirm = () => true;
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(type, init = {}) {
+            this.type = type;
+            this.detail = init.detail;
+          }
+        };
+        globalThis.window = {
+          dispatchEvent(event) {
+            events.push(event);
+            return true;
+          },
+          addEventListener(type, handler) {
+            listeners[type] = listeners[type] || [];
+            listeners[type].push(handler);
+          },
+          removeEventListener(type, handler) {
+            listeners[type] = (listeners[type] || []).filter((entry) => entry !== handler);
+          },
+        };
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+        editor.editingData = {
+          extensions: {
+            regex_scripts: [{ script: 'base' }],
+            tavern_helper: { scripts: [] },
+          },
+        };
+        editor.editingPresetFile = { id: 'preset-1' };
+        editor.markClean();
+
+        editor.openAdvancedExtensions();
+        if ((listeners['advanced-editor-save'] || []).length !== 1) {
+          throw new Error(`expected pending advanced editor save listener, got ${(listeners['advanced-editor-save'] || []).length}`);
+        }
+
+        editor.closeEditor();
+
+        if ((listeners['advanced-editor-save'] || []).length !== 0) {
+          throw new Error(`expected closeEditor to remove pending advanced editor save listener, got ${(listeners['advanced-editor-save'] || []).length}`);
+        }
+        if (editor.pendingAdvancedEditorSaveHandler !== null) {
+          throw new Error('expected closeEditor to clear pendingAdvancedEditorSaveHandler reference');
+        }
+        """
+    )
+
+
 def test_preset_editor_runtime_updates_and_removes_string_list_entries_by_path():
     run_preset_editor_runtime_check(
         """
@@ -1770,7 +1871,8 @@ def test_preset_editor_template_routes_scalar_editors_through_field_helpers():
 def test_preset_editor_template_uses_prompt_workspace_layout_contracts():
     source = read_project_file('templates/modals/detail_preset_fullscreen.html')
 
-    assert 'x-if="isPromptWorkspaceEditor"' in source
+    assert 'x-if="isPromptWorkspaceEditor && activeWorkspace === \'prompts\'"' in source
+    assert 'x-if="isPromptWorkspaceEditor"' not in source
     assert 'x-for="(prompt, index) in orderedPromptItems"' in source or 'x-for="prompt in orderedPromptItems"' in source
     assert '@click="selectPrompt(prompt.__identifier)"' in source
     assert '@click.stop="movePromptItem(index, index - 1)"' in source or '@click="movePromptItem(index, index - 1)"' in source
@@ -1934,6 +2036,93 @@ def test_preset_editor_template_renders_marker_icons_switches_and_scroll_safe_pr
     assert 'pointer-events-none absolute left-[2px] top-[2px] h-4 w-4 rounded-full transition-transform' in source
 
 
+def test_preset_editor_template_splits_mobile_prompt_workspace_into_list_and_detail_views_mobile_prompt_detail_view():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert 'showMobilePromptDetailView' in source
+    assert 'showMobilePromptDetailView ?' not in source
+    assert "x-show=\"$store.global.deviceType === 'mobile' && !showMobilePromptDetailView\"" in source
+    assert "x-show=\"$store.global.deviceType === 'mobile' && showMobilePromptDetailView\"" in source
+    assert '返回提示词列表' in source
+    assert '@click="closeMobilePromptDetailView()"' in source
+
+
+def test_preset_editor_template_wraps_prompt_workspace_mobile_and_desktop_branches_in_single_root_mobile_prompt_detail_view():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+    prompt_workspace_start = source.index(
+        '<template x-if="isPromptWorkspaceEditor && activeWorkspace === \'prompts\'">'
+    )
+    scalar_workspace_start = source.index('<template x-if="isScalarWorkspaceEditor">')
+    prompt_workspace_block = source[prompt_workspace_start:scalar_workspace_start]
+
+    assert 'class="space-y-4 h-full min-h-0"' in prompt_workspace_block
+    assert 'x-if="$store.global.deviceType !== \'mobile\'"' in prompt_workspace_block
+    assert "x-show=\"$store.global.deviceType === 'mobile' && !showMobilePromptDetailView\"" in prompt_workspace_block
+    assert "x-show=\"$store.global.deviceType === 'mobile' && showMobilePromptDetailView\"" in prompt_workspace_block
+
+
+def test_preset_editor_template_uses_single_prompt_workspace_gate_in_main_content_mobile_prompt_detail_view():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+    main_start = source.index('<main')
+    scalar_workspace_start = source.index('<template x-if="isScalarWorkspaceEditor">')
+    main_prompt_block = source[main_start:scalar_workspace_start]
+
+    assert '<template x-if="isPromptWorkspaceEditor && activeWorkspace === \'prompts\'">' in main_prompt_block
+    assert '<template x-if="isPromptWorkspaceEditor">' not in main_prompt_block
+    assert '<template x-if="activeWorkspace === \'prompts\'">' not in main_prompt_block
+
+
+def test_preset_editor_template_removes_mobile_prompt_right_info_toggle_and_keeps_desktop_prompt_editor_mobile_prompt_detail_view():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+    desktop_prompt_workspace_block = extract_tag_block(
+        source,
+        "x-if=\"$store.global.deviceType !== 'mobile'\"",
+        tag_name='template',
+    )
+    mobile_prompt_detail_block = extract_tag_block(
+        source,
+        "x-show=\"$store.global.deviceType === 'mobile' && showMobilePromptDetailView\"",
+    )
+
+    assert 'xl:grid-cols-[22rem_minmax(0,1fr)]' in desktop_prompt_workspace_block
+    assert '当前提示词' in desktop_prompt_workspace_block
+    assert '@click="toggleMobileRightPanel()"' not in desktop_prompt_workspace_block
+
+    assert '当前提示词' in mobile_prompt_detail_block
+    assert '提示词内容' in mobile_prompt_detail_block
+    assert "updatePromptField('name'" in mobile_prompt_detail_block
+    assert "updatePromptField('role'" in mobile_prompt_detail_block
+    assert "updatePromptField('content'" in mobile_prompt_detail_block
+    assert '@click="toggleMobileRightPanel()"' not in mobile_prompt_detail_block
+    assert '右侧信息' not in mobile_prompt_detail_block
+
+
+def test_preset_editor_template_keeps_mobile_prompt_list_and_detail_branches_specialized_mobile_prompt_detail_view():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+    mobile_prompt_list_block = extract_tag_block(
+        source,
+        "x-show=\"$store.global.deviceType === 'mobile' && !showMobilePromptDetailView\"",
+    )
+    mobile_prompt_detail_block = extract_tag_block(
+        source,
+        "x-show=\"$store.global.deviceType === 'mobile' && showMobilePromptDetailView\"",
+    )
+
+    assert '点选条目进入编辑' in mobile_prompt_list_block
+    assert '@click="selectPrompt(prompt.__identifier)"' in mobile_prompt_list_block
+    assert '@change="togglePromptEnabled(prompt.__identifier)"' in mobile_prompt_list_block
+    assert '@click.stop="movePromptItem(index, index - 1)"' in mobile_prompt_list_block
+    assert '@click.stop="movePromptItem(index, index + 1)"' in mobile_prompt_list_block
+    assert '提示词内容' not in mobile_prompt_list_block
+    assert '返回提示词列表' not in mobile_prompt_list_block
+
+    assert '@click="closeMobilePromptDetailView()"' in mobile_prompt_detail_block
+    assert '返回提示词列表' in mobile_prompt_detail_block
+    assert '提示词基础信息' in mobile_prompt_detail_block
+    assert '提示词内容' in mobile_prompt_detail_block
+    assert '@click="selectPrompt(prompt.__identifier)"' not in mobile_prompt_detail_block
+
+
 def test_preset_editor_template_uses_dedicated_prompt_toggle_input_skin_override():
     source = read_project_file('templates/modals/detail_preset_fullscreen.html')
     css_source = read_project_file('static/css/modules/components.css')
@@ -2095,6 +2284,19 @@ def test_preset_editor_js_exposes_mobile_header_state_and_helpers():
         assert token in source, f'missing mobile header state/helper contract token: {token}'
 
 
+def test_preset_editor_js_exposes_mobile_prompt_detail_view_state_and_helpers_mobile_prompt_detail_view():
+    source = read_project_file('static/js/components/presetEditor.js')
+
+    required_tokens = [
+        'showMobilePromptDetailView:',
+        'openMobilePromptDetailView() {',
+        'closeMobilePromptDetailView() {',
+    ]
+
+    for token in required_tokens:
+        assert token in source, f'missing mobile prompt detail view contract token: {token}'
+
+
 def test_preset_editor_runtime_reveals_mobile_header_for_more_menu():
     run_preset_editor_runtime_check(
         """
@@ -2213,6 +2415,146 @@ def test_preset_editor_runtime_clears_mobile_header_state_on_close():
         }
         if (editor.presetEditorLastScrollTop !== 0) {
           throw new Error(`expected closeEditor to reset last scroll position, got ${editor.presetEditorLastScrollTop}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_select_prompt_enters_mobile_prompt_detail_view():
+    run_preset_editor_runtime_check(
+        """
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+        editor.editingPresetFile = {
+          id: 'preset-1',
+          preset_kind: 'textgen',
+          raw_data: {},
+          editor_profile: {
+            id: 'st_chat_completion_preset',
+            family: 'st_mirror',
+            sections: [{ id: 'prompt_manager', label: '提示词管理' }],
+            fields: {
+              prompts: {
+                id: 'prompts',
+                storage_key: 'prompts',
+                section: 'prompt_manager',
+                control: 'prompt_workspace',
+              },
+            },
+          },
+          reader_view: {
+            family: 'prompt_manager',
+            groups: [{ id: 'prompts', label: 'Prompt 条目' }],
+            items: [],
+            stats: {},
+          },
+        };
+        editor.editingData = {
+          prompts: [
+            { identifier: 'main', name: 'Main', content: 'hello' },
+            { identifier: 'summary', name: 'Summary', content: 'world' },
+          ],
+          prompt_order: ['main', 'summary'],
+        };
+        editor.activeWorkspace = 'prompts';
+        editor.showMobilePromptDetailView = false;
+        editor.refreshEditorCollections();
+
+        editor.selectPrompt('summary');
+
+        if (editor.activePromptId !== 'summary') {
+          throw new Error(`expected prompt selection to switch active prompt, got ${editor.activePromptId}`);
+        }
+        if (editor.showMobilePromptDetailView !== true) {
+          throw new Error(`expected mobile prompt selection to open detail view, got ${editor.showMobilePromptDetailView}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_closes_mobile_prompt_detail_view_without_clearing_selection():
+    run_preset_editor_runtime_check(
+        """
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+        editor.editingData = {
+          prompts: [
+            { identifier: 'main', name: 'Main', content: 'hello' },
+            { identifier: 'summary', name: 'Summary', content: 'world' },
+          ],
+          prompt_order: ['main', 'summary'],
+        };
+        editor.activeWorkspace = 'prompts';
+        editor.activePromptId = 'summary';
+        editor.showMobilePromptDetailView = true;
+        editor.refreshEditorCollections();
+
+        editor.closeMobilePromptDetailView();
+
+        if (editor.showMobilePromptDetailView !== false) {
+          throw new Error(`expected closing mobile prompt detail view to hide detail pane, got ${editor.showMobilePromptDetailView}`);
+        }
+        if (editor.activePromptId !== 'summary') {
+          throw new Error(`expected closing mobile prompt detail view to preserve selection, got ${editor.activePromptId}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_resets_mobile_prompt_detail_view_on_workspace_switch_and_close():
+    run_preset_editor_runtime_check(
+        """
+        editor.$store = { global: { deviceType: 'mobile', showToast() {} } };
+        editor.editingPresetFile = {
+          id: 'preset-1',
+          preset_kind: 'textgen',
+          raw_data: {},
+          editor_profile: {
+            id: 'st_chat_completion_preset',
+            family: 'st_mirror',
+            sections: [
+              { id: 'prompt_manager', label: '提示词管理' },
+              { id: 'output_and_reasoning', label: '输出与思考' },
+            ],
+            fields: {
+              prompts: {
+                id: 'prompts',
+                storage_key: 'prompts',
+                section: 'prompt_manager',
+                control: 'prompt_workspace',
+              },
+            },
+          },
+          reader_view: {
+            family: 'prompt_manager',
+            groups: [
+              { id: 'prompts', label: 'Prompt 条目' },
+              { id: 'output_and_reasoning', label: '输出与思考' },
+            ],
+            items: [],
+            stats: {},
+          },
+        };
+        editor.editingData = {
+          prompts: [
+            { identifier: 'main', name: 'Main', content: 'hello' },
+            { identifier: 'summary', name: 'Summary', content: 'world' },
+          ],
+          prompt_order: ['main', 'summary'],
+        };
+        editor.activeWorkspace = 'prompts';
+        editor.activePromptId = 'summary';
+        editor.showMobilePromptDetailView = true;
+        editor.refreshEditorCollections();
+
+        editor.selectWorkspace('output_and_reasoning');
+        if (editor.showMobilePromptDetailView !== false) {
+          throw new Error(`expected workspace switch to reset mobile prompt detail view, got ${editor.showMobilePromptDetailView}`);
+        }
+
+        editor.activeWorkspace = 'prompts';
+        editor.showMobilePromptDetailView = true;
+        editor.closeEditor();
+        if (editor.showMobilePromptDetailView !== false) {
+          throw new Error(`expected closeEditor to reset mobile prompt detail view, got ${editor.showMobilePromptDetailView}`);
         }
         """
     )
