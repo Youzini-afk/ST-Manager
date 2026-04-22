@@ -1043,6 +1043,57 @@ def test_beautify_grid_supports_settings_fullscreen_and_resets_on_mobile_close()
     )
 
 
+def test_beautify_grid_aligns_settings_preview_device_with_current_viewport():
+    run_beautify_grid_runtime_check(
+        '''
+        const createComponent = (matches, initialDevice) => {
+          globalThis.window = {
+            matchMedia: () => ({ matches }),
+            innerWidth: matches ? 390 : 1280,
+            addEventListener: () => {},
+          };
+
+          const component = module.default();
+          component.$store = {
+            global: {
+              currentMode: 'beautify',
+              beautifyWorkspace: 'packages',
+              beautifyStageMode: 'preview',
+              beautifyPreviewDevice: initialDevice,
+              beautifyMobileFullscreenOpen: false,
+              beautifyActiveDetail: {
+                id: 'pkg-1',
+                variants: {
+                  pc: { id: 'pc', platform: 'pc', wallpaper_ids: [] },
+                  mobile: { id: 'mobile', platform: 'mobile', wallpaper_ids: [] },
+                },
+                wallpapers: {},
+                screenshots: {},
+                identity_overrides: {},
+              },
+              beautifyActiveVariant: { id: 'pc', platform: 'pc', wallpaper_ids: [] },
+              beautifyActiveWallpaper: null,
+              showToast: () => {},
+            },
+          };
+          return component;
+        };
+
+        const mobileComponent = createComponent(true, 'pc');
+        mobileComponent.switchBeautifyWorkspace('settings');
+        if (mobileComponent.$store.global.beautifyPreviewDevice !== 'mobile') {
+          throw new Error('settings workspace should align preview device to mobile on mobile viewport');
+        }
+
+        const desktopComponent = createComponent(false, 'mobile');
+        desktopComponent.switchBeautifyWorkspace('settings');
+        if (desktopComponent.$store.global.beautifyPreviewDevice !== 'pc') {
+          throw new Error('settings workspace should align preview device to pc on desktop viewport');
+        }
+        '''
+    )
+
+
 def test_beautify_grid_closes_mobile_fullscreen_when_switching_to_settings_workspace():
     run_beautify_grid_runtime_check(
         '''

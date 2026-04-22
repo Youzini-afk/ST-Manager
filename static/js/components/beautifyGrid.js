@@ -188,7 +188,17 @@ export default function beautifyGrid() {
       this.requestPreviewReset();
     },
 
+    alignSettingsPreviewDeviceToViewport() {
+      if (this.workspace !== "settings") {
+        return;
+      }
+      this.selectedVariantPlatform = this.isMobileBeautifyViewport()
+        ? "mobile"
+        : "pc";
+    },
+
     syncMobileFullscreenState() {
+      this.alignSettingsPreviewDeviceToViewport();
       if (this.mobileFullscreenOpen && !this.isMobileFullscreenEnabled()) {
         this.closeMobilePreviewAndReset();
       }
@@ -474,6 +484,7 @@ export default function beautifyGrid() {
       }
       this.workspace = workspace === "settings" ? "settings" : "packages";
       if (this.workspace === "settings") {
+        this.alignSettingsPreviewDeviceToViewport();
         this.stageMode = "preview";
         this.fetchGlobalSettings();
       }

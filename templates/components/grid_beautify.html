@@ -529,146 +529,144 @@
             </div>
           </div>
         </template>
+      </div>
+    </template>
 
-        <template x-if="showMobileFullscreen">
-          <div class="beautify-mobile-fullscreen">
-            <div class="beautify-mobile-topbar">
+    <template x-if="showMobileFullscreen">
+      <div class="beautify-mobile-fullscreen">
+        <div class="beautify-mobile-topbar">
+          <button
+            type="button"
+            class="beautify-soft-btn beautify-mobile-back-btn"
+            @click="closeMobilePreviewAndReset()"
+          >
+            返回
+          </button>
+
+          <template x-if="beautifyWorkspace === 'settings'">
+            <div class="beautify-detail-heading">全局默认预览</div>
+          </template>
+
+          <template
+            x-if="beautifyWorkspace !== 'settings' && stageMode === 'preview'"
+          >
+            <div class="beautify-mobile-topbar-actions">
+              <div
+                class="beautify-device-switches beautify-mobile-device-switches"
+              >
+                <button
+                  type="button"
+                  class="beautify-device-btn"
+                  :class="selectedVariantPlatform === 'pc' ? 'is-active' : ''"
+                  :disabled="!hasPcVariant"
+                  @click="previewPlatform('pc')"
+                >
+                  PC
+                </button>
+                <button
+                  type="button"
+                  class="beautify-device-btn"
+                  :class="selectedVariantPlatform === 'mobile' ? 'is-active' : ''"
+                  :disabled="!hasMobileVariant"
+                  @click="previewPlatform('mobile')"
+                >
+                  移动端
+                </button>
+                <button
+                  type="button"
+                  class="beautify-device-btn"
+                  :class="selectedVariantPlatform === 'dual' ? 'is-active' : ''"
+                  :disabled="!hasDualVariant"
+                  @click="previewPlatform('dual')"
+                >
+                  双端
+                </button>
+              </div>
               <button
                 type="button"
-                class="beautify-soft-btn beautify-mobile-back-btn"
-                @click="closeMobilePreviewAndReset()"
+                class="beautify-soft-btn"
+                @click="cycleWallpaper()"
+                :disabled="wallpaperOptions.length === 0"
               >
-                返回
+                壁纸切换
               </button>
+            </div>
+          </template>
 
-              <template x-if="beautifyWorkspace === 'settings'">
-                <div class="beautify-detail-heading">全局默认预览</div>
-              </template>
+          <template
+            x-if="beautifyWorkspace !== 'settings' && stageMode === 'screenshot'"
+          >
+            <div class="beautify-detail-heading">截图查看</div>
+          </template>
+        </div>
 
-              <template
-                x-if="beautifyWorkspace !== 'settings' && stageMode === 'preview'"
-              >
-                <div class="beautify-mobile-topbar-actions">
-                  <div
-                    class="beautify-device-switches beautify-mobile-device-switches"
-                  >
-                    <button
-                      type="button"
-                      class="beautify-device-btn"
-                      :class="selectedVariantPlatform === 'pc' ? 'is-active' : ''"
-                      :disabled="!hasPcVariant"
-                      @click="previewPlatform('pc')"
-                    >
-                      PC
-                    </button>
-                    <button
-                      type="button"
-                      class="beautify-device-btn"
-                      :class="selectedVariantPlatform === 'mobile' ? 'is-active' : ''"
-                      :disabled="!hasMobileVariant"
-                      @click="previewPlatform('mobile')"
-                    >
-                      移动端
-                    </button>
-                    <button
-                      type="button"
-                      class="beautify-device-btn"
-                      :class="selectedVariantPlatform === 'dual' ? 'is-active' : ''"
-                      :disabled="!hasDualVariant"
-                      @click="previewPlatform('dual')"
-                    >
-                      双端
-                    </button>
+        <div class="beautify-mobile-stage">
+          <template x-if="stageMode === 'preview'">
+            <div class="beautify-preview-stage beautify-mobile-preview-stage">
+              <template x-if="!isPreviewLoaded">
+                <div class="beautify-preview-unloaded-card">
+                  <div class="beautify-detail-heading">
+                    <span
+                      x-text="beautifyWorkspace === 'settings' ? '全局默认预览' : '原生 ST 预览'"
+                    ></span>
+                  </div>
+                  <div class="beautify-empty-copy">
+                    预览默认不加载。点击后会按需加载原生 ST
+                    样式、图标和相关资源。
                   </div>
                   <button
                     type="button"
-                    class="beautify-soft-btn"
-                    @click="cycleWallpaper()"
-                    :disabled="wallpaperOptions.length === 0"
+                    class="beautify-primary-btn"
+                    @click="loadPreview()"
                   >
-                    壁纸切换
+                    <span
+                      x-text="beautifyWorkspace === 'settings' ? '加载全局默认预览' : '加载原生 ST 预览'"
+                    ></span>
                   </button>
                 </div>
               </template>
 
-              <template
-                x-if="beautifyWorkspace !== 'settings' && stageMode === 'screenshot'"
-              >
-                <div class="beautify-detail-heading">截图查看</div>
-              </template>
-            </div>
-
-            <div class="beautify-mobile-stage">
-              <template x-if="stageMode === 'preview'">
+              <template x-if="isPreviewLoaded">
                 <div
-                  class="beautify-preview-stage beautify-mobile-preview-stage"
+                  class="beautify-preview-frame-shell"
+                  :class="previewShellMode === 'mobile' ? 'is-mobile' : 'is-pc'"
                 >
-                  <template x-if="!isPreviewLoaded">
-                    <div class="beautify-preview-unloaded-card">
-                      <div class="beautify-detail-heading">
-                        <span
-                          x-text="beautifyWorkspace === 'settings' ? '全局默认预览' : '原生 ST 预览'"
-                        ></span>
-                      </div>
-                      <div class="beautify-empty-copy">
-                        预览默认不加载。点击后会按需加载原生 ST
-                        样式、图标和相关资源。
-                      </div>
-                      <button
-                        type="button"
-                        class="beautify-primary-btn"
-                        @click="loadPreview()"
-                      >
-                        <span
-                          x-text="beautifyWorkspace === 'settings' ? '加载全局默认预览' : '加载原生 ST 预览'"
-                        ></span>
-                      </button>
-                    </div>
-                  </template>
-
-                  <template x-if="isPreviewLoaded">
-                    <div
-                      class="beautify-preview-frame-shell"
-                      :class="previewShellMode === 'mobile' ? 'is-mobile' : 'is-pc'"
-                    >
-                      <div
-                        x-ref="previewHost"
-                        class="beautify-preview-host"
-                        :data-preview-platform="previewShellMode"
-                        data-runtime-owner="beautify-preview"
-                        data-runtime-label="Beautify Native ST Preview"
-                      ></div>
-                    </div>
-                  </template>
-                </div>
-              </template>
-
-              <template x-if="stageMode === 'screenshot'">
-                <div
-                  class="beautify-screenshot-stage beautify-mobile-screenshot-stage"
-                >
-                  <template x-if="activeScreenshot">
-                    <img
-                      class="beautify-screenshot-stage-image"
-                      :src="wallpaperPreviewUrl(activeScreenshot?.file || '')"
-                      :alt="activeScreenshot?.filename || '截图预览'"
-                    />
-                  </template>
-
-                  <template x-if="!activeScreenshot">
-                    <div class="beautify-screenshot-stage-copy">
-                      <div class="beautify-detail-heading">截图查看</div>
-                      <div class="beautify-empty-copy">
-                        从侧边栏导入截图后，可在这里对照当前美化包的效果。
-                      </div>
-                      <div class="beautify-empty-inline">暂未选择截图。</div>
-                    </div>
-                  </template>
+                  <div
+                    x-ref="previewHost"
+                    class="beautify-preview-host"
+                    :data-preview-platform="previewShellMode"
+                    data-runtime-owner="beautify-preview"
+                    data-runtime-label="Beautify Native ST Preview"
+                  ></div>
                 </div>
               </template>
             </div>
-          </div>
-        </template>
+          </template>
+
+          <template x-if="stageMode === 'screenshot'">
+            <div
+              class="beautify-screenshot-stage beautify-mobile-screenshot-stage"
+            >
+              <template x-if="activeScreenshot">
+                <img
+                  class="beautify-screenshot-stage-image"
+                  :src="wallpaperPreviewUrl(activeScreenshot?.file || '')"
+                  :alt="activeScreenshot?.filename || '截图预览'"
+                />
+              </template>
+
+              <template x-if="!activeScreenshot">
+                <div class="beautify-screenshot-stage-copy">
+                  <div class="beautify-detail-heading">截图查看</div>
+                  <div class="beautify-empty-copy">
+                    从侧边栏导入截图后，可在这里对照当前美化包的效果。
+                  </div>
+                  <div class="beautify-empty-inline">暂未选择截图。</div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
       </div>
     </template>
 

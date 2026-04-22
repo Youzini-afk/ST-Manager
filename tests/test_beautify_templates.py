@@ -242,6 +242,15 @@ def test_beautify_grid_template_simplifies_mobile_fullscreen_shell_and_uses_rese
     assert 'mobileDrawerSummary' not in template
 
 
+def test_beautify_grid_template_places_mobile_fullscreen_shell_outside_package_only_branch():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert re.search(
+        r'''<template x-if="beautifyWorkspace !== 'settings' && activePackage">[\s\S]*?savePackageIdentityOverrides\(\)[\s\S]*?</template>\s*<template x-if="showMobileFullscreen">''',
+        template,
+    )
+
+
 def test_beautify_layout_css_keeps_mobile_fullscreen_stage_without_drawer_rules():
     css = read_project_file('static/css/modules/view-beautify.css')
     fullscreen_block = extract_css_block_for_selector(css, '.beautify-mobile-fullscreen')
