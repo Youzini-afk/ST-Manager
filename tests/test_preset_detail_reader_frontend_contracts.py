@@ -188,6 +188,14 @@ def test_preset_detail_reader_js_exposes_prompt_workspace_helpers():
     assert 'getPromptPositionLabel(item) {' in source
 
 
+def test_preset_detail_reader_js_exposes_mobile_detail_view_state_and_actions():
+    source = read_project_file('static/js/components/presetDetailReader.js')
+
+    assert 'showMobileDetailView:' in source
+    assert 'openMobileDetailView() {' in source
+    assert 'closeMobileDetailView() {' in source
+
+
 def test_preset_detail_reader_js_exposes_scalar_workspace_helpers():
     source = read_project_file('static/js/components/presetDetailReader.js')
 
@@ -281,7 +289,7 @@ def test_preset_detail_reader_template_localizes_remaining_prompt_copy():
     assert 'Identifier' not in source
 
 
-def test_preset_detail_reader_template_adds_two_row_mobile_header_contracts():
+def test_preset_detail_reader_template_mobile_header_only_renders_for_mobile_list_page():
     source = read_project_file('templates/modals/detail_preset_popup.html')
 
     mobile_header_block = extract_div_block(source, 'preset-reader-mobile-header')
@@ -290,24 +298,52 @@ def test_preset_detail_reader_template_adds_two_row_mobile_header_contracts():
 
     assert 'preset-reader-mobile-header-main' in mobile_header_block
     assert 'preset-reader-mobile-header-secondary' in mobile_header_block
+    assert 'x-show="$store.global.deviceType === \'mobile\' && !showMobileDetailView"' in mobile_header_block
     assert '@click="toggleMobileSidebar()"' in main_header_block
     assert '@click="openFullscreenEditor()"' in main_header_block
     assert '@click="closeModal()"' in main_header_block
     assert '@click="toggleMobileMoreMenu()"' in secondary_header_block
+    assert '>\n          编辑\n        </button>' in main_header_block
 
 
-def test_preset_detail_reader_template_moves_secondary_mobile_actions_into_more_menu():
+def test_preset_detail_reader_template_mobile_more_menu_is_list_page_only_and_has_no_detail_toggle():
     source = read_project_file('templates/modals/detail_preset_popup.html')
 
     mobile_header_block = extract_div_block(source, 'preset-reader-mobile-header')
     main_header_block = extract_div_block(mobile_header_block, 'preset-reader-mobile-header-main')
     more_menu_block = extract_div_block(source, 'preset-reader-mobile-more-menu')
 
-    assert 'toggleMobileRightPanel()' in more_menu_block
+    assert 'x-show="$store.global.deviceType === \'mobile\' && showMobileMoreMenu && !showMobileDetailView"' in more_menu_block
+    assert 'toggleMobileRightPanel()' not in more_menu_block
+    assert '打开详情' not in more_menu_block
+    assert '收起详情' not in more_menu_block
     assert '@click="exportActivePreset(); showMobileMoreMenu = false"' in more_menu_block
     assert '@click="openAdvancedExtensions(); showMobileMoreMenu = false"' in more_menu_block
     assert '@click="exportActivePreset(); showMobileMoreMenu = false"' not in main_header_block
     assert '@click="openAdvancedExtensions(); showMobileMoreMenu = false"' not in main_header_block
+
+
+def test_preset_detail_reader_template_hides_central_list_on_mobile_detail_page():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    assert 'class="flex-1 min-w-0 flex flex-col border-r border-[var(--border-light)] md:border-r-0 lg:border-r lg:border-[var(--border-light)]"' in source
+    assert "'hidden': $store.global.deviceType === 'mobile' && showMobileDetailView" in source
+
+
+def test_preset_detail_reader_template_repurposes_detail_panel_for_desktop_and_mobile_detail_view():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    assert "x-show=\"($store.global.deviceType !== 'mobile' && showRightPanel) || ($store.global.deviceType === 'mobile' && showMobileDetailView)\"" in source
+    assert "'flex': $store.global.deviceType === 'mobile' && showMobileDetailView" in source
+    assert "'hidden': $store.global.deviceType === 'mobile' && !showMobileDetailView" in source
+
+
+def test_preset_detail_reader_template_adds_mobile_detail_header_and_body_hooks():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    assert 'preset-reader-mobile-detail-header' in source
+    assert 'preset-reader-mobile-detail-body' in source
+    assert '@click="closeMobileDetailView()"' in source
 
 
 def test_preset_detail_reader_template_compacts_mobile_title_meta_and_marks_scroll_region():
@@ -331,7 +367,6 @@ def test_preset_detail_reader_js_exposes_mobile_header_state_and_helpers():
     assert 'handleMobileContentScroll(event) {' in source
     assert 'toggleMobileMoreMenu() {' in source
     assert 'toggleMobileSidebar() {' in source
-    assert 'toggleMobileRightPanel() {' in source
     assert 'getMobileHeaderMetaLine() {' in source
     assert 'getMobileHeaderContextLabel() {' in source
     assert 'getMobileHeaderCountLabel() {' in source
@@ -353,19 +388,21 @@ def test_preset_detail_reader_css_adds_mobile_hidden_header_contracts():
     assert 'transform: translateY(' in hidden_header_block
 
 
-def test_preset_detail_reader_css_positions_mobile_drawers_with_header_height_variable():
+def test_preset_detail_reader_css_positions_mobile_sidebar_drawer_with_header_height_variable():
     source = read_project_file('static/css/modules/modal-detail.css')
     mobile_block = extract_media_block(source, '@media (max-width: 768px)')
-    more_menu_block = extract_exact_css_block(mobile_block, '.preset-reader-modal .preset-reader-mobile-more-menu')
+    sidebar_block = extract_exact_css_block(mobile_block, '.preset-reader-modal .preset-reader-mobile-sidebar')
 
-    assert 'top: var(--preset-reader-header-height);' in more_menu_block
+    assert 'top: var(--preset-reader-header-height);' in sidebar_block
 
 
-def test_preset_detail_reader_template_mobile_drawers_do_not_pin_to_top_zero():
+def test_preset_detail_reader_template_uses_mobile_fullscreen_detail_shell_hooks():
     source = read_project_file('templates/modals/detail_preset_popup.html')
 
-    assert "'fixed left-0 top-0 bottom-0 max-w-[88vw] shadow-2xl'" not in source
-    assert "'fixed right-0 top-0 bottom-0 z-40 max-w-[92vw] shadow-2xl'" not in source
+    assert 'preset-reader-overlay' in source
+    assert 'preset-reader-mobile-detail-panel' in source
+    assert 'preset-reader-mobile-detail-header' in source
+    assert 'preset-reader-mobile-detail-body' in source
 
 
 def test_preset_detail_reader_runtime_mobile_header_meta_line_includes_source_label():
@@ -390,17 +427,67 @@ def test_preset_detail_reader_runtime_mobile_header_meta_line_includes_source_la
     )
 
 
-def test_preset_detail_reader_css_positions_mobile_left_and_right_drawers_with_header_height_variable():
+def test_preset_detail_reader_css_adds_fullscreen_mobile_overlay_and_detail_panel_contracts():
     source = read_project_file('static/css/modules/modal-detail.css')
     mobile_block = extract_media_block(source, '@media (max-width: 768px)')
-    left_block = extract_exact_css_block(mobile_block, '.preset-reader-modal .preset-reader-mobile-sidebar')
-    right_block = extract_exact_css_block(mobile_block, '.preset-reader-modal .preset-reader-mobile-detail-panel')
+    overlay_block = extract_exact_css_block(mobile_block, '.preset-reader-overlay')
+    modal_block = extract_exact_css_block(mobile_block, '.preset-reader-modal')
+    detail_panel_block = extract_exact_css_block(
+        mobile_block,
+        '.preset-reader-modal .preset-reader-mobile-detail-panel',
+    )
+    detail_header_block = extract_exact_css_block(
+        mobile_block,
+        '.preset-reader-modal .preset-reader-mobile-detail-header',
+    )
+    detail_body_block = extract_exact_css_block(
+        mobile_block,
+        '.preset-reader-modal .preset-reader-mobile-detail-body',
+    )
 
-    assert 'top: var(--preset-reader-header-height);' in left_block
-    assert 'top: var(--preset-reader-header-height);' in right_block
+    assert 'padding: 0;' in overlay_block
+    assert 'align-items: stretch;' in overlay_block
+    assert 'justify-content: stretch;' in overlay_block
+
+    assert 'width: 100vw;' in modal_block
+    assert 'max-width: none;' in modal_block
+    assert 'height: var(--app-viewport-height-safe, var(--app-viewport-height, 100dvh));' in modal_block
+    assert 'min-height: var(' in modal_block
+    assert 'border-radius: 0;' in modal_block
+    assert 'box-shadow: none;' in modal_block
+
+    assert 'width: 100%;' in detail_panel_block
+    assert 'max-width: none;' in detail_panel_block
+    assert 'height: 100%;' in detail_panel_block
+    assert 'border-left: none;' in detail_panel_block
+    assert 'top: var(--preset-reader-header-height);' not in detail_panel_block
+
+    assert 'position: sticky;' in detail_header_block
+    assert 'top: 0;' in detail_header_block
+
+    assert 'overflow-y: auto;' in detail_body_block
+    assert 'padding-bottom:' in detail_body_block
 
 
-def test_preset_detail_reader_runtime_reveals_mobile_header_for_drawers_and_more_menu():
+def test_preset_detail_reader_css_keeps_sidebar_and_more_menu_tied_to_header_height_without_old_detail_panel_anchor():
+    source = read_project_file('static/css/modules/modal-detail.css')
+    mobile_block = extract_media_block(source, '@media (max-width: 768px)')
+    more_menu_block = extract_exact_css_block(
+        mobile_block,
+        '.preset-reader-modal .preset-reader-mobile-more-menu',
+    )
+    sidebar_block = extract_exact_css_block(mobile_block, '.preset-reader-modal .preset-reader-mobile-sidebar')
+    detail_panel_block = extract_exact_css_block(
+        mobile_block,
+        '.preset-reader-modal .preset-reader-mobile-detail-panel',
+    )
+
+    assert 'top: var(--preset-reader-header-height);' in more_menu_block
+    assert 'top: var(--preset-reader-header-height);' in sidebar_block
+    assert 'top: var(--preset-reader-header-height);' not in detail_panel_block
+
+
+def test_preset_detail_reader_runtime_reveals_mobile_header_for_sidebar_and_more_menu():
     run_preset_detail_reader_runtime_check(
         """
         reader.$store.global.deviceType = 'mobile';
@@ -419,12 +506,6 @@ def test_preset_detail_reader_runtime_reveals_mobile_header_for_drawers_and_more
         reader.toggleMobileSidebar();
         if (!reader.showMobileSidebar || reader.presetMobileHeaderHidden) {
           throw new Error('expected sidebar open to reveal header');
-        }
-
-        reader.presetMobileHeaderHidden = true;
-        reader.toggleMobileRightPanel();
-        if (!reader.showRightPanel || reader.presetMobileHeaderHidden) {
-          throw new Error('expected right panel open to reveal header');
         }
         """
     )
@@ -445,6 +526,69 @@ def test_preset_detail_reader_runtime_clears_mobile_header_state_on_close():
 
         if (reader.showMobileSidebar || reader.showRightPanel || reader.showMobileMoreMenu || reader.presetMobileHeaderHidden) {
           throw new Error('expected closeModal to clear mobile header state');
+        }
+        """
+    )
+
+
+def test_preset_detail_reader_runtime_mobile_prompt_selection_enters_detail_view_and_returns_to_list():
+    run_preset_detail_reader_runtime_check(
+        """
+        reader.$store.global.deviceType = 'mobile';
+        reader.updatePresetLayoutMetrics = () => {};
+        reader.activePresetDetail = {
+          reader_view: {
+            family: 'prompt_manager',
+            groups: [
+              { id: 'prompts', label: 'Prompts' },
+              { id: 'extensions', label: 'Extensions' },
+            ],
+            items: [
+              {
+                id: 'prompt:main',
+                type: 'prompt',
+                group: 'prompts',
+                title: 'Main Prompt',
+                payload: { identifier: 'main', content: 'hello' },
+                prompt_meta: { order_index: 0 },
+              },
+              {
+                id: 'ext:memory',
+                type: 'extension',
+                group: 'extensions',
+                title: 'Memory',
+                payload: { value: { enabled: true } },
+              },
+            ],
+            stats: {},
+          },
+        };
+
+        reader.initializeReaderState();
+        if (reader.showMobileDetailView !== false) {
+          throw new Error(`expected mobile reader to start in list view, got ${reader.showMobileDetailView}`);
+        }
+
+        reader.showRightPanel = false;
+        reader.selectPrompt('prompt:main');
+
+        if (reader.showMobileDetailView !== true) {
+          throw new Error('expected prompt selection on mobile to enter detail view');
+        }
+        if (reader.showRightPanel) {
+          throw new Error('expected mobile prompt detail flow to avoid showRightPanel');
+        }
+        if (reader.activeContextItem?.id !== 'prompt:main') {
+          throw new Error(`expected prompt context to remain active, got ${reader.activeContextItem?.id}`);
+        }
+
+        reader.closeMobileDetailView();
+
+        if (reader.showMobileDetailView !== false) {
+          throw new Error('expected closeMobileDetailView to return mobile prompt flow to list view');
+        }
+        if (reader.activeContextItem?.id !== 'prompt:main') {
+          throw new Error(`expected closing mobile detail view to preserve prompt context, got ${reader.activeContextItem?.id}`);
         }
         """
     )
@@ -520,6 +664,48 @@ def test_preset_detail_reader_runtime_initializes_prompt_workspace_and_switches_
         }
         if (reader.activeContextItem?.id !== 'prompt:main') {
           throw new Error(`expected prompt context after selectPrompt, got ${reader.activeContextItem?.id}`);
+        }
+        """
+    )
+
+
+def test_preset_detail_reader_runtime_mobile_generic_selection_enters_detail_view():
+    run_preset_detail_reader_runtime_check(
+        """
+        reader.$store.global.deviceType = 'mobile';
+        reader.updatePresetLayoutMetrics = () => {};
+        reader.activePresetDetail = {
+          reader_view: {
+            family: 'generic',
+            groups: [
+              { id: 'extensions', label: 'Extensions' },
+              { id: 'structured_objects', label: 'Structured Objects' },
+            ],
+            items: [
+              {
+                id: 'ext:memory',
+                type: 'extension',
+                group: 'extensions',
+                title: 'Memory',
+                payload: { value: { enabled: true } },
+              },
+            ],
+            stats: { total_count: 1 },
+          },
+        };
+
+        reader.initializeReaderState();
+        reader.showRightPanel = false;
+        reader.selectItem('ext:memory');
+
+        if (reader.showMobileDetailView !== true) {
+          throw new Error('expected generic selection on mobile to enter detail view');
+        }
+        if (reader.showRightPanel) {
+          throw new Error('expected mobile generic detail flow to avoid showRightPanel');
+        }
+        if (reader.activeContextItem?.id !== 'ext:memory') {
+          throw new Error(`expected generic context to stay active, got ${reader.activeContextItem?.id}`);
         }
         """
     )
@@ -1488,7 +1674,7 @@ def test_preset_detail_reader_template_uses_reader_view_three_column_layout_cont
     source = read_project_file('templates/modals/detail_preset_popup.html')
 
     assert 'x-if="!isPromptWorkspaceReader"' in source
-    assert 'x-show="showRightPanel || $store.global.deviceType !== ' in source
+    assert "x-show=\"($store.global.deviceType !== 'mobile' && showRightPanel) || ($store.global.deviceType === 'mobile' && showMobileDetailView)\"" in source
     assert 'x-text="activeItem?.title ||' in source
     assert 'readerStats.prompt_count' not in source
     assert 'readerStats.unknown_count' not in source
@@ -1658,7 +1844,7 @@ def test_preset_detail_reader_template_keeps_right_panel_scroll_and_prompt_state
     source = read_project_file('templates/modals/detail_preset_popup.html')
 
     assert 'class="w-full lg:w-[340px] xl:w-[380px] flex-shrink-0 bg-[var(--bg-sub)] border-l border-[var(--border-light)] flex flex-col min-h-0"' in source
-    assert 'class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4"' in source
+    assert 'class="preset-reader-mobile-detail-body flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4"' in source
     assert 'class="min-w-0 flex flex-1 items-start gap-3"' in source
 
 

@@ -75,6 +75,7 @@ export default function presetDetailReader() {
     searchTerm: "",
     uiFilter: "all",
     showRightPanel: true,
+    showMobileDetailView: false,
     showMobileSidebar: false,
     presetMobileHeaderHidden: false,
     presetLastScrollTop: 0,
@@ -93,9 +94,11 @@ export default function presetDetailReader() {
       this.$watch?.("$store.global.deviceType", (deviceType) => {
         this.resetMobileHeaderState();
         if (deviceType !== "mobile") {
+          this.showMobileDetailView = false;
           this.showMobileSidebar = false;
           this.showRightPanel = true;
         } else {
+          this.showMobileDetailView = false;
           this.showMobileSidebar = false;
           this.showRightPanel = false;
         }
@@ -330,6 +333,22 @@ export default function presetDetailReader() {
       this.showRightPanel = !this.showRightPanel;
     },
 
+    openMobileDetailView() {
+      this.revealMobileHeader();
+      this.showMobileMoreMenu = false;
+      this.showMobileSidebar = false;
+      this.showMobileDetailView = true;
+      this.showRightPanel = false;
+    },
+
+    closeMobileDetailView() {
+      this.revealMobileHeader();
+      this.showMobileMoreMenu = false;
+      this.showMobileSidebar = false;
+      this.showMobileDetailView = false;
+      this.showRightPanel = false;
+    },
+
     toggleMobileMoreMenu() {
       this.revealMobileHeader();
       this.showMobileMoreMenu = !this.showMobileMoreMenu;
@@ -407,6 +426,7 @@ export default function presetDetailReader() {
       this.isLoading = true;
       this.showModal = true;
       this.showMobileSidebar = false;
+      this.showMobileDetailView = false;
       this.showRightPanel = this.$store?.global?.deviceType !== "mobile";
       this.resetMobileHeaderState();
       this.searchTerm = "";
@@ -461,6 +481,8 @@ export default function presetDetailReader() {
         this.refreshReaderCollections();
         if (this.$store?.global?.deviceType !== "mobile") {
           this.showRightPanel = true;
+        } else {
+          this.showMobileDetailView = false;
         }
         return;
       }
@@ -473,6 +495,8 @@ export default function presetDetailReader() {
       this.refreshReaderCollections();
       if (this.$store?.global?.deviceType !== "mobile") {
         this.showRightPanel = true;
+      } else {
+        this.showMobileDetailView = false;
       }
     },
 
@@ -486,6 +510,7 @@ export default function presetDetailReader() {
       this.searchTerm = "";
       this.uiFilter = "all";
       this.showRightPanel = this.$store?.global?.deviceType !== "mobile";
+      this.showMobileDetailView = false;
       this.showMobileSidebar = false;
       this.resetMobileHeaderState();
       this.refreshReaderCollections();
@@ -500,7 +525,9 @@ export default function presetDetailReader() {
       this.resetMobileHeaderState();
       this.updatePresetLayoutMetrics();
       if (this.$store?.global?.deviceType === "mobile") {
+        this.showMobileDetailView = false;
         this.showMobileSidebar = false;
+        this.showRightPanel = false;
       }
     },
 
@@ -519,22 +546,26 @@ export default function presetDetailReader() {
         this.activeItemId = "";
       }
       this.refreshReaderCollections();
-      this.showRightPanel = true;
       this.resetMobileHeaderState();
       this.updatePresetLayoutMetrics();
       if (this.$store?.global?.deviceType === "mobile") {
+        this.showMobileDetailView = false;
         this.showMobileSidebar = false;
+        this.showRightPanel = false;
+      } else {
+        this.showRightPanel = true;
       }
     },
 
     selectItem(itemId) {
       this.activeItemId = itemId || "";
       this.syncActiveReaderSelections();
-      this.showRightPanel = true;
       this.resetMobileHeaderState();
       this.updatePresetLayoutMetrics();
       if (this.$store?.global?.deviceType === "mobile") {
-        this.showMobileSidebar = false;
+        this.openMobileDetailView();
+      } else {
+        this.showRightPanel = true;
       }
     },
 
@@ -542,11 +573,12 @@ export default function presetDetailReader() {
       this.activeWorkspace = "prompts";
       this.activePromptId = itemId || "";
       this.refreshReaderCollections();
-      this.showRightPanel = true;
       this.resetMobileHeaderState();
       this.updatePresetLayoutMetrics();
       if (this.$store?.global?.deviceType === "mobile") {
-        this.showMobileSidebar = false;
+        this.openMobileDetailView();
+      } else {
+        this.showRightPanel = true;
       }
     },
 

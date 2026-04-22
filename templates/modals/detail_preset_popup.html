@@ -2,7 +2,7 @@
 <div
   x-show="showModal"
   x-cloak
-  class="modal-overlay z-modal-std flex items-center justify-center p-4"
+  class="modal-overlay preset-reader-overlay z-modal-std flex items-center justify-center p-4"
   @click.self="closeModal()"
   x-data="presetDetailReader()"
 >
@@ -12,7 +12,7 @@
     <div
       class="preset-reader-mobile-header"
       :class="($store.global.deviceType === 'mobile' && presetMobileHeaderHidden) ? 'is-mobile-hidden' : ''"
-      x-show="$store.global.deviceType === 'mobile'"
+      x-show="$store.global.deviceType === 'mobile' && !showMobileDetailView"
       x-ref="presetReaderMobileHeader"
     >
       <div class="preset-reader-mobile-header-main">
@@ -36,7 +36,7 @@
           @click="openFullscreenEditor()"
           class="btn-primary py-1.5 px-3 text-xs"
         >
-          全屏编辑
+          编辑
         </button>
         <button
           @click="closeModal()"
@@ -64,15 +64,10 @@
     </div>
 
     <div
-      x-show="$store.global.deviceType === 'mobile' && showMobileMoreMenu"
+      x-show="$store.global.deviceType === 'mobile' && showMobileMoreMenu && !showMobileDetailView"
       x-cloak
       class="preset-reader-mobile-more-menu"
     >
-      <button
-        @click="toggleMobileRightPanel()"
-        class="btn-secondary py-1.5 px-3 text-xs"
-        x-text="showRightPanel ? '收起详情' : '打开详情'"
-      ></button>
       <button
         @click="exportActivePreset(); showMobileMoreMenu = false"
         class="btn-secondary py-1.5 px-3 text-xs"
@@ -355,6 +350,10 @@
 
           <section
             class="flex-1 min-w-0 flex flex-col border-r border-[var(--border-light)] md:border-r-0 lg:border-r lg:border-[var(--border-light)]"
+            :class="{
+              'flex': $store.global.deviceType !== 'mobile' || !$store.global.deviceType || !showMobileDetailView,
+              'hidden': $store.global.deviceType === 'mobile' && showMobileDetailView
+            }"
           >
             <div
               class="px-4 py-3 border-b border-[var(--border-light)] bg-[var(--bg-body)] flex items-center justify-between gap-3"
@@ -494,7 +493,7 @@
 
                         <template x-if="item.type === 'structured'">
                           <div class="mt-3 text-[11px] text-[var(--text-dim)]">
-                            结构化内容可在右侧查看完整详情。
+                            结构化内容可在详情面板中查看完整信息。
                           </div>
                         </template>
                       </article>
@@ -844,16 +843,34 @@
           </section>
 
           <aside
-            x-show="showRightPanel || $store.global.deviceType !== 'mobile'"
+            x-show="($store.global.deviceType !== 'mobile' && showRightPanel) || ($store.global.deviceType === 'mobile' && showMobileDetailView)"
             class="w-full lg:w-[340px] xl:w-[380px] flex-shrink-0 bg-[var(--bg-sub)] border-l border-[var(--border-light)] flex flex-col min-h-0"
             :class="{
               'preset-reader-mobile-detail-panel': true,
               'fixed right-0 bottom-0 z-40 max-w-[92vw] shadow-2xl': $store.global.deviceType === 'mobile',
               'hidden lg:flex': $store.global.deviceType !== 'mobile',
-              'flex': $store.global.deviceType === 'mobile' && showRightPanel,
-              'hidden': $store.global.deviceType === 'mobile' && !showRightPanel
+              'flex': $store.global.deviceType === 'mobile' && showMobileDetailView,
+              'hidden': $store.global.deviceType === 'mobile' && !showMobileDetailView
             }"
           >
+            <div
+              x-show="$store.global.deviceType === 'mobile'"
+              class="preset-reader-mobile-detail-header p-4 border-b border-[var(--border-light)] flex items-center justify-between gap-3"
+            >
+              <button
+                @click="closeMobileDetailView()"
+                class="btn-secondary py-1.5 px-3 text-xs"
+              >
+                返回列表
+              </button>
+              <div class="min-w-0 flex-1 text-right">
+                <div class="text-[11px] text-[var(--text-dim)]">详情</div>
+                <div
+                  class="text-sm font-semibold text-[var(--text-main)] truncate"
+                  x-text="activeContextItem?.title || '未选择条目'"
+                ></div>
+              </div>
+            </div>
             <div class="p-4 border-b border-[var(--border-light)] space-y-3">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex flex-1 items-start gap-3">
@@ -890,14 +907,17 @@
                 </div>
                 <button
                   x-show="$store.global.deviceType === 'mobile'"
-                  @click="showRightPanel = false"
+                  @click="closeMobileDetailView()"
                   class="btn-secondary py-1 px-2 text-xs"
                 >
                   关闭
                 </button>
               </div>
 
-              <div class="grid grid-cols-2 gap-2 text-xs">
+              <div
+                x-show="$store.global.deviceType !== 'mobile'"
+                class="grid grid-cols-2 gap-2 text-xs"
+              >
                 <div
                   class="rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] p-3"
                 >
@@ -919,7 +939,9 @@
               </div>
             </div>
 
-            <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+            <div
+              class="preset-reader-mobile-detail-body flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4"
+            >
               <div class="hidden" x-show="!isPromptWorkspaceReader">
                 <span x-text="activeItem?.title || '未选择条目'"></span>
                 <span x-text="getItemFullDetail(activeItem)"></span>
