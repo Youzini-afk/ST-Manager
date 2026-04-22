@@ -405,6 +405,15 @@ def test_preset_detail_reader_template_uses_mobile_fullscreen_detail_shell_hooks
     assert 'preset-reader-mobile-detail-body' in source
 
 
+def test_preset_detail_reader_template_promotes_mobile_list_overlay_and_modal_to_fullscreen_shell():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    assert "class=\"modal-overlay preset-reader-overlay z-modal-std flex\"" in source
+    assert ":class=\"$store.global.deviceType === 'mobile' ? 'items-stretch justify-stretch p-0' : 'items-center justify-center p-4'\"" in source
+    assert "class=\"preset-reader-modal bg-[var(--bg-panel)] border border-[var(--border-light)] flex flex-col overflow-hidden\"" in source
+    assert ":class=\"$store.global.deviceType === 'mobile' ? 'w-screen max-w-none h-[100dvh] min-h-[100dvh] rounded-none shadow-none' : 'w-full max-w-7xl h-[90vh] rounded-2xl shadow-2xl'\"" in source
+
+
 def test_preset_detail_reader_runtime_mobile_header_meta_line_includes_source_label():
     run_preset_detail_reader_runtime_check(
         """
