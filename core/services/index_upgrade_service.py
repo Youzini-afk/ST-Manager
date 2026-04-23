@@ -25,9 +25,24 @@ from core.utils.image import extract_card_info
 logger = logging.getLogger(__name__)
 
 
+LEGACY_INDEX_TABLE_POLICY = {
+    'decision': 'keep',
+    'reason': 'legacy index tables are still used by runtime callers and cannot be removed safely yet',
+    'runtime_callers': (
+        'core.data.db_session.ensure_index_schema',
+        'core.services.index_service',
+    ),
+}
+
+
 def _print_and_log(message: str):
     print(message)
     logger.info(message)
+
+
+def get_legacy_index_table_policy() -> dict:
+    """Return the current compatibility decision for pre-v2 index tables."""
+    return dict(LEGACY_INDEX_TABLE_POLICY)
 
 
 def _ensure_worldinfo_projection_complete(conn, generation: int, inspected_books):

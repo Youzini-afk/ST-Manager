@@ -24,6 +24,8 @@ _worker_start_lock = threading.Lock()
 
 DEDUPABLE_JOB_TYPES = {'rebuild_scope', 'upsert_card', 'upsert_worldinfo_path', 'upsert_world_embedded', 'upsert_world_owner'}
 WORLDINFO_RECONCILE_JOB_TYPES = {'upsert_worldinfo_path', 'upsert_world_embedded', 'upsert_world_owner'}
+INDEX_JOB_DONE_RETENTION = 200
+INDEX_JOB_FAILED_RETENTION = 50
 
 
 def _connect(*, ensure_schema: bool = False):
@@ -115,7 +117,37 @@ def _mark_job_status(job_id: int, status: str, error_msg: str = ''):
             'UPDATE index_jobs SET status = ?, started_at = COALESCE(NULLIF(started_at, 0), strftime(\'%s\', "now")), finished_at = strftime(\'%s\', "now"), error_msg = ? WHERE id = ?',
             (status, error_msg, int(job_id)),
         )
+        _prune_terminal_jobs(conn)
         conn.commit()
+
+
+def _prune_terminal_jobs(conn):
+    _prune_jobs_by_status(conn, 'done', INDEX_JOB_DONE_RETENTION)
+    _prune_jobs_by_status(conn, 'failed', INDEX_JOB_FAILED_RETENTION)
+
+
+def _prune_jobs_by_status(conn, status: str, retention: int):
+    keep_count = max(int(retention), 0)
+    if keep_count == 0:
+        conn.execute('DELETE FROM index_jobs WHERE status = ?', (status,))
+        return
+
+    conn.execute(
+        '''
+        DELETE FROM index_jobs
+        WHERE status = ?
+          AND id NOT IN (
+              SELECT id FROM (
+                  SELECT id
+                  FROM index_jobs
+                  WHERE status = ?
+                  ORDER BY finished_at DESC, id DESC
+                  LIMIT ?
+              )
+          )
+        ''',
+        (status, status, keep_count),
+    )
 
 
 def _retry_resource_worldinfo_job(conn, source_path: str) -> bool:

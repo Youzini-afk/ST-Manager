@@ -74,6 +74,218 @@ def test_activate_generation_rejects_stale_generation(tmp_path):
     assert row == (2, 4, 'running', 0)
 
 
+def test_activate_generation_cleans_obsolete_scope_generations(tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+
+    with sqlite3.connect(db_path) as conn:
+        ensure_index_runtime_schema(conn)
+        conn.execute(
+            "UPDATE index_build_state SET active_generation = 1, building_generation = 2, state = 'running', phase = 'activate_generation' WHERE scope = 'cards'"
+        )
+        conn.execute(
+            "INSERT INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename) VALUES (1, 'card::old.png', 'card', 'old.png', 'Old', 'old.png')"
+        )
+        conn.execute(
+            "INSERT INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename) VALUES (2, 'card::new.png', 'card', 'new.png', 'New', 'new.png')"
+        )
+        conn.execute(
+            "INSERT INTO index_entities_v2(generation, entity_id, entity_type, source_path, name, filename) VALUES (1, 'world::global::book.json', 'world_global', 'book.json', 'Book', 'book.json')"
+        )
+        conn.execute(
+            "INSERT INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (1, 'card::old.png', 'stale-card')"
+        )
+        conn.execute(
+            "INSERT INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (2, 'card::new.png', 'fresh-card')"
+        )
+        conn.execute(
+            "INSERT INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (1, 'world::global::book.json', 'world-tag')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (1, 'card::old.png', 'old fast')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (2, 'card::new.png', 'new fast')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (1, 'world::global::book.json', 'world fast')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_full_v2(generation, entity_id, content) VALUES (1, 'card::old.png', 'old full')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_full_v2(generation, entity_id, content) VALUES (2, 'card::new.png', 'new full')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_full_v2(generation, entity_id, content) VALUES (1, 'world::global::book.json', 'world full')"
+        )
+        conn.execute(
+            "INSERT INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (1, 'cards', 'card', 'old', 1, 1)"
+        )
+        conn.execute(
+            "INSERT INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (1, 'worldinfo', 'world_global', 'books', 1, 1)"
+        )
+        conn.execute(
+            "INSERT INTO index_facet_stats_v2(generation, scope, entity_type, facet_name, facet_value, facet_count) VALUES (1, 'cards', 'card', 'tag', 'stale-card', 1)"
+        )
+        conn.execute(
+            "INSERT INTO index_facet_stats_v2(generation, scope, entity_type, facet_name, facet_value, facet_count) VALUES (1, 'worldinfo', 'world_global', 'tag', 'world-tag', 1)"
+        )
+        conn.commit()
+
+    with sqlite3.connect(db_path) as conn:
+        activated = activate_generation(conn, 'cards', 2, items_written=1)
+        state_row = conn.execute(
+            "SELECT active_generation, building_generation, state, items_written FROM index_build_state WHERE scope = 'cards'"
+        ).fetchone()
+        entity_rows = conn.execute(
+            'SELECT generation, entity_id FROM index_entities_v2 ORDER BY generation, entity_id'
+        ).fetchall()
+        tag_rows = conn.execute(
+            'SELECT generation, entity_id, tag FROM index_entity_tags_v2 ORDER BY generation, entity_id'
+        ).fetchall()
+        fast_rows = conn.execute(
+            'SELECT generation, entity_id, content FROM index_search_fast_v2 ORDER BY generation, entity_id'
+        ).fetchall()
+        full_rows = conn.execute(
+            'SELECT generation, entity_id, content FROM index_search_full_v2 ORDER BY generation, entity_id'
+        ).fetchall()
+        category_rows = conn.execute(
+            'SELECT generation, scope, entity_type, category_path FROM index_category_stats_v2 ORDER BY scope, generation'
+        ).fetchall()
+        facet_rows = conn.execute(
+            'SELECT generation, scope, entity_type, facet_name, facet_value FROM index_facet_stats_v2 ORDER BY scope, generation'
+        ).fetchall()
+
+    assert activated is True
+    assert state_row == (2, 0, 'ready', 1)
+    assert entity_rows == [
+        (1, 'world::global::book.json'),
+        (2, 'card::new.png'),
+    ]
+    assert tag_rows == [
+        (1, 'world::global::book.json', 'world-tag'),
+        (2, 'card::new.png', 'fresh-card'),
+    ]
+    assert fast_rows == [
+        (1, 'world::global::book.json', 'world fast'),
+        (2, 'card::new.png', 'new fast'),
+    ]
+    assert full_rows == [
+        (1, 'world::global::book.json', 'world full'),
+        (2, 'card::new.png', 'new full'),
+    ]
+    assert category_rows == [
+        (1, 'worldinfo', 'world_global', 'books'),
+    ]
+    assert facet_rows == [
+        (1, 'worldinfo', 'world_global', 'tag', 'world-tag'),
+    ]
+
+
+def test_activate_generation_cleans_obsolete_worldinfo_generations(tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+
+    with sqlite3.connect(db_path) as conn:
+        ensure_index_runtime_schema(conn)
+        conn.execute(
+            "UPDATE index_build_state SET active_generation = 4, building_generation = 5, state = 'running', phase = 'activate_generation' WHERE scope = 'worldinfo'"
+        )
+        conn.execute(
+            "INSERT INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename) VALUES (4, 'world::global::old.json', 'world_global', 'old.json', '', 'Old Global', 'old.json')"
+        )
+        conn.execute(
+            "INSERT INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename) VALUES (5, 'world::global::new.json', 'world_global', 'new.json', '', 'New Global', 'new.json')"
+        )
+        conn.execute(
+            "INSERT INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename) VALUES (4, 'card::hero.png', 'card', 'hero.png', '', 'Hero', 'hero.png')"
+        )
+        conn.execute(
+            "INSERT INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (4, 'world::global::old.json', 'old-world')"
+        )
+        conn.execute(
+            "INSERT INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (5, 'world::global::new.json', 'new-world')"
+        )
+        conn.execute(
+            "INSERT INTO index_entity_tags_v2(generation, entity_id, tag) VALUES (4, 'card::hero.png', 'card-tag')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (4, 'world::global::old.json', 'old world fast')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (5, 'world::global::new.json', 'new world fast')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_fast_v2(generation, entity_id, content) VALUES (4, 'card::hero.png', 'card fast')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_full_v2(generation, entity_id, content) VALUES (4, 'world::global::old.json', 'old world full')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_full_v2(generation, entity_id, content) VALUES (5, 'world::global::new.json', 'new world full')"
+        )
+        conn.execute(
+            "INSERT INTO index_search_full_v2(generation, entity_id, content) VALUES (4, 'card::hero.png', 'card full')"
+        )
+        conn.execute(
+            "INSERT INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (4, 'worldinfo', 'world_global', 'old', 1, 1)"
+        )
+        conn.execute(
+            "INSERT INTO index_category_stats_v2(generation, scope, entity_type, category_path, direct_count, subtree_count) VALUES (4, 'cards', 'card', 'hero', 1, 1)"
+        )
+        conn.execute(
+            "INSERT INTO index_facet_stats_v2(generation, scope, entity_type, facet_name, facet_value, facet_count) VALUES (4, 'worldinfo', 'world_global', 'tag', 'old-world', 1)"
+        )
+        conn.execute(
+            "INSERT INTO index_facet_stats_v2(generation, scope, entity_type, facet_name, facet_value, facet_count) VALUES (4, 'cards', 'card', 'tag', 'card-tag', 1)"
+        )
+        conn.commit()
+
+    with sqlite3.connect(db_path) as conn:
+        activated = activate_generation(conn, 'worldinfo', 5, items_written=1)
+        entity_rows = conn.execute(
+            'SELECT generation, entity_id FROM index_entities_v2 ORDER BY generation, entity_id'
+        ).fetchall()
+        tag_rows = conn.execute(
+            'SELECT generation, entity_id, tag FROM index_entity_tags_v2 ORDER BY generation, entity_id'
+        ).fetchall()
+        fast_rows = conn.execute(
+            'SELECT generation, entity_id, content FROM index_search_fast_v2 ORDER BY generation, entity_id'
+        ).fetchall()
+        full_rows = conn.execute(
+            'SELECT generation, entity_id, content FROM index_search_full_v2 ORDER BY generation, entity_id'
+        ).fetchall()
+        category_rows = conn.execute(
+            'SELECT generation, scope, entity_type, category_path FROM index_category_stats_v2 ORDER BY scope, generation'
+        ).fetchall()
+        facet_rows = conn.execute(
+            'SELECT generation, scope, entity_type, facet_name, facet_value FROM index_facet_stats_v2 ORDER BY scope, generation'
+        ).fetchall()
+
+    assert activated is True
+    assert entity_rows == [
+        (4, 'card::hero.png'),
+        (5, 'world::global::new.json'),
+    ]
+    assert tag_rows == [
+        (4, 'card::hero.png', 'card-tag'),
+        (5, 'world::global::new.json', 'new-world'),
+    ]
+    assert fast_rows == [
+        (4, 'card::hero.png', 'card fast'),
+        (5, 'world::global::new.json', 'new world fast'),
+    ]
+    assert full_rows == [
+        (4, 'card::hero.png', 'card full'),
+        (5, 'world::global::new.json', 'new world full'),
+    ]
+    assert category_rows == [
+        (4, 'cards', 'card', 'hero'),
+    ]
+    assert facet_rows == [
+        (4, 'cards', 'card', 'tag', 'card-tag'),
+    ]
+
+
 def test_clear_generation_data_removes_only_target_generation(tmp_path):
     db_path = tmp_path / 'cards_metadata.db'
 

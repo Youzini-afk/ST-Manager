@@ -125,6 +125,38 @@ RUNTIME_SCHEMA_STATEMENTS = [
 ]
 
 
+def _scope_generation_filters(scope: str) -> tuple[str, str, str]:
+    if scope == 'cards':
+        return "entity_type = 'card'", 'card::%', 'cards'
+    return "entity_type LIKE 'world_%'", 'world::%', 'worldinfo'
+
+
+def _find_obsolete_generations(conn: sqlite3.Connection, scope: str, active_generation: int) -> list[int]:
+    entity_where, entity_id_pattern, stats_scope = _scope_generation_filters(scope)
+    rows = conn.execute(
+        f'''
+        SELECT generation FROM index_entities_v2 WHERE {entity_where}
+        UNION
+        SELECT generation FROM index_entity_tags_v2 WHERE entity_id LIKE ?
+        UNION
+        SELECT generation FROM index_search_fast_v2 WHERE entity_id LIKE ?
+        UNION
+        SELECT generation FROM index_search_full_v2 WHERE entity_id LIKE ?
+        UNION
+        SELECT generation FROM index_category_stats_v2 WHERE scope = ?
+        UNION
+        SELECT generation FROM index_facet_stats_v2 WHERE scope = ?
+        ORDER BY generation
+        ''',
+        (entity_id_pattern, entity_id_pattern, entity_id_pattern, stats_scope, stats_scope),
+    ).fetchall()
+    return [
+        int(row[0] or 0)
+        for row in rows
+        if int(row[0] or 0) > 0 and int(row[0] or 0) != int(active_generation)
+    ]
+
+
 def ensure_index_runtime_schema(conn: sqlite3.Connection):
     for statement in RUNTIME_SCHEMA_STATEMENTS:
         conn.execute(statement)
@@ -241,6 +273,7 @@ def update_build_state(conn: sqlite3.Connection, scope: str, **updates):
 
 
 def activate_generation(conn: sqlite3.Connection, scope: str, generation: int, *, items_written: int):
+    obsolete_generations = _find_obsolete_generations(conn, scope, generation)
     cursor = conn.execute(
         '''
         UPDATE index_build_state
@@ -260,12 +293,13 @@ def activate_generation(conn: sqlite3.Connection, scope: str, generation: int, *
         return False
 
     conn.commit()
+    for obsolete_generation in obsolete_generations:
+        clear_generation_data(conn, scope, obsolete_generation)
     return True
 
 
 def clear_generation_data(conn: sqlite3.Connection, scope: str, generation: int):
-    entity_prefix = "entity_type = 'card'" if scope == 'cards' else "entity_type LIKE 'world_%'"
-    entity_id_pattern = 'card::%' if scope == 'cards' else 'world::%'
+    entity_prefix, entity_id_pattern, stats_scope = _scope_generation_filters(scope)
     entity_ids = [
         row[0]
         for row in conn.execute(
@@ -306,6 +340,6 @@ def clear_generation_data(conn: sqlite3.Connection, scope: str, generation: int)
             (generation, entity_id),
         )
 
-    conn.execute('DELETE FROM index_category_stats_v2 WHERE generation = ? AND scope = ?', (generation, scope))
-    conn.execute('DELETE FROM index_facet_stats_v2 WHERE generation = ? AND scope = ?', (generation, scope))
+    conn.execute('DELETE FROM index_category_stats_v2 WHERE generation = ? AND scope = ?', (generation, stats_scope))
+    conn.execute('DELETE FROM index_facet_stats_v2 WHERE generation = ? AND scope = ?', (generation, stats_scope))
     conn.commit()
