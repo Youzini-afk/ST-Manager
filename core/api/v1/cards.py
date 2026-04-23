@@ -1321,8 +1321,9 @@ def api_update_card():
             ui_changed = True
 
         # 注意：如果是设为封面，前端发来的 ui_summary 可能是空的，保留原有值
-        # Track if link was changed for forum tag fetching (必须在更新ui_data之前检查)
+        # Track UI-only side effects before mutating ui_data.
         link_changed = False
+        resource_folder_changed = False
 
         if not force_set_cover:
             new_summary = data.get('ui_summary', '')
@@ -1344,6 +1345,8 @@ def api_update_card():
                 old_link = ui_data[ui_key].get('link', '')
                 if old_link != new_link:
                     link_changed = True
+                old_resource_folder = ui_data[ui_key].get('resource_folder', '')
+                resource_folder_changed = old_resource_folder != new_resource_folder
 
                 remark_data = {
                     'summary': new_summary,
@@ -1366,6 +1369,8 @@ def api_update_card():
                 # For normal mode, check link change BEFORE updating ui_data
                 if ui_data[ui_key].get('link', '') != new_link:
                     link_changed = True
+                old_resource_folder = ui_data[ui_key].get('resource_folder', '')
+                resource_folder_changed = old_resource_folder != new_resource_folder
 
                 if ui_data[ui_key].get('summary', '') != new_summary:
                     ui_data[ui_key]['summary'] = new_summary
@@ -1373,7 +1378,7 @@ def api_update_card():
                 if link_changed:  # Use the flag set before update
                     ui_data[ui_key]['link'] = new_link
                     ui_changed = True
-                if ui_data[ui_key].get('resource_folder', '') != new_resource_folder:
+                if resource_folder_changed:
                     ui_data[ui_key]['resource_folder'] = new_resource_folder
                     ui_changed = True
 
@@ -1398,8 +1403,15 @@ def api_update_card():
              info = extract_card_info(current_full_path)
         
         # 更新 DB (Hash / Time)
-        cache_updated = update_card_cache(final_rel_path_id, current_full_path, parsed_info=info, mtime=current_mtime)
-        if cache_updated:
+        cache_updated = False
+        should_refresh_card_cache = bool(file_content_modified or is_renamed or force_set_cover)
+
+        if should_refresh_card_cache:
+            cache_updated = update_card_cache(final_rel_path_id, current_full_path, parsed_info=info, mtime=current_mtime)
+
+        should_enqueue_world_owner = bool(resource_folder_changed or cache_updated)
+
+        if should_enqueue_world_owner:
             enqueue_index_job('upsert_world_owner', entity_id=final_rel_path_id, source_path=current_full_path)
 
         if raw_id != final_rel_path_id:

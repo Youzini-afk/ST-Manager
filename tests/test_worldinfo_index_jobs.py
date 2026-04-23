@@ -333,8 +333,10 @@ def test_cards_api_worldinfo_owner_enqueue_is_gated_by_update_card_cache_success
     source = (ROOT / 'core/api/v1/cards.py').read_text(encoding='utf-8')
 
     assert "cache_updated = update_card_cache(final_rel_path_id, current_full_path, parsed_info=info, mtime=current_mtime)" in source
-    assert "if cache_updated:\n            enqueue_index_job('upsert_world_owner', entity_id=final_rel_path_id, source_path=current_full_path)" in source
+    assert "should_enqueue_world_owner = bool(resource_folder_changed or cache_updated)" in source
+    assert "if should_enqueue_world_owner:\n            enqueue_index_job('upsert_world_owner', entity_id=final_rel_path_id, source_path=current_full_path)" in source
     assert "update_card_cache(final_rel_path_id, current_full_path, parsed_info=info, mtime=current_mtime)\n        enqueue_index_job('upsert_world_owner', entity_id=final_rel_path_id, source_path=current_full_path)" not in source
+    assert "enqueue_index_job('upsert_world_embedded', entity_id=final_rel_path_id, source_path=current_full_path)" not in source
 
 
 def test_background_scanner_enqueues_cards_and_worldinfo_rebuilds_when_changes_detected(monkeypatch):

@@ -25,6 +25,8 @@ from core.data.ui_store import (
 )
 from core.services.card_service import resolve_ui_key
 from core.services.cache_service import invalidate_wi_list_cache
+from core.services.index_build_service import resolve_resource_worldinfo_owner_card_ids
+from core.services.index_job_worker import enqueue_index_job
 from core.services.scan_service import suppress_fs_events
 from core.services.worldinfo_index_query_service import query_worldinfo_index
 from core.services.wi_entry_history_service import (
@@ -544,6 +546,26 @@ def _is_resource_worldinfo_path(file_path: str, cfg: dict) -> bool:
         return False
     rel_path = os.path.relpath(file_path, resources_dir).replace('\\', '/')
     return '/lorebooks/' in f'/{rel_path}/'
+
+
+def _enqueue_worldinfo_note_refresh(source_type: str, file_path: str = '', card_id: str = ''):
+    normalized_source = str(source_type or '').strip().lower()
+    if normalized_source == 'global' and file_path:
+        enqueue_index_job('upsert_worldinfo_path', source_path=file_path)
+        return
+
+    if normalized_source == 'resource' and file_path:
+        for owner_card_id in resolve_resource_worldinfo_owner_card_ids(file_path):
+            enqueue_index_job('upsert_world_owner', entity_id=owner_card_id, source_path=file_path)
+        return
+
+    if normalized_source == 'embedded' and card_id:
+        enqueue_index_job('upsert_world_embedded', entity_id=card_id, source_path='')
+
+
+def _enqueue_resource_worldinfo_owner_refresh(file_path: str):
+    for owner_card_id in resolve_resource_worldinfo_owner_card_ids(file_path):
+        enqueue_index_job('upsert_world_owner', entity_id=owner_card_id, source_path=file_path)
 
 
 def _move_global_worldinfo_file(file_path: str, target_category: str, cfg: dict) -> str:
@@ -1279,6 +1301,7 @@ def api_move_world_info_category():
             if not _save_resource_category_override('worldinfo', file_path, target_category):
                 return jsonify({'success': False, 'msg': '保存分类覆盖失败'})
             invalidate_wi_list_cache()
+            _enqueue_resource_worldinfo_owner_refresh(file_path)
             return jsonify({'success': True, 'msg': '已更新管理器分类，未移动实际文件'})
 
         if source_type != 'global' or not file_path:
@@ -1309,6 +1332,7 @@ def api_reset_world_info_category():
         if not _save_resource_category_override('worldinfo', file_path, ''):
             return jsonify({'success': False, 'msg': '保存分类覆盖失败'})
         invalidate_wi_list_cache()
+        _enqueue_resource_worldinfo_owner_refresh(file_path)
         return jsonify({'success': True, 'msg': '已恢复跟随角色卡分类'})
     except Exception as e:
         logger.error(f'Reset WI category error: {e}')
@@ -1691,6 +1715,7 @@ def api_save_world_info_note():
         if changed:
             save_ui_data(ui_data)
             invalidate_wi_list_cache()
+            _enqueue_worldinfo_note_refresh(source_type, file_path=file_path, card_id=card_id)
 
         return jsonify({
             'success': True,

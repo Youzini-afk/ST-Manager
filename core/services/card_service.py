@@ -1179,6 +1179,7 @@ def modify_card_attributes_internal(card_id, add_tags=None, remove_tags=None, se
                 if 'data' in info: info['data'] = data_block # V3 write back
                 else: info = data_block # V2 write back
                 
+                suppress_fs_events(2.5)
                 write_card_metadata(full_path, info)
                 
                 # Update DB

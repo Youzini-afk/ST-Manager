@@ -826,6 +826,65 @@ def test_worldinfo_note_save_updates_ui_store_for_all_source_types(monkeypatch, 
     assert notes['embedded::cards/lucy.png']['summary'] == 'embedded note'
 
 
+def test_worldinfo_note_save_enqueues_incremental_index_jobs_for_all_source_types(monkeypatch, tmp_path):
+    lorebooks_dir = tmp_path / 'lorebooks'
+    resources_dir = tmp_path / 'resources'
+    global_file = lorebooks_dir / 'dragon.json'
+    resource_file = resources_dir / 'lucy' / 'lorebooks' / 'companion.json'
+    ui_path = tmp_path / 'ui_data.json'
+
+    _write_json(global_file, {'name': 'Dragon Lore', 'entries': {}})
+    _write_json(resource_file, {'name': 'Companion Lore', 'entries': {}})
+    ui_path.write_text(
+        json.dumps(
+            {
+                'cards/lucy.png': {'resource_folder': 'lucy'},
+            },
+            ensure_ascii=False,
+        ),
+        encoding='utf-8',
+    )
+
+    job_calls = []
+
+    monkeypatch.setattr(world_info_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(world_info_api, 'CARDS_FOLDER', str(tmp_path / 'cards'))
+    monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
+    monkeypatch.setattr(world_info_api, 'load_config', lambda: {'world_info_dir': str(lorebooks_dir), 'resources_dir': str(resources_dir)})
+    monkeypatch.setattr(world_info_api, 'resolve_resource_worldinfo_owner_card_ids', lambda _path: ['cards/lucy.png', 'cards/zeta.png'], raising=False)
+    monkeypatch.setattr(world_info_api, 'enqueue_index_job', lambda job_type, **kwargs: job_calls.append((job_type, kwargs)), raising=False)
+
+    client = _make_test_app().test_client()
+
+    res = client.post('/api/world_info/note/save', json={
+        'source_type': 'global',
+        'file_path': str(global_file),
+        'summary': 'global note',
+    })
+    assert res.status_code == 200
+
+    res = client.post('/api/world_info/note/save', json={
+        'source_type': 'resource',
+        'file_path': str(resource_file),
+        'summary': 'resource note',
+    })
+    assert res.status_code == 200
+
+    res = client.post('/api/world_info/note/save', json={
+        'source_type': 'embedded',
+        'card_id': 'cards/lucy.png',
+        'summary': 'embedded note',
+    })
+    assert res.status_code == 200
+
+    assert job_calls == [
+        ('upsert_worldinfo_path', {'source_path': str(global_file)}),
+        ('upsert_world_owner', {'entity_id': 'cards/lucy.png', 'source_path': str(resource_file)}),
+        ('upsert_world_owner', {'entity_id': 'cards/zeta.png', 'source_path': str(resource_file)}),
+        ('upsert_world_embedded', {'entity_id': 'cards/lucy.png', 'source_path': ''}),
+    ]
+
+
 def test_update_card_ui_only_flag_uses_string_aware_bool_parsing():
     from core.api.v1 import cards as cards_api
 
@@ -1038,6 +1097,563 @@ def test_update_card_ui_only_can_clear_selected_ui_fields_when_opted_in(monkeypa
     assert saved[card_rel]['summary'] == 'new ui note'
     assert saved[card_rel]['link'] == ''
     assert saved[card_rel]['resource_folder'] == ''
+
+
+def test_update_card_ui_only_does_not_refresh_card_cache_or_enqueue_world_owner(monkeypatch, tmp_path):
+    from core.api.v1 import cards as cards_api
+
+    ui_path = tmp_path / 'ui_data.json'
+    cards_dir = tmp_path / 'cards'
+    card_rel = 'cards/lucy.png'
+    card_path = cards_dir / card_rel
+    card_path.parent.mkdir(parents=True, exist_ok=True)
+    card_path.write_bytes(b'fake-card')
+    ui_path.write_text(
+        json.dumps({card_rel: {'summary': 'old note', 'link': 'old-link', 'resource_folder': 'keep-folder'}}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    cache_calls = []
+    job_calls = []
+
+    def _fake_update_card_data(_raw_id, payload):
+        card_obj = {
+            'id': card_rel,
+            'filename': 'lucy.png',
+            'char_name': 'Lucy',
+            'description': 'kept description',
+            'tags': ['tag'],
+            'ui_summary': 'old note',
+            'source_link': 'old-link',
+            'resource_folder': 'keep-folder',
+            'token_count': 0,
+            'last_modified': 0,
+            'import_time': 0,
+            'dir_path': 'cards',
+            'char_version': 'v1',
+            'creator': 'tester',
+            'image_url': '/cards_file/cards%2Flucy.png?t=1',
+            'thumb_url': '/api/thumbnail/cards%2Flucy.png?t=1',
+            'category': '',
+        }
+        card_obj.update(payload)
+        return card_obj
+
+    app = Flask(__name__)
+    app.register_blueprint(cards_api.bp)
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {
+        'data': {
+            'name': 'Lucy',
+            'description': 'kept description',
+            'first_mes': 'hello',
+            'mes_example': 'example',
+            'personality': 'calm',
+            'scenario': 'lab',
+            'creator_notes': 'creator',
+            'system_prompt': 'system',
+            'post_history_instructions': 'post',
+            'creator': 'tester',
+            'character_version': 'v1',
+            'tags': ['tag'],
+            'extensions': {},
+            'alternate_greetings': [],
+            'character_book': {'name': 'Embedded Book', 'entries': {}},
+        }
+    })
+    monkeypatch.setattr(cards_api, 'write_card_metadata', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: cache_calls.append((_args, _kwargs)))
+    monkeypatch.setattr(cards_api, 'enqueue_index_job', lambda job_type, **kwargs: job_calls.append((job_type, kwargs)))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'get_import_time', lambda _ui_data, _ui_key, fallback: fallback)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda _ui_data, _ui_key, fallback: (False, fallback))
+    monkeypatch.setattr(cards_api, 'get_last_sent_to_st', lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path: True)
+    monkeypatch.setattr(cards_api, '_is_safe_filename', lambda _name: True)
+    monkeypatch.setattr(cards_api, 'auto_run_forum_tags_on_link_update', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'append_entry_history_records', lambda **_kwargs: None)
+    monkeypatch.setattr(cards_api.ctx, 'cache', type('Cache', (), {
+        'update_card_data': staticmethod(_fake_update_card_data),
+        'id_map': {},
+        'bundle_map': {},
+        'lock': threading.Lock(),
+    })())
+
+    client = app.test_client()
+    res = client.post('/api/update_card', json={
+        'id': card_rel,
+        'ui_summary': 'new ui note',
+        'source_link': 'new-link',
+        'resource_folder': 'keep-folder',
+        'ui_only': True,
+    })
+
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body['success'] is True
+    assert cache_calls == []
+    assert job_calls == []
+
+
+def test_update_card_resource_folder_change_enqueues_world_owner_without_refreshing_card_cache(monkeypatch, tmp_path):
+    from core.api.v1 import cards as cards_api
+
+    ui_path = tmp_path / 'ui_data.json'
+    cards_dir = tmp_path / 'cards'
+    card_rel = 'cards/lucy.png'
+    card_path = cards_dir / card_rel
+    card_path.parent.mkdir(parents=True, exist_ok=True)
+    card_path.write_bytes(b'fake-card')
+    ui_path.write_text(
+        json.dumps({card_rel: {'summary': 'old note', 'link': 'old-link', 'resource_folder': 'old-folder'}}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    cache_calls = []
+    job_calls = []
+
+    def _fake_update_card_data(_raw_id, payload):
+        card_obj = {
+            'id': card_rel,
+            'filename': 'lucy.png',
+            'char_name': 'Lucy',
+            'description': 'kept description',
+            'tags': ['tag'],
+            'ui_summary': 'old note',
+            'source_link': 'old-link',
+            'resource_folder': 'old-folder',
+            'token_count': 0,
+            'last_modified': 0,
+            'import_time': 0,
+            'dir_path': 'cards',
+            'char_version': 'v1',
+            'creator': 'tester',
+            'image_url': '/cards_file/cards%2Flucy.png?t=1',
+            'thumb_url': '/api/thumbnail/cards%2Flucy.png?t=1',
+            'category': '',
+        }
+        card_obj.update(payload)
+        return card_obj
+
+    app = Flask(__name__)
+    app.register_blueprint(cards_api.bp)
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {
+        'data': {
+            'name': 'Lucy',
+            'description': 'kept description',
+            'first_mes': 'hello',
+            'mes_example': 'example',
+            'personality': 'calm',
+            'scenario': 'lab',
+            'creator_notes': 'creator',
+            'system_prompt': 'system',
+            'post_history_instructions': 'post',
+            'creator': 'tester',
+            'character_version': 'v1',
+            'tags': ['tag'],
+            'extensions': {},
+            'alternate_greetings': [],
+            'character_book': {'name': 'Embedded Book', 'entries': {}},
+        }
+    })
+    monkeypatch.setattr(cards_api, 'write_card_metadata', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: cache_calls.append((_args, _kwargs)))
+    monkeypatch.setattr(cards_api, 'enqueue_index_job', lambda job_type, **kwargs: job_calls.append((job_type, kwargs)))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'get_import_time', lambda _ui_data, _ui_key, fallback: fallback)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda _ui_data, _ui_key, fallback: (False, fallback))
+    monkeypatch.setattr(cards_api, 'get_last_sent_to_st', lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path: True)
+    monkeypatch.setattr(cards_api, '_is_safe_filename', lambda _name: True)
+    monkeypatch.setattr(cards_api, 'auto_run_forum_tags_on_link_update', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'append_entry_history_records', lambda **_kwargs: None)
+    monkeypatch.setattr(cards_api.ctx, 'cache', type('Cache', (), {
+        'update_card_data': staticmethod(_fake_update_card_data),
+        'id_map': {},
+        'bundle_map': {},
+        'lock': threading.Lock(),
+    })())
+
+    client = app.test_client()
+    res = client.post('/api/update_card', json={
+        'id': card_rel,
+        'ui_summary': 'old note',
+        'source_link': 'old-link',
+        'resource_folder': 'new-folder',
+        'ui_only': True,
+        'ui_only_fields': ['resource_folder'],
+    })
+
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body['success'] is True
+    assert cache_calls == []
+    assert job_calls == [
+        ('upsert_world_owner', {'entity_id': card_rel, 'source_path': str(card_path)}),
+    ]
+
+
+def test_update_card_bundle_ui_only_resource_folder_change_enqueues_world_owner_without_refreshing_card_cache(monkeypatch, tmp_path):
+    from core.api.v1 import cards as cards_api
+
+    ui_path = tmp_path / 'ui_data.json'
+    cards_dir = tmp_path / 'cards'
+    card_rel = 'cards/lucy.png'
+    bundle_dir = 'bundles/lucy'
+    card_path = cards_dir / card_rel
+    card_path.parent.mkdir(parents=True, exist_ok=True)
+    card_path.write_bytes(b'fake-card')
+    ui_path.write_text(
+        json.dumps({bundle_dir: {'link': 'old-link', 'resource_folder': 'old-folder'}}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    cache_calls = []
+    job_calls = []
+
+    def _fake_update_card_data(_raw_id, payload):
+        card_obj = {
+            'id': card_rel,
+            'filename': 'lucy.png',
+            'char_name': 'Lucy',
+            'description': 'kept description',
+            'tags': ['tag'],
+            'ui_summary': '',
+            'source_link': 'old-link',
+            'resource_folder': 'old-folder',
+            'token_count': 0,
+            'last_modified': 0,
+            'import_time': 0,
+            'dir_path': 'cards',
+            'char_version': 'v1',
+            'creator': 'tester',
+            'image_url': '/cards_file/cards%2Flucy.png?t=1',
+            'thumb_url': '/api/thumbnail/cards%2Flucy.png?t=1',
+            'category': '',
+        }
+        card_obj.update(payload)
+        return card_obj
+
+    class _FakeBundleCursor:
+        def fetchall(self):
+            return []
+
+    class _FakeBundleConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, *_args, **_kwargs):
+            return _FakeBundleCursor()
+
+    app = Flask(__name__)
+    app.register_blueprint(cards_api.bp)
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {
+        'data': {
+            'name': 'Lucy',
+            'description': 'kept description',
+            'first_mes': 'hello',
+            'mes_example': 'example',
+            'personality': 'calm',
+            'scenario': 'lab',
+            'creator_notes': 'creator',
+            'system_prompt': 'system',
+            'post_history_instructions': 'post',
+            'creator': 'tester',
+            'character_version': 'v1',
+            'tags': ['tag'],
+            'extensions': {},
+            'alternate_greetings': [],
+            'character_book': {'name': 'Embedded Book', 'entries': {}},
+        }
+    })
+    monkeypatch.setattr(cards_api, 'write_card_metadata', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: cache_calls.append((_args, _kwargs)))
+    monkeypatch.setattr(cards_api, 'enqueue_index_job', lambda job_type, **kwargs: job_calls.append((job_type, kwargs)))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'get_import_time', lambda _ui_data, _ui_key, fallback: fallback)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda _ui_data, _ui_key, fallback: (False, fallback))
+    monkeypatch.setattr(cards_api, 'get_last_sent_to_st', lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path: True)
+    monkeypatch.setattr(cards_api, '_is_safe_filename', lambda _name: True)
+    monkeypatch.setattr(cards_api, 'auto_run_forum_tags_on_link_update', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'append_entry_history_records', lambda **_kwargs: None)
+    monkeypatch.setattr(cards_api.sqlite3, 'connect', lambda *_args, **_kwargs: _FakeBundleConn())
+    monkeypatch.setattr(cards_api.ctx, 'cache', type('Cache', (), {
+        'update_card_data': staticmethod(_fake_update_card_data),
+        'id_map': {},
+        'bundle_map': {},
+        'lock': threading.Lock(),
+    })())
+
+    client = app.test_client()
+    res = client.post('/api/update_card', json={
+        'id': card_rel,
+        'ui_summary': '',
+        'source_link': '',
+        'resource_folder': 'new-folder',
+        'ui_only': True,
+        'ui_only_fields': ['resource_folder'],
+        'save_ui_to_bundle': True,
+        'bundle_dir': bundle_dir,
+        'version_id': card_rel,
+    })
+
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body['success'] is True
+    assert body['updated_card']['resource_folder'] == 'new-folder'
+    assert cache_calls == []
+    assert job_calls == [
+        ('upsert_world_owner', {'entity_id': card_rel, 'source_path': str(card_path)}),
+    ]
+
+
+def test_update_card_file_content_change_enqueues_embedded_worldinfo_refresh(monkeypatch, tmp_path):
+    from core.api.v1 import cards as cards_api
+
+    ui_path = tmp_path / 'ui_data.json'
+    cards_dir = tmp_path / 'cards'
+    card_rel = 'cards/lucy.png'
+    card_path = cards_dir / card_rel
+    card_path.parent.mkdir(parents=True, exist_ok=True)
+    card_path.write_bytes(b'fake-card')
+    ui_path.write_text(
+        json.dumps({card_rel: {'summary': 'old note', 'link': 'old-link', 'resource_folder': 'keep-folder'}}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    cache_calls = []
+    job_calls = []
+    written = {}
+
+    def _fake_update_card_data(_raw_id, payload):
+        card_obj = {
+            'id': card_rel,
+            'filename': 'lucy.png',
+            'char_name': 'Lucy',
+            'description': 'old description',
+            'tags': ['tag'],
+            'ui_summary': 'old note',
+            'source_link': 'old-link',
+            'resource_folder': 'keep-folder',
+            'token_count': 0,
+            'last_modified': 0,
+            'import_time': 0,
+            'dir_path': 'cards',
+            'char_version': 'v1',
+            'creator': 'tester',
+            'image_url': '/cards_file/cards%2Flucy.png?t=1',
+            'thumb_url': '/api/thumbnail/cards%2Flucy.png?t=1',
+            'category': '',
+        }
+        card_obj.update(payload)
+        return card_obj
+
+    app = Flask(__name__)
+    app.register_blueprint(cards_api.bp)
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {
+        'data': {
+            'name': 'Lucy',
+            'description': 'old description',
+            'first_mes': 'hello',
+            'mes_example': 'example',
+            'personality': 'calm',
+            'scenario': 'lab',
+            'creator_notes': 'creator',
+            'system_prompt': 'system',
+            'post_history_instructions': 'post',
+            'creator': 'tester',
+            'character_version': 'v1',
+            'tags': ['tag'],
+            'extensions': {},
+            'alternate_greetings': [],
+            'character_book': {'name': 'Embedded Book', 'entries': {'0': {'content': 'hello'}}},
+        }
+    })
+    monkeypatch.setattr(cards_api, 'write_card_metadata', lambda *_args, **_kwargs: written.setdefault('called', True))
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: cache_calls.append((_args, _kwargs)) or True)
+    monkeypatch.setattr(cards_api, 'enqueue_index_job', lambda job_type, **kwargs: job_calls.append((job_type, kwargs)))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'get_import_time', lambda _ui_data, _ui_key, fallback: fallback)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda _ui_data, _ui_key, fallback: (False, fallback))
+    monkeypatch.setattr(cards_api, 'get_last_sent_to_st', lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path: True)
+    monkeypatch.setattr(cards_api, '_is_safe_filename', lambda _name: True)
+    monkeypatch.setattr(cards_api, 'auto_run_forum_tags_on_link_update', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'append_entry_history_records', lambda **_kwargs: None)
+    monkeypatch.setattr(cards_api.ctx, 'cache', type('Cache', (), {
+        'update_card_data': staticmethod(_fake_update_card_data),
+        'id_map': {},
+        'bundle_map': {},
+        'lock': threading.Lock(),
+    })())
+
+    client = app.test_client()
+    res = client.post('/api/update_card', json={
+        'id': card_rel,
+        'char_name': 'Lucy',
+        'description': 'new description',
+        'first_mes': 'hello',
+        'mes_example': 'example',
+        'personality': 'calm',
+        'scenario': 'lab',
+        'creator_notes': 'creator',
+        'system_prompt': 'system',
+        'post_history_instructions': 'post',
+        'creator': 'tester',
+        'character_version': 'v1',
+        'tags': ['tag'],
+        'extensions': {},
+        'alternate_greetings': [],
+        'character_book': {'name': 'Embedded Book', 'entries': {'0': {'content': 'hello'}}},
+        'ui_summary': 'old note',
+        'source_link': 'old-link',
+        'resource_folder': 'keep-folder',
+    })
+
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body['success'] is True
+    assert written == {'called': True}
+    assert len(cache_calls) == 1
+    assert job_calls == [
+        ('upsert_world_owner', {'entity_id': card_rel, 'source_path': str(card_path)}),
+    ]
+
+
+def test_update_card_file_content_change_with_existing_resource_folder_enqueues_owner_and_embedded_refresh(monkeypatch, tmp_path):
+    from core.api.v1 import cards as cards_api
+
+    ui_path = tmp_path / 'ui_data.json'
+    cards_dir = tmp_path / 'cards'
+    card_rel = 'cards/lucy.png'
+    card_path = cards_dir / card_rel
+    card_path.parent.mkdir(parents=True, exist_ok=True)
+    card_path.write_bytes(b'fake-card')
+    ui_path.write_text(
+        json.dumps({card_rel: {'summary': 'old note', 'link': 'old-link', 'resource_folder': 'keep-folder'}}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    cache_calls = []
+    job_calls = []
+    written = {}
+
+    def _fake_update_card_data(_raw_id, payload):
+        card_obj = {
+            'id': card_rel,
+            'filename': 'lucy.png',
+            'char_name': 'Lucy',
+            'description': 'old description',
+            'tags': ['tag'],
+            'ui_summary': 'old note',
+            'source_link': 'old-link',
+            'resource_folder': 'keep-folder',
+            'token_count': 0,
+            'last_modified': 0,
+            'import_time': 0,
+            'dir_path': 'cards',
+            'char_version': 'v1',
+            'creator': 'tester',
+            'image_url': '/cards_file/cards%2Flucy.png?t=1',
+            'thumb_url': '/api/thumbnail/cards%2Flucy.png?t=1',
+            'category': '',
+        }
+        card_obj.update(payload)
+        return card_obj
+
+    app = Flask(__name__)
+    app.register_blueprint(cards_api.bp)
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {
+        'data': {
+            'name': 'Lucy',
+            'description': 'old description',
+            'first_mes': 'hello',
+            'mes_example': 'example',
+            'personality': 'calm',
+            'scenario': 'lab',
+            'creator_notes': 'creator',
+            'system_prompt': 'system',
+            'post_history_instructions': 'post',
+            'creator': 'tester',
+            'character_version': 'v1',
+            'tags': ['tag'],
+            'extensions': {},
+            'alternate_greetings': [],
+            'character_book': {'name': 'Embedded Book', 'entries': {'0': {'content': 'hello'}}},
+        }
+    })
+    monkeypatch.setattr(cards_api, 'write_card_metadata', lambda *_args, **_kwargs: written.setdefault('called', True))
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: cache_calls.append((_args, _kwargs)) or True)
+    monkeypatch.setattr(cards_api, 'enqueue_index_job', lambda job_type, **kwargs: job_calls.append((job_type, kwargs)))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'get_import_time', lambda _ui_data, _ui_key, fallback: fallback)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda _ui_data, _ui_key, fallback: (False, fallback))
+    monkeypatch.setattr(cards_api, 'get_last_sent_to_st', lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path: True)
+    monkeypatch.setattr(cards_api, '_is_safe_filename', lambda _name: True)
+    monkeypatch.setattr(cards_api, 'auto_run_forum_tags_on_link_update', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'append_entry_history_records', lambda **_kwargs: None)
+    monkeypatch.setattr(cards_api.ctx, 'cache', type('Cache', (), {
+        'update_card_data': staticmethod(_fake_update_card_data),
+        'id_map': {},
+        'bundle_map': {},
+        'lock': threading.Lock(),
+    })())
+
+    client = app.test_client()
+    res = client.post('/api/update_card', json={
+        'id': card_rel,
+        'char_name': 'Lucy',
+        'description': 'new description',
+        'first_mes': 'hello',
+        'mes_example': 'example',
+        'personality': 'calm',
+        'scenario': 'lab',
+        'creator_notes': 'creator',
+        'system_prompt': 'system',
+        'post_history_instructions': 'post',
+        'creator': 'tester',
+        'character_version': 'v1',
+        'tags': ['tag'],
+        'extensions': {},
+        'alternate_greetings': [],
+        'character_book': {'name': 'Embedded Book', 'entries': {'0': {'content': 'hello'}}},
+        'ui_summary': 'old note',
+        'source_link': 'old-link',
+        'resource_folder': 'keep-folder',
+    })
+
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body['success'] is True
+    assert written == {'called': True}
+    assert len(cache_calls) == 1
+    assert job_calls == [
+        ('upsert_world_owner', {'entity_id': card_rel, 'source_path': str(card_path)}),
+    ]
 
 
 def test_worldinfo_delete_removes_note_and_rejects_embedded_delete(monkeypatch, tmp_path):
@@ -1319,11 +1935,15 @@ def test_move_worldinfo_resource_item_sets_override_without_moving_file(monkeypa
     _write_json(resource_file, {'name': 'Companion Lore', 'entries': {}})
     ui_path.write_text(json.dumps({'cards/lucy.png': {'resource_folder': 'lucy'}}, ensure_ascii=False), encoding='utf-8')
 
+    job_calls = []
+
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([_make_card('cards/lucy.png', '原始分类')]))
     monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
     monkeypatch.setattr(world_info_api, 'BASE_DIR', str(tmp_path))
     monkeypatch.setattr(world_info_api, 'CARDS_FOLDER', str(tmp_path / 'cards'))
     monkeypatch.setattr(world_info_api, 'load_config', lambda: {'world_info_dir': str(tmp_path / 'lorebooks'), 'resources_dir': str(resources_dir)})
+    monkeypatch.setattr(world_info_api, 'resolve_resource_worldinfo_owner_card_ids', lambda _path: ['cards/lucy.png'], raising=False)
+    monkeypatch.setattr(world_info_api, 'enqueue_index_job', lambda job_type, **kwargs: job_calls.append((job_type, kwargs)), raising=False)
 
     client = _make_test_app().test_client()
     res = client.post(
@@ -1343,6 +1963,9 @@ def test_move_worldinfo_resource_item_sets_override_without_moving_file(monkeypa
     saved_payload = ui_store_module.get_resource_item_categories(ui_store_module.load_ui_data())
     path_key = ui_store_module._normalize_resource_item_category_path(str(resource_file))
     assert saved_payload['worldinfo'][path_key]['category'] == '自定义分类'
+    assert job_calls == [
+        ('upsert_world_owner', {'entity_id': 'cards/lucy.png', 'source_path': str(resource_file)}),
+    ]
 
 
 def test_move_embedded_worldinfo_category_is_rejected(monkeypatch, tmp_path):
@@ -1387,11 +2010,15 @@ def test_reset_worldinfo_resource_category_override_restores_inherited_category(
         encoding='utf-8',
     )
 
+    job_calls = []
+
     monkeypatch.setattr(world_info_api.ctx, 'cache', _FakeCache([_make_card('cards/lucy.png', '继承分类')]))
     monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
     monkeypatch.setattr(world_info_api, 'BASE_DIR', str(tmp_path))
     monkeypatch.setattr(world_info_api, 'CARDS_FOLDER', str(tmp_path / 'cards'))
     monkeypatch.setattr(world_info_api, 'load_config', lambda: {'world_info_dir': str(tmp_path / 'lorebooks'), 'resources_dir': str(resources_dir)})
+    monkeypatch.setattr(world_info_api, 'resolve_resource_worldinfo_owner_card_ids', lambda _path: ['cards/lucy.png'], raising=False)
+    monkeypatch.setattr(world_info_api, 'enqueue_index_job', lambda job_type, **kwargs: job_calls.append((job_type, kwargs)), raising=False)
 
     client = _make_test_app().test_client()
     res = client.post(
@@ -1408,6 +2035,9 @@ def test_reset_worldinfo_resource_category_override_restores_inherited_category(
     assert payload['success'] is True
     saved_payload = ui_store_module.get_resource_item_categories(ui_store_module.load_ui_data())
     assert path_key not in saved_payload['worldinfo']
+    assert job_calls == [
+        ('upsert_world_owner', {'entity_id': 'cards/lucy.png', 'source_path': str(resource_file)}),
+    ]
 
 
 def test_create_worldinfo_folder_creates_real_subdirectory(monkeypatch, tmp_path):

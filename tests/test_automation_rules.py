@@ -1944,6 +1944,74 @@ def test_sync_card_names_internal_accepts_structured_template_rename_config(monk
     assert (card_dir / 'Hero Card - 2024-01-02.json').exists() is True
 
 
+def test_modify_card_attributes_internal_suppresses_fs_events_before_delayed_tag_write(monkeypatch, tmp_path):
+    from core.services import card_service
+
+    cards_root = tmp_path / 'cards'
+    card_dir = cards_root / 'folder'
+    card_dir.mkdir(parents=True, exist_ok=True)
+    card_path = card_dir / 'demo.json'
+    card_path.write_text('{"spec":"chara_card_v2"}', encoding='utf-8')
+
+    calls = []
+
+    class _FakeConn:
+        def __init__(self):
+            self.executed = []
+            self.committed = 0
+
+        def execute(self, sql, params):
+            self.executed.append((sql, params))
+            return self
+
+        def commit(self):
+            self.committed += 1
+
+    class _FakeCache:
+        def __init__(self):
+            self.updated = []
+
+        def update_tags_update(self, card_id_arg, new_tags):
+            self.updated.append((card_id_arg, list(new_tags)))
+
+    fake_conn = _FakeConn()
+    fake_cache = _FakeCache()
+
+    monkeypatch.setattr(card_service, 'CARDS_FOLDER', str(cards_root), raising=False)
+    monkeypatch.setattr(
+        card_service,
+        'extract_card_info',
+        lambda path: {'data': {'tags': ['existing']}},
+    )
+    monkeypatch.setattr(
+        card_service,
+        'suppress_fs_events',
+        lambda *args, **kwargs: calls.append(('suppress_fs_events', args, kwargs)),
+    )
+    monkeypatch.setattr(
+        card_service,
+        'write_card_metadata',
+        lambda path, info: calls.append(('write_card_metadata', path, info)) or True,
+    )
+    monkeypatch.setattr(card_service, 'get_db', lambda: fake_conn)
+    monkeypatch.setattr(card_service.ctx, 'cache', fake_cache, raising=False)
+
+    ok = card_service.modify_card_attributes_internal(
+        'folder/demo.json',
+        add_tags={'new-tag'},
+    )
+
+    assert ok is True
+    assert [entry[0] for entry in calls] == ['suppress_fs_events', 'write_card_metadata']
+    assert calls[1][1] == str(card_path)
+    assert calls[1][2]['data']['tags'] == ['existing', 'new-tag']
+    assert fake_conn.executed == [
+        ('UPDATE card_metadata SET tags = ? WHERE id = ?', ('["existing", "new-tag"]', 'folder/demo.json')),
+    ]
+    assert fake_conn.committed == 1
+    assert fake_cache.updated == [('folder/demo.json', ['existing', 'new-tag'])]
+
+
 def test_rule_manager_save_ruleset_preserves_group_condition_and_action_order(monkeypatch, tmp_path):
     rules_dir = tmp_path / 'automation'
     rules_dir.mkdir(parents=True, exist_ok=True)

@@ -12,7 +12,9 @@ def test_cards_api_update_paths_enqueue_worldinfo_owner_refresh():
     source = _read('core/api/v1/cards.py')
 
     assert "cache_updated = update_card_cache(final_rel_path_id, current_full_path, parsed_info=info, mtime=current_mtime)" in source
-    assert "if cache_updated:\n            enqueue_index_job('upsert_world_owner', entity_id=final_rel_path_id, source_path=current_full_path)" in source
+    assert "should_enqueue_world_owner = bool(resource_folder_changed or cache_updated)" in source
+    assert "if should_enqueue_world_owner:\n            enqueue_index_job('upsert_world_owner', entity_id=final_rel_path_id, source_path=current_full_path)" in source
+    assert "enqueue_index_job('upsert_world_embedded', entity_id=final_rel_path_id, source_path=current_full_path)" not in source
     assert "cache_updated = update_card_cache(rel_path, target_save_path)" in source
     assert "if cache_updated:\n            enqueue_index_job('upsert_world_owner', entity_id=rel_path, source_path=target_save_path)" in source
     assert "cache_updated = update_card_cache(final_id, target_save_path)" in source
