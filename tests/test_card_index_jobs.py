@@ -1091,6 +1091,67 @@ def test_worker_loop_upsert_world_owner_removes_stale_old_owner_rows(monkeypatch
     assert calls == []
 
 
+def test_worker_loop_upsert_world_owner_allows_cleanup_only_for_deleted_card(monkeypatch, tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+    _init_index_db(db_path)
+    monkeypatch.setattr(index_job_worker, 'DEFAULT_DB_PATH', str(db_path))
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            'CREATE TABLE card_metadata (id TEXT PRIMARY KEY, char_name TEXT, category TEXT, last_modified REAL, has_character_book INTEGER, character_book_name TEXT)'
+        )
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::embedded::deleted.png', 'world_embedded', str(tmp_path / 'deleted.png'), 'card::deleted.png', 'Deleted Embedded', 'deleted.png', 'fantasy', '', 'inherited', 0, '', 10.0, 0.0, 0, 'deleted embedded', 10.0, '', '10:1'),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'world::resource::deleted.png::resource-book.json', 'world_resource', str(tmp_path / 'resource-book.json'), 'card::deleted.png', 'Deleted Resource', 'resource-book.json', 'fantasy', '', 'inherited', 0, '', 10.0, 0.0, 0, 'deleted resource', 10.0, '', '10:1'),
+        )
+        conn.execute(
+            'INSERT INTO index_jobs(job_type, entity_id, source_path, payload_json) VALUES (?, ?, ?, ?)',
+            ('upsert_world_owner', 'deleted.png', str(tmp_path / 'deleted.png'), '{"remove_owner_ids": ["deleted.png"]}'),
+        )
+        conn.commit()
+
+    calls = []
+
+    def fake_rebuild_scope_generation(scope='cards', reason='bootstrap'):
+        calls.append((scope, reason))
+
+    wait_calls = {'count': 0}
+
+    def fake_wait(timeout):
+        wait_calls['count'] += 1
+        if wait_calls['count'] >= 2:
+            raise _StopWorkerLoop()
+        return True
+
+    monkeypatch.setattr(index_job_worker, 'rebuild_scope_generation', fake_rebuild_scope_generation)
+    monkeypatch.setattr(index_build_service, 'load_config', lambda: {'world_info_dir': str(tmp_path / 'global-lorebooks'), 'resources_dir': str(tmp_path / 'resources')})
+    monkeypatch.setattr(index_build_service, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(ctx.index_wakeup, 'wait', fake_wait)
+    ctx.index_state.update({'state': 'empty', 'scope': 'cards', 'progress': 0, 'message': '', 'pending_jobs': 0})
+    ctx.index_wakeup.set()
+
+    with pytest.raises(_StopWorkerLoop):
+        index_job_worker.worker_loop()
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT entity_id FROM index_entities_v2 WHERE generation = 1 AND owner_entity_id = 'card::deleted.png'"
+        ).fetchall()
+        job_row = conn.execute(
+            'SELECT status, error_msg FROM index_jobs WHERE job_type = ? ORDER BY id DESC LIMIT 1',
+            ('upsert_world_owner',),
+        ).fetchone()
+
+    assert rows == []
+    assert job_row == ('done', '')
+    assert calls == []
+
+
 def test_update_card_route_real_save_updates_runtime_projections_without_cards_rebuild(monkeypatch, tmp_path):
     from core.api.v1 import cards as cards_api
 

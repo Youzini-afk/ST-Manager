@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 WRITE_LIKE_EVENT_TYPES = {'created', 'modified', 'deleted', 'moved'}
+FULL_SCAN_TASK = 'FULL_SCAN'
+CARD_UPSERT_TASK = 'CARD_UPSERT'
+CARD_MOVE_TASK = 'CARD_MOVE'
+CARD_DELETE_TASK = 'CARD_DELETE'
 
 
 def _normalize_watch_path(path):
@@ -71,6 +75,241 @@ def _is_resource_worldinfo_watch_path(path):
 def _is_worldinfo_watch_path(path):
     return _is_global_worldinfo_watch_path(path) or _is_resource_worldinfo_watch_path(path)
 
+
+def _resolve_card_rel_path(path):
+    raw_path = str(path or '').strip()
+    if not raw_path or not is_card_file(raw_path):
+        return ''
+
+    cards_root = os.path.abspath(os.fspath(CARDS_FOLDER))
+    abs_path = os.path.abspath(raw_path)
+    try:
+        rel_path = os.path.relpath(abs_path, cards_root).replace('\\', '/')
+    except ValueError:
+        return ''
+
+    if rel_path.startswith('../') or rel_path == '..':
+        return ''
+    return rel_path.strip('/')
+
+
+def _build_card_watch_task(event):
+    event_type = str(getattr(event, 'event_type', '') or '').lower()
+    src_path = str(getattr(event, 'src_path', '') or '')
+    dest_path = str(getattr(event, 'dest_path', '') or '')
+    src_card_id = _resolve_card_rel_path(src_path)
+    dest_card_id = _resolve_card_rel_path(dest_path)
+
+    if event_type == 'moved':
+        if src_card_id and dest_card_id:
+            return {'type': CARD_MOVE_TASK, 'src_path': src_path, 'dest_path': dest_path}
+        if dest_card_id:
+            return {'type': CARD_UPSERT_TASK, 'path': dest_path}
+        if src_card_id:
+            return {'type': CARD_DELETE_TASK, 'path': src_path}
+        return None
+
+    if event_type == 'deleted' and src_card_id:
+        return {'type': CARD_DELETE_TASK, 'path': src_path}
+
+    if event_type in {'created', 'modified'} and src_card_id:
+        return {'type': CARD_UPSERT_TASK, 'path': src_path}
+
+    return None
+
+
+def _enqueue_full_scan_fallback(reason='fs_event_fallback'):
+    logger.warning('Falling back to full scan: %s', reason)
+    ctx.scan_queue.put({'type': FULL_SCAN_TASK, 'reason': reason})
+
+
+def _normalize_card_tags(raw_tags):
+    if isinstance(raw_tags, str):
+        raw_tags = [tag.strip() for tag in raw_tags.split(',') if tag.strip()]
+    elif raw_tags is None:
+        raw_tags = []
+
+    return list(dict.fromkeys([str(tag).strip() for tag in raw_tags if str(tag).strip()]))
+
+
+def _upsert_card_metadata_row(conn, card_id, full_path, *, fallback_favorite=0):
+    try:
+        st = os.stat(full_path)
+    except OSError:
+        return False
+
+    info = extract_card_info(full_path)
+    if not info:
+        return False
+
+    data_block = info.get('data', {}) if 'data' in info else info
+    tags = _normalize_card_tags(data_block.get('tags', []))
+    char_name = info.get('name') or data_block.get('name') or os.path.splitext(os.path.basename(full_path))[0]
+    category = card_id.rsplit('/', 1)[0] if '/' in card_id else ''
+
+    calc_data = data_block.copy()
+    if 'name' not in calc_data:
+        calc_data['name'] = char_name
+    token_count = calculate_token_count(calc_data)
+    has_wi, wi_name = get_wi_meta(data_block)
+
+    conn.execute(
+        '''
+            INSERT OR REPLACE INTO card_metadata
+            (id, char_name, description, first_mes, mes_example, tags, category, creator, char_version, last_modified, file_hash, file_size, token_count, has_character_book, character_book_name, is_favorite)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''',
+        (
+            card_id,
+            char_name,
+            data_block.get('description', ''),
+            data_block.get('first_mes', ''),
+            data_block.get('mes_example', ''),
+            json.dumps(tags),
+            category,
+            data_block.get('creator', ''),
+            data_block.get('character_version', ''),
+            st.st_mtime,
+            '',
+            st.st_size,
+            token_count,
+            has_wi,
+            wi_name,
+            int(fallback_favorite or 0),
+        ),
+    )
+    conn.commit()
+    return True
+
+
+def _enqueue_card_reconcile_jobs(card_id, full_path, *, remove_entity_ids=None, remove_owner_ids=None):
+    cleanup_ids = [str(value).strip() for value in (remove_entity_ids or []) if str(value).strip()]
+    if cleanup_ids:
+        enqueue_index_job(
+            'upsert_card',
+            entity_id=card_id,
+            source_path=full_path,
+            payload={'remove_entity_ids': cleanup_ids},
+        )
+    else:
+        enqueue_index_job('upsert_card', entity_id=card_id, source_path=full_path)
+
+    stale_owner_ids = [str(value).strip() for value in (remove_owner_ids or []) if str(value).strip()]
+    if stale_owner_ids:
+        enqueue_index_job(
+            'upsert_world_owner',
+            entity_id=card_id,
+            source_path=full_path,
+            payload={'remove_owner_ids': stale_owner_ids},
+        )
+    else:
+        enqueue_index_job('upsert_world_owner', entity_id=card_id, source_path=full_path)
+
+
+def _process_card_upsert_task(full_path):
+    card_id = _resolve_card_rel_path(full_path)
+    if not card_id:
+        return False
+
+    if not os.path.isfile(full_path):
+        return _process_card_delete_task(full_path)
+
+    with sqlite3.connect(DEFAULT_DB_PATH, timeout=60) as conn:
+        try:
+            conn.execute('PRAGMA journal_mode=WAL;')
+        except Exception:
+            pass
+
+        row = conn.execute('SELECT is_favorite FROM card_metadata WHERE id = ?', (card_id,)).fetchone()
+        favorite = int(row[0] or 0) if row else 0
+        if not _upsert_card_metadata_row(conn, card_id, full_path, fallback_favorite=favorite):
+            return False
+
+    _enqueue_card_reconcile_jobs(card_id, full_path)
+    schedule_reload(reason='watchdog_card_upsert')
+    return True
+
+
+def _process_card_move_task(old_card_id, new_full_path):
+    new_card_id = _resolve_card_rel_path(new_full_path)
+    if not old_card_id or not new_card_id:
+        return False
+
+    if not os.path.isfile(new_full_path):
+        return False
+
+    with sqlite3.connect(DEFAULT_DB_PATH, timeout=60) as conn:
+        try:
+            conn.execute('PRAGMA journal_mode=WAL;')
+        except Exception:
+            pass
+
+        row = conn.execute('SELECT is_favorite FROM card_metadata WHERE id = ?', (old_card_id,)).fetchone()
+        favorite = int(row[0] or 0) if row else 0
+        conn.execute('DELETE FROM card_metadata WHERE id = ?', (old_card_id,))
+        conn.commit()
+        if not _upsert_card_metadata_row(conn, new_card_id, new_full_path, fallback_favorite=favorite):
+            return False
+
+    _enqueue_card_reconcile_jobs(
+        new_card_id,
+        new_full_path,
+        remove_entity_ids=[old_card_id],
+        remove_owner_ids=[old_card_id],
+    )
+    schedule_reload(reason='watchdog_card_move')
+    return True
+
+
+def _process_card_delete_task(full_path):
+    card_id = _resolve_card_rel_path(full_path)
+    if not card_id:
+        return False
+
+    with sqlite3.connect(DEFAULT_DB_PATH, timeout=60) as conn:
+        try:
+            conn.execute('PRAGMA journal_mode=WAL;')
+        except Exception:
+            pass
+        conn.execute('DELETE FROM card_metadata WHERE id = ?', (card_id,))
+        conn.commit()
+
+    _enqueue_card_reconcile_jobs(card_id, full_path, remove_owner_ids=[card_id])
+    schedule_reload(reason='watchdog_card_delete')
+    return True
+
+
+def _process_scan_task(task):
+    task_type = FULL_SCAN_TASK
+    if isinstance(task, dict):
+        task_type = str(task.get('type') or FULL_SCAN_TASK)
+
+    if task_type == FULL_SCAN_TASK:
+        _perform_scan_logic()
+        return True
+
+    if task_type == CARD_UPSERT_TASK:
+        if _process_card_upsert_task(task.get('path')):
+            return True
+        _enqueue_full_scan_fallback(reason=f'{CARD_UPSERT_TASK.lower()}_failed')
+        return False
+
+    if task_type == CARD_MOVE_TASK:
+        old_card_id = _resolve_card_rel_path(task.get('src_path'))
+        if _process_card_move_task(old_card_id, task.get('dest_path')):
+            return True
+        _enqueue_full_scan_fallback(reason=f'{CARD_MOVE_TASK.lower()}_failed')
+        return False
+
+    if task_type == CARD_DELETE_TASK:
+        if _process_card_delete_task(task.get('path')):
+            return True
+        _enqueue_full_scan_fallback(reason=f'{CARD_DELETE_TASK.lower()}_failed')
+        return False
+
+    _enqueue_full_scan_fallback(reason=f'unknown_scan_task:{task_type}')
+    return False
+
 def suppress_fs_events(seconds: float = 1.5):
     """
     在本进程即将进行一批文件写入/移动/删除时调用：
@@ -89,7 +328,7 @@ def request_scan(reason="fs_event"):
         # 1秒后执行实际的入队操作
         ctx.scan_debounce_timer = threading.Timer(
             1.0, 
-            lambda: ctx.scan_queue.put({"type": "FULL_SCAN", "reason": reason})
+            lambda: ctx.scan_queue.put({'type': FULL_SCAN_TASK, 'reason': reason})
         )
         ctx.scan_debounce_timer.daemon = True
         ctx.scan_debounce_timer.start()
@@ -133,13 +372,16 @@ def start_fs_watcher():
                         for owner_card_id in owner_card_ids:
                             enqueue_index_job('upsert_world_owner', entity_id=owner_card_id, source_path=candidate_path)
                         return
-            
-            # 过滤掉非关注文件类型，减少噪音
-            if not is_card_file(event.src_path):
+
+            card_task = _build_card_watch_task(event)
+            if card_task:
+                ctx.scan_queue.put(card_task)
                 return
 
-            # 触发扫描
-            request_scan(reason=f"{event.event_type}:{os.path.basename(event.src_path)}")
+            for candidate_path in (getattr(event, 'src_path', ''), getattr(event, 'dest_path', '')):
+                if _resolve_card_rel_path(candidate_path):
+                    _enqueue_full_scan_fallback(reason=f'watchdog_unknown_card_event:{event.event_type}')
+                    return
 
     observer = Observer()
     handler = Handler()
@@ -184,7 +426,7 @@ def background_scanner():
                 continue
 
             # 开始扫描逻辑
-            _perform_scan_logic()
+            _process_scan_task(task)
             
             ctx.scan_queue.task_done()
                 
@@ -225,7 +467,8 @@ def _perform_scan_logic():
             for row in rows
         }
         
-        changes_detected = False
+        changed_card_paths = {}
+        deleted_card_ids = set()
         fs_found_files = set()
     
         # 2. 遍历文件系统
@@ -326,18 +569,24 @@ def _perform_scan_logic():
                                 token_count, has_wi, wi_name,
                                 keep_fav
                             ))
-                        changes_detected = True
+                        changed_card_paths[file_id] = full_path
 
         # 3. 清理已删除文件
         for db_id in list(db_files_map.keys()):
             if db_id not in fs_found_files:
                 cursor.execute("DELETE FROM card_metadata WHERE id = ?", (db_id,))
-                changes_detected = True
+                deleted_card_ids.add(db_id)
 
-        if changes_detected:
+        if changed_card_paths or deleted_card_ids:
             conn.commit()
-            enqueue_index_job('rebuild_scope', payload={'scope': 'cards'})
-            enqueue_index_job('rebuild_scope', payload={'scope': 'worldinfo'})
+            for card_id in sorted(changed_card_paths):
+                full_path = changed_card_paths[card_id]
+                _enqueue_card_reconcile_jobs(card_id, full_path)
+
+            for card_id in sorted(deleted_card_ids):
+                deleted_path = os.path.join(cards_root, card_id.replace('/', os.sep))
+                _enqueue_card_reconcile_jobs(card_id, deleted_path, remove_owner_ids=[card_id])
+
             logger.info("Background scan detected changes. Updating cache...")
             schedule_reload(reason="background_scanner")
 

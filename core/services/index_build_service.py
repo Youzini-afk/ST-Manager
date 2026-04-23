@@ -347,17 +347,25 @@ def apply_worldinfo_owner_increment(conn, card_id: str, source_path: str = '', *
     if generation <= 0:
         raise RuntimeError('worldinfo active generation missing')
 
+    cleanup_only = False
     for stale_card_id in remove_owner_ids or []:
         stale_value = str(stale_card_id or '').strip()
         if not stale_value:
             continue
         _delete_worldinfo_owner_rows(conn, generation, stale_value)
+        cleanup_only = cleanup_only or stale_value == str(card_id or '').strip()
 
     row = conn.execute(
         'SELECT id, char_name, category, last_modified, has_character_book, character_book_name FROM card_metadata WHERE id = ?',
         (card_id,),
     ).fetchone()
     if row is None:
+        if cleanup_only:
+            cfg = load_config()
+            global_dir = str(cfg.get('world_info_dir') or '')
+            _rebuild_worldinfo_category_stats_v2(conn, generation, global_dir)
+            conn.commit()
+            return True
         raise RuntimeError(f'worldinfo owner card missing: {card_id}')
 
     _delete_worldinfo_owner_rows(conn, generation, card_id)

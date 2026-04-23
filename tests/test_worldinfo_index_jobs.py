@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 import sys
 import types
 from pathlib import Path
@@ -264,6 +265,159 @@ def test_worldinfo_watcher_routes_resource_lorebook_to_owner_refresh(monkeypatch
     ]
 
 
+def test_card_watcher_routes_modify_to_targeted_card_task(monkeypatch):
+    queued = []
+    scheduled = {}
+
+    class _FakeObserver:
+        daemon = False
+
+        def schedule(self, handler, watch_path, recursive=True):
+            scheduled['handler'] = handler
+            scheduled['watch_path'] = watch_path
+            scheduled['recursive'] = recursive
+
+        def start(self):
+            scheduled['started'] = True
+
+    class _FakeHandlerBase:
+        pass
+
+    monkeypatch.setattr(scan_service.ctx, 'should_ignore_fs_event', lambda: False)
+    monkeypatch.setattr(scan_service, 'CARDS_FOLDER', 'D:/cards')
+    monkeypatch.setattr(scan_service.ctx.scan_queue, 'put', lambda task: queued.append(task))
+    monkeypatch.setattr(scan_service, 'enqueue_index_job', lambda *args, **kwargs: queued.append((args, kwargs)))
+    monkeypatch.setattr(scan_service, 'request_scan', lambda **kwargs: queued.append({'type': 'FULL_SCAN', **kwargs}))
+
+    watchdog_module = types.ModuleType('watchdog')
+    observers_module = types.ModuleType('watchdog.observers')
+    observers_module.Observer = _FakeObserver
+    events_module = types.ModuleType('watchdog.events')
+    events_module.FileSystemEventHandler = _FakeHandlerBase
+
+    monkeypatch.setitem(sys.modules, 'watchdog', watchdog_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.observers', observers_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.events', events_module)
+
+    monkeypatch.setattr(scan_service, 'load_config', lambda: {'world_info_dir': 'D:/data/lorebooks', 'resources_dir': 'D:/data/resources'})
+
+    scan_service.start_fs_watcher()
+
+    event = types.SimpleNamespace(
+        is_directory=False,
+        event_type='modified',
+        src_path='D:/cards/hero.png',
+        dest_path='',
+    )
+    scheduled['handler'].on_any_event(event)
+
+    assert queued == [
+        {'type': 'CARD_UPSERT', 'path': 'D:/cards/hero.png'}
+    ]
+
+
+def test_card_watcher_routes_move_to_targeted_card_task(monkeypatch):
+    queued = []
+    scheduled = {}
+
+    class _FakeObserver:
+        daemon = False
+
+        def schedule(self, handler, watch_path, recursive=True):
+            scheduled['handler'] = handler
+            scheduled['watch_path'] = watch_path
+            scheduled['recursive'] = recursive
+
+        def start(self):
+            scheduled['started'] = True
+
+    class _FakeHandlerBase:
+        pass
+
+    monkeypatch.setattr(scan_service.ctx, 'should_ignore_fs_event', lambda: False)
+    monkeypatch.setattr(scan_service, 'CARDS_FOLDER', 'D:/cards')
+    monkeypatch.setattr(scan_service.ctx.scan_queue, 'put', lambda task: queued.append(task))
+    monkeypatch.setattr(scan_service, 'enqueue_index_job', lambda *args, **kwargs: queued.append((args, kwargs)))
+    monkeypatch.setattr(scan_service, 'request_scan', lambda **kwargs: queued.append({'type': 'FULL_SCAN', **kwargs}))
+
+    watchdog_module = types.ModuleType('watchdog')
+    observers_module = types.ModuleType('watchdog.observers')
+    observers_module.Observer = _FakeObserver
+    events_module = types.ModuleType('watchdog.events')
+    events_module.FileSystemEventHandler = _FakeHandlerBase
+
+    monkeypatch.setitem(sys.modules, 'watchdog', watchdog_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.observers', observers_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.events', events_module)
+
+    monkeypatch.setattr(scan_service, 'load_config', lambda: {'world_info_dir': 'D:/data/lorebooks', 'resources_dir': 'D:/data/resources'})
+
+    scan_service.start_fs_watcher()
+
+    event = types.SimpleNamespace(
+        is_directory=False,
+        event_type='moved',
+        src_path='D:/cards/old-name.png',
+        dest_path='D:/cards/new-name.png',
+    )
+    scheduled['handler'].on_any_event(event)
+
+    assert queued == [
+        {'type': 'CARD_MOVE', 'src_path': 'D:/cards/old-name.png', 'dest_path': 'D:/cards/new-name.png'}
+    ]
+
+
+def test_card_watcher_routes_delete_to_targeted_card_task(monkeypatch):
+    queued = []
+    scheduled = {}
+
+    class _FakeObserver:
+        daemon = False
+
+        def schedule(self, handler, watch_path, recursive=True):
+            scheduled['handler'] = handler
+            scheduled['watch_path'] = watch_path
+            scheduled['recursive'] = recursive
+
+        def start(self):
+            scheduled['started'] = True
+
+    class _FakeHandlerBase:
+        pass
+
+    monkeypatch.setattr(scan_service.ctx, 'should_ignore_fs_event', lambda: False)
+    monkeypatch.setattr(scan_service, 'CARDS_FOLDER', 'D:/cards')
+    monkeypatch.setattr(scan_service.ctx.scan_queue, 'put', lambda task: queued.append(task))
+    monkeypatch.setattr(scan_service, 'enqueue_index_job', lambda *args, **kwargs: queued.append((args, kwargs)))
+    monkeypatch.setattr(scan_service, 'request_scan', lambda **kwargs: queued.append({'type': 'FULL_SCAN', **kwargs}))
+
+    watchdog_module = types.ModuleType('watchdog')
+    observers_module = types.ModuleType('watchdog.observers')
+    observers_module.Observer = _FakeObserver
+    events_module = types.ModuleType('watchdog.events')
+    events_module.FileSystemEventHandler = _FakeHandlerBase
+
+    monkeypatch.setitem(sys.modules, 'watchdog', watchdog_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.observers', observers_module)
+    monkeypatch.setitem(sys.modules, 'watchdog.events', events_module)
+
+    monkeypatch.setattr(scan_service, 'load_config', lambda: {'world_info_dir': 'D:/data/lorebooks', 'resources_dir': 'D:/data/resources'})
+
+    scan_service.start_fs_watcher()
+
+    event = types.SimpleNamespace(
+        is_directory=False,
+        event_type='deleted',
+        src_path='D:/cards/deleted.png',
+        dest_path='',
+    )
+    scheduled['handler'].on_any_event(event)
+
+    assert queued == [
+        {'type': 'CARD_DELETE', 'path': 'D:/cards/deleted.png'}
+    ]
+
+
 def test_worldinfo_watcher_ignores_non_write_events(monkeypatch):
     calls = []
     scheduled = {}
@@ -382,7 +536,7 @@ def test_cards_api_worldinfo_owner_enqueue_is_gated_by_update_card_cache_success
     assert "enqueue_index_job('upsert_world_embedded', entity_id=final_rel_path_id, source_path=current_full_path)" not in source
 
 
-def test_background_scanner_enqueues_cards_and_worldinfo_rebuilds_when_changes_detected(monkeypatch):
+def test_background_scanner_enqueues_targeted_card_reconcile_when_changes_detected(monkeypatch):
     calls = []
 
     class _FakeConn:
@@ -413,8 +567,214 @@ def test_background_scanner_enqueues_cards_and_worldinfo_rebuilds_when_changes_d
     scan_service._perform_scan_logic()
 
     assert calls == [
-        (('rebuild_scope',), {'payload': {'scope': 'cards'}}),
-        (('rebuild_scope',), {'payload': {'scope': 'worldinfo'}}),
+        (('upsert_card',), {'entity_id': 'gone.png', 'source_path': 'D:\\cards\\gone.png'}),
+        (('upsert_world_owner',), {'entity_id': 'gone.png', 'source_path': 'D:\\cards\\gone.png', 'payload': {'remove_owner_ids': ['gone.png']}}),
+    ]
+
+
+def test_process_card_upsert_task_updates_metadata_and_enqueues_targeted_jobs(monkeypatch, tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+    cards_dir = tmp_path / 'cards'
+    card_path = cards_dir / 'nested' / 'hero.png'
+    card_path.parent.mkdir(parents=True)
+    card_path.write_bytes(b'hero')
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            '''
+            CREATE TABLE card_metadata (
+                id TEXT PRIMARY KEY,
+                char_name TEXT,
+                description TEXT,
+                first_mes TEXT,
+                mes_example TEXT,
+                tags TEXT,
+                category TEXT,
+                creator TEXT,
+                char_version TEXT,
+                last_modified REAL,
+                file_hash TEXT,
+                file_size INTEGER,
+                token_count INTEGER DEFAULT 0,
+                has_character_book INTEGER DEFAULT 0,
+                character_book_name TEXT DEFAULT '',
+                is_favorite INTEGER DEFAULT 0
+            )
+            '''
+        )
+        conn.commit()
+
+    calls = []
+    reloads = []
+
+    monkeypatch.setattr(scan_service, 'DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr(scan_service, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(scan_service, 'extract_card_info', lambda _path: {'data': {'name': 'Hero', 'tags': ['blue'], 'description': 'desc'}})
+    monkeypatch.setattr(scan_service, 'calculate_token_count', lambda _payload: 111)
+    monkeypatch.setattr(scan_service, 'get_wi_meta', lambda _payload: (False, ''))
+    monkeypatch.setattr(scan_service, 'enqueue_index_job', lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(scan_service, 'schedule_reload', lambda **kwargs: reloads.append(kwargs))
+
+    assert scan_service._process_card_upsert_task(str(card_path)) is True
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            'SELECT id, char_name, category, token_count FROM card_metadata ORDER BY id'
+        ).fetchone()
+
+    assert row == ('nested/hero.png', 'Hero', 'nested', 111)
+    assert calls == [
+        (('upsert_card',), {'entity_id': 'nested/hero.png', 'source_path': str(card_path)}),
+        (('upsert_world_owner',), {'entity_id': 'nested/hero.png', 'source_path': str(card_path)}),
+    ]
+    assert reloads == [{'reason': 'watchdog_card_upsert'}]
+
+
+def test_process_card_move_task_replaces_old_metadata_and_enqueues_targeted_cleanup(monkeypatch, tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+    cards_dir = tmp_path / 'cards'
+    new_card_path = cards_dir / 'renamed' / 'new-name.png'
+    new_card_path.parent.mkdir(parents=True)
+    new_card_path.write_bytes(b'new')
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            '''
+            CREATE TABLE card_metadata (
+                id TEXT PRIMARY KEY,
+                char_name TEXT,
+                description TEXT,
+                first_mes TEXT,
+                mes_example TEXT,
+                tags TEXT,
+                category TEXT,
+                creator TEXT,
+                char_version TEXT,
+                last_modified REAL,
+                file_hash TEXT,
+                file_size INTEGER,
+                token_count INTEGER DEFAULT 0,
+                has_character_book INTEGER DEFAULT 0,
+                character_book_name TEXT DEFAULT '',
+                is_favorite INTEGER DEFAULT 0
+            )
+            '''
+        )
+        conn.execute(
+            'INSERT INTO card_metadata (id, char_name, category, last_modified, file_hash, file_size, token_count, has_character_book, character_book_name, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            ('old-name.png', 'Old Hero', 'legacy', 10.0, '', 3, 7, 0, '', 1),
+        )
+        conn.commit()
+
+    calls = []
+    reloads = []
+
+    monkeypatch.setattr(scan_service, 'DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr(scan_service, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(scan_service, 'extract_card_info', lambda _path: {'data': {'name': 'New Hero', 'tags': ['green']}})
+    monkeypatch.setattr(scan_service, 'calculate_token_count', lambda _payload: 222)
+    monkeypatch.setattr(scan_service, 'get_wi_meta', lambda _payload: (False, ''))
+    monkeypatch.setattr(scan_service, 'enqueue_index_job', lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(scan_service, 'schedule_reload', lambda **kwargs: reloads.append(kwargs))
+
+    assert scan_service._process_card_move_task('old-name.png', str(new_card_path)) is True
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute('SELECT id, char_name, category, token_count FROM card_metadata ORDER BY id').fetchall()
+
+    assert rows == [('renamed/new-name.png', 'New Hero', 'renamed', 222)]
+    assert calls == [
+        (
+            ('upsert_card',),
+            {
+                'entity_id': 'renamed/new-name.png',
+                'source_path': str(new_card_path),
+                'payload': {'remove_entity_ids': ['old-name.png']},
+            },
+        ),
+        (
+            ('upsert_world_owner',),
+            {
+                'entity_id': 'renamed/new-name.png',
+                'source_path': str(new_card_path),
+                'payload': {'remove_owner_ids': ['old-name.png']},
+            },
+        ),
+    ]
+    assert reloads == [{'reason': 'watchdog_card_move'}]
+
+
+def test_process_card_delete_task_removes_metadata_and_enqueues_targeted_cleanup(monkeypatch, tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+    cards_dir = tmp_path / 'cards'
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            '''
+            CREATE TABLE card_metadata (
+                id TEXT PRIMARY KEY,
+                char_name TEXT,
+                description TEXT,
+                first_mes TEXT,
+                mes_example TEXT,
+                tags TEXT,
+                category TEXT,
+                creator TEXT,
+                char_version TEXT,
+                last_modified REAL,
+                file_hash TEXT,
+                file_size INTEGER,
+                token_count INTEGER DEFAULT 0,
+                has_character_book INTEGER DEFAULT 0,
+                character_book_name TEXT DEFAULT '',
+                is_favorite INTEGER DEFAULT 0
+            )
+            '''
+        )
+        conn.execute(
+            'INSERT INTO card_metadata (id, char_name, category, last_modified, file_hash, file_size, token_count, has_character_book, character_book_name, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            ('nested/deleted.png', 'Deleted Hero', 'nested', 10.0, '', 3, 7, 0, '', 0),
+        )
+        conn.commit()
+
+    calls = []
+    reloads = []
+
+    monkeypatch.setattr(scan_service, 'DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr(scan_service, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(scan_service, 'enqueue_index_job', lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(scan_service, 'schedule_reload', lambda **kwargs: reloads.append(kwargs))
+
+    assert scan_service._process_card_delete_task(str(cards_dir / 'nested' / 'deleted.png')) is True
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute('SELECT id FROM card_metadata ORDER BY id').fetchall()
+
+    assert rows == []
+    assert calls == [
+        (('upsert_card',), {'entity_id': 'nested/deleted.png', 'source_path': str(cards_dir / 'nested' / 'deleted.png')}),
+        (
+            ('upsert_world_owner',),
+            {
+                'entity_id': 'nested/deleted.png',
+                'source_path': str(cards_dir / 'nested' / 'deleted.png'),
+                'payload': {'remove_owner_ids': ['nested/deleted.png']},
+            },
+        ),
+    ]
+    assert reloads == [{'reason': 'watchdog_card_delete'}]
+
+
+def test_process_scan_task_falls_back_to_full_scan_when_card_task_fails(monkeypatch):
+    queued = []
+
+    monkeypatch.setattr(scan_service, '_process_card_upsert_task', lambda _path: False)
+    monkeypatch.setattr(scan_service.ctx.scan_queue, 'put', lambda task: queued.append(task))
+
+    assert scan_service._process_scan_task({'type': 'CARD_UPSERT', 'path': 'D:/cards/missing.png'}) is False
+
+    assert queued == [
+        {'type': 'FULL_SCAN', 'reason': 'card_upsert_failed'}
     ]
 
 
