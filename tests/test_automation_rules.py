@@ -1040,7 +1040,19 @@ def test_manual_execute_reuses_shared_rule_context_builder(monkeypatch):
     response = client.post('/api/automation/execute', json={'card_ids': [card_id], 'ruleset_id': 'ruleset-1'})
 
     assert response.status_code == 200
-    assert response.get_json()['success'] is True
+    assert response.get_json() == {
+        'success': True,
+        'selected': 1,
+        'processed': 0,
+        'skipped': 0,
+        'summary': {
+            'moves': 0,
+            'tag_changes': 0,
+        },
+        'details': {
+            'skipped': [],
+        },
+    }
     assert captured['called'] is True
     assert captured['card_id'] == card_id
     assert captured['card_obj'] == fake_cache.id_map[card_id]
@@ -1155,10 +1167,15 @@ def test_manual_execute_uses_shared_normalizer_for_manual_run_and_preserves_merg
     assert response.status_code == 200
     assert response.get_json() == {
         'success': True,
+        'selected': 1,
         'processed': 1,
+        'skipped': 0,
         'summary': {
             'moves': 0,
             'tag_changes': 2,
+        },
+        'details': {
+            'skipped': [],
         },
     }
     assert captured['trigger_context'] == TRIGGER_CONTEXT_MANUAL_RUN
@@ -1282,10 +1299,15 @@ def test_manual_execute_preserves_batch_snapshot_when_earlier_items_mutate(monke
     assert response.status_code == 200
     assert response.get_json() == {
         'success': True,
+        'selected': 2,
         'processed': 2,
+        'skipped': 0,
         'summary': {
             'moves': 0,
             'tag_changes': 2,
+        },
+        'details': {
+            'skipped': [],
         },
     }
     assert set(captured['processed_ids']) == {first_id, second_id}
@@ -1295,6 +1317,137 @@ def test_manual_execute_preserves_batch_snapshot_when_earlier_items_mutate(monke
     assert snapshots_by_id[second_id]['category'] == 'folder/second'
     assert snapshots_by_id[first_id]['tags'] == []
     assert snapshots_by_id[second_id]['tags'] == []
+
+
+def test_manual_execute_reports_skipped_targets_missing_from_cache(monkeypatch):
+    existing_id = 'folder/existing.json'
+    missing_id = 'folder/missing.json'
+    fake_cache = SimpleNamespace(
+        id_map={
+            existing_id: {
+                'id': existing_id,
+                'filename': 'existing.json',
+                'char_name': 'Existing',
+                'category': 'folder',
+                'tags': ['legacy'],
+            }
+        },
+        bundle_map={},
+        initialized=True,
+    )
+    captured = {'processed_ids': []}
+
+    class _FakeCursor:
+        def execute(self, *args, **kwargs):
+            captured['db_query'] = {'args': args, 'kwargs': kwargs}
+
+        def fetchall(self):
+            return [(existing_id,), (missing_id,)]
+
+    class _FakeConn:
+        def cursor(self):
+            return _FakeCursor()
+
+    monkeypatch.setattr(automation_api, 'get_db', lambda: _FakeConn())
+    monkeypatch.setattr(automation_api.ctx, 'cache', fake_cache, raising=False)
+    monkeypatch.setattr(automation_api, 'load_config', lambda: {'automation_slash_is_tag_separator': False})
+    monkeypatch.setattr(automation_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(automation_api.rule_manager, 'get_ruleset', lambda ruleset_id: {'rules': []})
+    monkeypatch.setattr(
+        automation_service,
+        '_build_rule_context',
+        lambda *args, **kwargs: ({'id': existing_id, 'category': 'folder', 'tags': ['legacy'], 'token_count': 0}, {}),
+    )
+    monkeypatch.setattr(
+        automation_api.engine,
+        'evaluate',
+        lambda *args, **kwargs: {'actions': [{'type': ACT_MERGE_TAGS, 'value': {'legacy': 'modern'}}]},
+    )
+    monkeypatch.setattr(
+        automation_api,
+        'normalize_actions_for_context',
+        lambda actions, trigger_context, card_snapshot=None: {
+            'trigger_context': trigger_context,
+            'actions': list(actions),
+            'derived': {'add_tags': set(), 'remove_tags': set()},
+            'observability': {
+                'category_tag_expansions': [],
+                'suppressed_filename_action_conflicts': [],
+                'noop_rename_reasons': [],
+            },
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(
+        automation_service,
+        '_build_exec_plan_from_actions',
+        lambda actions, slash_as_separator=False: {
+            'move': None,
+            'add_tags': set(),
+            'remove_tags': set(),
+            'set_favorite': None,
+            'set_filename_from_char_name': False,
+            'set_filename_from_wi_name': False,
+            'set_char_name_from_filename': False,
+            'set_wi_name_from_filename': False,
+            'fetch_forum_tags': None,
+            'desired_filename_template': None,
+        },
+    )
+
+    def _fake_apply_plan(card_id_arg, plan, ui_data):
+        captured['processed_ids'].append(card_id_arg)
+        fake_cache.id_map[existing_id]['tags'] = ['modern']
+        return {
+            'moved_to': None,
+            'tags_added': [],
+            'tags_removed': [],
+            'fav_changed': False,
+            'name_sync': None,
+            'forum_tags_fetched': None,
+            'final_id': card_id_arg,
+        }
+
+    monkeypatch.setattr(automation_api.executor, 'apply_plan', _fake_apply_plan)
+    monkeypatch.setattr(
+        automation_api,
+        'apply_merge_actions_to_tags',
+        lambda current_tags, merge_actions, slash_as_separator=False: {
+            'changed': True,
+            'tags': ['modern'],
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(
+        automation_api,
+        'modify_card_attributes_internal',
+        lambda card_id_arg, add_tags=None, remove_tags=None: {'ok': True},
+        raising=False,
+    )
+
+    client = _make_automation_app().test_client()
+    response = client.post(
+        '/api/automation/execute',
+        json={'category': 'folder', 'recursive': True, 'ruleset_id': 'ruleset-1'},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        'success': True,
+        'selected': 2,
+        'processed': 1,
+        'skipped': 1,
+        'summary': {
+            'moves': 0,
+            'tag_changes': 1,
+        },
+        'details': {
+            'skipped': [
+                {'card_id': missing_id, 'reason': 'card_not_in_cache'},
+            ]
+        },
+    }
+    assert captured['processed_ids'] == [existing_id]
 
 
 def test_executor_apply_plan_runs_template_rename_before_move(monkeypatch):
@@ -1849,10 +2002,15 @@ def test_manual_execute_runs_template_rename_through_executor_plan(monkeypatch):
     assert response.status_code == 200
     assert response.get_json() == {
         'success': True,
+        'selected': 1,
         'processed': 1,
+        'skipped': 0,
         'summary': {
             'moves': 0,
             'tag_changes': 0,
+        },
+        'details': {
+            'skipped': [],
         },
     }
     assert captured['normalize_actions'] == [{'type': ACT_RENAME_FILE_BY_TEMPLATE, 'value': '{{char_name}}'}]

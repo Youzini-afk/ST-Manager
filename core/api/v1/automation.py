@@ -101,6 +101,8 @@ def execute_rules():
             db_ids = [row[0] for row in rows]
             card_ids = list(set(card_ids + db_ids))
 
+        selected_count = len(card_ids)
+
         if not card_ids:
             return jsonify({"success": False, "msg": "未找到需要处理的卡片"})
 
@@ -126,9 +128,11 @@ def execute_rules():
         # 2. 执行循环
         # =================================================================
         batch_targets = []
+        skipped_details = []
         for cid in card_ids:
             card_obj = ctx.cache.id_map.get(cid)
             if not card_obj:
+                skipped_details.append({'card_id': cid, 'reason': 'card_not_in_cache'})
                 continue
             batch_targets.append((cid, deepcopy(card_obj)))
 
@@ -197,11 +201,18 @@ def execute_rules():
             if res['moved_to']: summary['moves'] += 1
             if res['tags_added'] or res['tags_removed']: summary['tag_changes'] += 1
 
-        return jsonify({
+        response = {
             "success": True, 
+            "selected": selected_count,
             "processed": processed_count,
-            "summary": summary
-        })
+            "skipped": len(skipped_details),
+            "summary": summary,
+            'details': {
+                'skipped': skipped_details,
+            },
+        }
+
+        return jsonify(response)
 
     except Exception as e:
         logger.error(f"Execution error: {e}")
