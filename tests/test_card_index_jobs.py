@@ -289,6 +289,50 @@ def test_sync_card_index_jobs_propagates_remove_entity_ids_payload(monkeypatch):
     ]
 
 
+def test_cache_move_folder_update_migrates_bundle_map_and_version_ids():
+    from core.data.cache import GlobalMetadataCache
+
+    cache = GlobalMetadataCache()
+    bundle_card = {
+        'id': 'src/bundle/cover.json',
+        'filename': 'cover.json',
+        'category': 'src',
+        'bundle_dir': 'src/bundle',
+        'is_bundle': True,
+        'versions': [
+            {'id': 'src/bundle/cover.json', 'filename': 'cover.json'},
+            {'id': 'src/bundle/alt.json', 'filename': 'alt.json'},
+        ],
+        'last_modified': 1,
+    }
+    nested_card = {
+        'id': 'src/bundle/alt.json',
+        'filename': 'alt.json',
+        'category': 'src/bundle',
+        'is_bundle': False,
+        'last_modified': 1,
+    }
+    cache.cards = [bundle_card]
+    cache.id_map = {
+        bundle_card['id']: bundle_card,
+        nested_card['id']: nested_card,
+    }
+    cache.bundle_map = {'src/bundle': 'src/bundle/cover.json'}
+    cache.visible_folders = ['src']
+    cache.category_counts = {'src': 1, 'src/bundle': 1}
+
+    cache.move_folder_update('src/bundle', 'dst/bundle')
+
+    assert cache.bundle_map == {'dst/bundle': 'dst/bundle/cover.json'}
+    assert cache.id_map['dst/bundle/cover.json']['category'] == 'dst'
+    assert cache.id_map['dst/bundle/cover.json']['bundle_dir'] == 'dst/bundle'
+    assert cache.id_map['dst/bundle/alt.json']['category'] == 'dst/bundle'
+    assert cache.id_map['dst/bundle/cover.json']['versions'] == [
+        {'id': 'dst/bundle/cover.json', 'filename': 'cover.json'},
+        {'id': 'dst/bundle/alt.json', 'filename': 'alt.json'},
+    ]
+
+
 def test_sync_card_index_jobs_returns_noop_when_no_facts_require_jobs(monkeypatch):
     calls = []
 

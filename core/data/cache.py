@@ -98,6 +98,22 @@ class GlobalMetadataCache:
         [增量更新] 文件夹移动/重命名时的批量更新。
         """
         with self.lock:
+            new_bundle_map = {}
+            for bundle_dir, bundle_card_id in self.bundle_map.items():
+                if bundle_dir == old_path_prefix:
+                    remapped_dir = new_path_prefix
+                elif bundle_dir.startswith(old_path_prefix + '/'):
+                    remapped_dir = new_path_prefix + bundle_dir[len(old_path_prefix):]
+                else:
+                    remapped_dir = bundle_dir
+
+                if bundle_card_id.startswith(old_path_prefix + '/'):
+                    remapped_card_id = new_path_prefix + bundle_card_id[len(old_path_prefix):]
+                else:
+                    remapped_card_id = bundle_card_id
+
+                new_bundle_map[remapped_dir] = remapped_card_id
+
             # 1. 找出所有受影响的卡片 ID
             affected_ids = []
             for cid in self.id_map.keys():
@@ -132,6 +148,18 @@ class GlobalMetadataCache:
                     elif b_dir.startswith(old_path_prefix + '/'):
                         card['bundle_dir'] = new_path_prefix + b_dir[len(old_path_prefix):]
 
+                    remapped_bundle_dir = card.get('bundle_dir', '')
+                    card['category'] = remapped_bundle_dir.rsplit('/', 1)[0] if '/' in remapped_bundle_dir else ''
+
+                    versions = card.get('versions')
+                    if isinstance(versions, list):
+                        for version in versions:
+                            if not isinstance(version, dict):
+                                continue
+                            version_id = str(version.get('id') or '')
+                            if version_id.startswith(old_path_prefix + '/'):
+                                version['id'] = new_path_prefix + version_id[len(old_path_prefix):]
+
                 # 更新 URL
                 encoded_id = quote(new_id)
                 mtime = card.get('last_modified', 0)
@@ -139,6 +167,8 @@ class GlobalMetadataCache:
                 card['thumb_url'] = f"/api/thumbnail/{encoded_id}?t={mtime}"
 
                 self.id_map[new_id] = card
+
+            self.bundle_map = new_bundle_map
 
             # 3. 重算计数 (全量重算最稳妥)
             self._recalculate_counts()

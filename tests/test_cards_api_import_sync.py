@@ -287,3 +287,404 @@ def test_api_move_card_uses_shared_move_card_internal(monkeypatch):
         'category_counts': {},
     }
     assert move_calls == [('src/demo.json', 'dst')]
+
+
+def test_move_card_internal_directory_migrates_prefixed_ui_data_and_nested_categories(monkeypatch, tmp_path):
+    from core.services import card_service
+
+    cards_root = tmp_path / 'cards'
+    src_dir = cards_root / 'src' / 'pack' / 'sub'
+    dst_dir = cards_root / 'dst'
+    src_dir.mkdir(parents=True, exist_ok=True)
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    moved_file = src_dir / 'hero.json'
+    moved_file.write_text('{"spec":"chara_card_v2"}', encoding='utf-8')
+
+    saved_ui_payloads = []
+    update_calls = []
+    sync_calls = []
+
+    class _FakeConn:
+        def __init__(self):
+            self.executed = []
+            self._rows = []
+
+        def execute(self, sql, params=()):
+            self.executed.append((sql, params))
+            normalized_sql = ' '.join(str(sql).split())
+            if normalized_sql.startswith("SELECT id FROM card_metadata WHERE id LIKE ? || '/%' ESCAPE '\\'"):
+                self._rows = [('src/pack/sub/hero.json',)]
+            return self
+
+        def fetchall(self):
+            return list(self._rows)
+
+        def commit(self):
+            return None
+
+    class _FakeCache:
+        def __init__(self):
+            self.id_map = {
+                'src/pack/sub/hero.json': {
+                    'id': 'src/pack/sub/hero.json',
+                    'category': 'src/pack/sub',
+                    'is_bundle': False,
+                    'last_modified': 1,
+                }
+            }
+            self.bundle_map = {}
+            self.visible_folders = []
+
+        def move_bundle_update(self, old_bundle_path, new_bundle_path, old_category, new_category):
+            moved_items = []
+            for card_id in list(self.id_map.keys()):
+                if card_id == old_bundle_path or card_id.startswith(old_bundle_path + '/'):
+                    moved_items.append((card_id, self.id_map.pop(card_id)))
+
+            for old_id, card in moved_items:
+                if old_id == old_bundle_path:
+                    new_id = new_bundle_path
+                else:
+                    new_id = new_bundle_path + old_id[len(old_bundle_path):]
+
+                card = dict(card)
+                card['id'] = new_id
+                card['category'] = new_category
+                self.id_map[new_id] = card
+
+        def move_folder_update(self, old_path_prefix, new_path_prefix):
+            new_bundle_map = {}
+            for bundle_dir, bundle_card_id in self.bundle_map.items():
+                if bundle_dir == old_path_prefix:
+                    remapped_dir = new_path_prefix
+                elif bundle_dir.startswith(old_path_prefix + '/'):
+                    remapped_dir = new_path_prefix + bundle_dir[len(old_path_prefix):]
+                else:
+                    remapped_dir = bundle_dir
+
+                if bundle_card_id.startswith(old_path_prefix + '/'):
+                    remapped_card_id = new_path_prefix + bundle_card_id[len(old_path_prefix):]
+                else:
+                    remapped_card_id = bundle_card_id
+
+                new_bundle_map[remapped_dir] = remapped_card_id
+
+            moved_items = []
+            for card_id in list(self.id_map.keys()):
+                if not card_id.startswith(old_path_prefix + '/'):
+                    continue
+                moved_items.append((card_id, self.id_map.pop(card_id)))
+
+            for old_id, card in moved_items:
+                suffix = old_id[len(old_path_prefix):]
+                new_id = new_path_prefix + suffix
+                old_category = card.get('category', '')
+                if old_category == old_path_prefix:
+                    new_category = new_path_prefix
+                elif old_category.startswith(old_path_prefix + '/'):
+                    new_category = new_path_prefix + old_category[len(old_path_prefix):]
+                else:
+                    new_category = new_id.rsplit('/', 1)[0] if '/' in new_id else ''
+
+                card = dict(card)
+                card['id'] = new_id
+                card['category'] = new_category
+                self.id_map[new_id] = card
+
+    fake_conn = _FakeConn()
+    fake_cache = _FakeCache()
+
+    monkeypatch.setattr(card_service, 'CARDS_FOLDER', str(cards_root), raising=False)
+    monkeypatch.setattr(
+        card_service,
+        'load_ui_data',
+        lambda: {
+            'src/pack/sub/hero.json': {'summary': 'nested note'},
+            'src/pack': {'summary': 'folder note'},
+        },
+    )
+    monkeypatch.setattr(
+        card_service,
+        'save_ui_data',
+        lambda payload: saved_ui_payloads.append(json.loads(json.dumps(payload, ensure_ascii=False))),
+    )
+    monkeypatch.setattr(card_service, 'get_db', lambda: fake_conn)
+    monkeypatch.setattr(
+        card_service,
+        'update_card_cache',
+        lambda card_id, full_path, **kwargs: (
+            update_calls.append({'card_id': card_id, 'full_path': full_path, 'kwargs': kwargs}),
+            {
+                'cache_updated': True,
+                'has_embedded_wi': False,
+                'previous_has_embedded_wi': False,
+            },
+        )[1],
+    )
+    monkeypatch.setattr(card_service, 'sync_card_index_jobs', lambda **kwargs: sync_calls.append(kwargs) or {})
+    monkeypatch.setattr(card_service.ctx, 'cache', fake_cache, raising=False)
+
+    ok, new_id, msg = card_service.move_card_internal('src/pack', 'dst')
+
+    assert ok is True
+    assert msg == 'Success'
+    assert new_id == 'dst/pack'
+    assert saved_ui_payloads[-1] == {
+        'dst/pack': {'summary': 'folder note'},
+        'dst/pack/sub/hero.json': {'summary': 'nested note'},
+    }
+    assert fake_conn.executed == [
+        ("SELECT id FROM card_metadata WHERE id LIKE ? || '/%' ESCAPE '\\'", ('src/pack',)),
+        (
+            """
+            UPDATE card_metadata 
+            SET id = ?, category = REPLACE(category, ?, ?) 
+            WHERE id = ?
+        """,
+            ('dst/pack/sub/hero.json', 'src/pack', 'dst/pack', 'src/pack/sub/hero.json'),
+        ),
+    ]
+    assert update_calls == [
+        {
+            'card_id': 'dst/pack/sub/hero.json',
+            'full_path': str(cards_root / 'dst' / 'pack' / 'sub' / 'hero.json'),
+            'kwargs': {'remove_entity_ids': ['src/pack/sub/hero.json']},
+        }
+    ]
+    assert sync_calls == [
+        {
+            'card_id': 'dst/pack/sub/hero.json',
+            'source_path': str(cards_root / 'dst' / 'pack' / 'sub' / 'hero.json'),
+            'file_content_changed': False,
+            'rename_changed': True,
+            'cache_updated': True,
+            'has_embedded_wi': False,
+            'previous_has_embedded_wi': False,
+            'remove_entity_ids': ['src/pack/sub/hero.json'],
+            'remove_owner_ids': ['src/pack/sub/hero.json'],
+        }
+    ]
+    assert fake_cache.id_map == {
+        'dst/pack/sub/hero.json': {
+            'id': 'dst/pack/sub/hero.json',
+            'category': 'dst/pack/sub',
+            'is_bundle': False,
+            'last_modified': 1,
+        }
+    }
+
+
+def test_move_card_internal_bundle_directory_migrates_version_remarks_and_bundle_cache(monkeypatch, tmp_path):
+    from core.services import card_service
+
+    cards_root = tmp_path / 'cards'
+    src_dir = cards_root / 'src' / 'bundle'
+    dst_dir = cards_root / 'dst'
+    src_dir.mkdir(parents=True, exist_ok=True)
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    (src_dir / '.bundle').write_text('1', encoding='utf-8')
+    (src_dir / 'cover.json').write_text('{"spec":"chara_card_v2"}', encoding='utf-8')
+    (src_dir / 'alt.json').write_text('{"spec":"chara_card_v2"}', encoding='utf-8')
+
+    saved_ui_payloads = []
+    update_calls = []
+    sync_calls = []
+
+    class _FakeConn:
+        def __init__(self):
+            self.executed = []
+            self._rows = []
+
+        def execute(self, sql, params=()):
+            self.executed.append((sql, params))
+            normalized_sql = ' '.join(str(sql).split())
+            if normalized_sql.startswith("SELECT id FROM card_metadata WHERE id LIKE ? || '/%' ESCAPE '\\'"):
+                self._rows = [
+                    ('src/bundle/cover.json',),
+                    ('src/bundle/alt.json',),
+                ]
+            return self
+
+        def fetchall(self):
+            return list(self._rows)
+
+        def commit(self):
+            return None
+
+    class _FakeCache:
+        def __init__(self):
+            self.id_map = {
+                'src/bundle/cover.json': {
+                    'id': 'src/bundle/cover.json',
+                    'category': 'src',
+                    'is_bundle': True,
+                    'bundle_dir': 'src/bundle',
+                    'last_modified': 1,
+                    'versions': [
+                        {'id': 'src/bundle/cover.json', 'filename': 'cover.json'},
+                        {'id': 'src/bundle/alt.json', 'filename': 'alt.json'},
+                    ],
+                }
+            }
+            self.bundle_map = {'src/bundle': 'src/bundle/cover.json'}
+            self.visible_folders = []
+
+        def move_bundle_update(self, old_bundle_path, new_bundle_path, old_category, new_category):
+            moved_items = []
+            for card_id in list(self.id_map.keys()):
+                if card_id == old_bundle_path or card_id.startswith(old_bundle_path + '/'):
+                    moved_items.append((card_id, self.id_map.pop(card_id)))
+
+            for old_id, card in moved_items:
+                if old_id == old_bundle_path:
+                    new_id = new_bundle_path
+                else:
+                    new_id = new_bundle_path + old_id[len(old_bundle_path):]
+
+                card = dict(card)
+                card['id'] = new_id
+                card['category'] = new_category
+                if card.get('is_bundle'):
+                    card['bundle_dir'] = new_bundle_path
+                self.id_map[new_id] = card
+
+            main_id = self.bundle_map.pop(old_bundle_path, None)
+            if main_id:
+                self.bundle_map[new_bundle_path] = new_bundle_path + main_id[len(old_bundle_path):]
+
+        def move_folder_update(self, old_path_prefix, new_path_prefix):
+            new_bundle_map = {}
+            for bundle_dir, bundle_card_id in self.bundle_map.items():
+                if bundle_dir == old_path_prefix:
+                    remapped_dir = new_path_prefix
+                elif bundle_dir.startswith(old_path_prefix + '/'):
+                    remapped_dir = new_path_prefix + bundle_dir[len(old_path_prefix):]
+                else:
+                    remapped_dir = bundle_dir
+
+                if bundle_card_id.startswith(old_path_prefix + '/'):
+                    remapped_card_id = new_path_prefix + bundle_card_id[len(old_path_prefix):]
+                else:
+                    remapped_card_id = bundle_card_id
+
+                new_bundle_map[remapped_dir] = remapped_card_id
+
+            moved_items = []
+            for card_id in list(self.id_map.keys()):
+                if not card_id.startswith(old_path_prefix + '/'):
+                    continue
+                moved_items.append((card_id, self.id_map.pop(card_id)))
+
+            for old_id, card in moved_items:
+                suffix = old_id[len(old_path_prefix):]
+                new_id = new_path_prefix + suffix
+                card = dict(card)
+                card['id'] = new_id
+                if card.get('bundle_dir') == old_path_prefix:
+                    card['bundle_dir'] = new_path_prefix
+                versions = card.get('versions')
+                if isinstance(versions, list):
+                    for version in versions:
+                        if not isinstance(version, dict):
+                            continue
+                        version_id = str(version.get('id') or '')
+                        if version_id.startswith(old_path_prefix + '/'):
+                            version['id'] = new_path_prefix + version_id[len(old_path_prefix):]
+                self.id_map[new_id] = card
+
+            self.bundle_map = new_bundle_map
+
+    fake_conn = _FakeConn()
+    fake_cache = _FakeCache()
+
+    monkeypatch.setattr(card_service, 'CARDS_FOLDER', str(cards_root), raising=False)
+    monkeypatch.setattr(
+        card_service,
+        'load_ui_data',
+        lambda: {
+            'src/bundle': {
+                card_service.VERSION_REMARKS_KEY: {
+                    'src/bundle/cover.json': {'summary': 'cover note'},
+                    'src/bundle/alt.json': {'summary': 'alt note'},
+                },
+                'resource_folder': 'hero-assets',
+            }
+        },
+    )
+    monkeypatch.setattr(
+        card_service,
+        'save_ui_data',
+        lambda payload: saved_ui_payloads.append(json.loads(json.dumps(payload, ensure_ascii=False))),
+    )
+    monkeypatch.setattr(card_service, 'get_db', lambda: fake_conn)
+    monkeypatch.setattr(
+        card_service,
+        'update_card_cache',
+        lambda card_id, full_path, **kwargs: (
+            update_calls.append({'card_id': card_id, 'full_path': full_path, 'kwargs': kwargs}),
+            {
+                'cache_updated': True,
+                'has_embedded_wi': False,
+                'previous_has_embedded_wi': False,
+            },
+        )[1],
+    )
+    monkeypatch.setattr(card_service, 'sync_card_index_jobs', lambda **kwargs: sync_calls.append(kwargs) or {})
+    monkeypatch.setattr(card_service.ctx, 'cache', fake_cache, raising=False)
+
+    ok, new_id, msg = card_service.move_card_internal('src/bundle', 'dst')
+
+    assert ok is True
+    assert msg == 'Success'
+    assert new_id == 'dst/bundle'
+    assert saved_ui_payloads[-1] == {
+        'dst/bundle': {
+            card_service.VERSION_REMARKS_KEY: {
+                'dst/bundle/cover.json': {'summary': 'cover note'},
+                'dst/bundle/alt.json': {'summary': 'alt note'},
+            },
+            'resource_folder': 'hero-assets',
+        }
+    }
+    assert update_calls == [
+        {
+            'card_id': 'dst/bundle/cover.json',
+            'full_path': str(cards_root / 'dst' / 'bundle' / 'cover.json'),
+            'kwargs': {'remove_entity_ids': ['src/bundle/cover.json']},
+        },
+        {
+            'card_id': 'dst/bundle/alt.json',
+            'full_path': str(cards_root / 'dst' / 'bundle' / 'alt.json'),
+            'kwargs': {'remove_entity_ids': ['src/bundle/alt.json']},
+        },
+    ]
+    assert sync_calls == [
+        {
+            'card_id': 'dst/bundle/cover.json',
+            'source_path': str(cards_root / 'dst' / 'bundle' / 'cover.json'),
+            'file_content_changed': False,
+            'rename_changed': True,
+            'cache_updated': True,
+            'has_embedded_wi': False,
+            'previous_has_embedded_wi': False,
+            'remove_entity_ids': ['src/bundle/cover.json'],
+            'remove_owner_ids': ['src/bundle/cover.json'],
+        },
+        {
+            'card_id': 'dst/bundle/alt.json',
+            'source_path': str(cards_root / 'dst' / 'bundle' / 'alt.json'),
+            'file_content_changed': False,
+            'rename_changed': True,
+            'cache_updated': True,
+            'has_embedded_wi': False,
+            'previous_has_embedded_wi': False,
+            'remove_entity_ids': ['src/bundle/alt.json'],
+            'remove_owner_ids': ['src/bundle/alt.json'],
+        },
+    ]
+    assert fake_cache.bundle_map == {'dst/bundle': 'dst/bundle/cover.json'}
+    assert fake_cache.id_map['dst/bundle/cover.json']['bundle_dir'] == 'dst/bundle'
+    assert fake_cache.id_map['dst/bundle/cover.json']['versions'] == [
+        {'id': 'dst/bundle/cover.json', 'filename': 'cover.json'},
+        {'id': 'dst/bundle/alt.json', 'filename': 'alt.json'},
+    ]
