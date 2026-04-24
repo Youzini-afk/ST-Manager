@@ -777,7 +777,6 @@ def sync_exact_card_after_fs_move(
         'UPDATE card_metadata SET id = ?, category = ? WHERE id = ?',
         (new_card_id, target_category, old_card_id),
     )
-    conn.commit()
 
     ui_changed = False
     if old_card_id in ui_data:
@@ -791,6 +790,11 @@ def sync_exact_card_after_fs_move(
     if rename_embedded_worldinfo_note_card_prefix(ui_data, old_card_id, new_card_id):
         ui_changed = True
 
+    if ui_changed:
+        save_ui_data(ui_data)
+
+    conn.commit()
+
     if ctx.cache:
         ctx.cache.move_card_update(
             old_card_id,
@@ -800,9 +804,6 @@ def sync_exact_card_after_fs_move(
             final_name,
             dst_full_path,
         )
-
-    if ui_changed:
-        save_ui_data(ui_data)
 
     remove_ids = [old_card_id] if new_card_id != old_card_id else None
     cache_result = update_card_cache(

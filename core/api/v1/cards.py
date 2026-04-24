@@ -442,6 +442,92 @@ def _coerce_request_bool(value) -> bool:
     return bool(value)
 
 
+def _build_move_folder_merge_actions(source_path, source_full_path, target_full_path, new_path_prefix):
+    actions = []
+
+    for root, dirs, files in os.walk(source_full_path):
+        rel_root = os.path.relpath(root, source_full_path)
+        if rel_root == '.':
+            rel_root = ''
+
+        for dir_name in list(dirs):
+            rel_dir = os.path.join(rel_root, dir_name) if rel_root else dir_name
+            src_dir = os.path.join(source_full_path, rel_dir)
+            dst_dir = os.path.join(target_full_path, rel_dir)
+            if os.path.exists(dst_dir):
+                continue
+
+            old_path = f"{source_path}/{rel_dir}".replace('\\', '/')
+            new_path = f"{new_path_prefix}/{rel_dir}".replace('\\', '/')
+            actions.append({
+                'type': 'folder',
+                'src_dir': src_dir,
+                'dst_dir': dst_dir,
+                'old_path': old_path,
+                'new_path': new_path,
+            })
+            dirs.remove(dir_name)
+
+        files_to_process = []
+        processed_files = set()
+
+        for file_name in files:
+            if file_name.lower().endswith('.json'):
+                files_to_process.append(file_name)
+                processed_files.add(file_name)
+                base = os.path.splitext(file_name)[0]
+                for ext in SIDECAR_EXTENSIONS:
+                    sidecar_name = base + ext
+                    if sidecar_name in files:
+                        processed_files.add(sidecar_name)
+
+        for file_name in files:
+            if file_name.lower().endswith('.png') and file_name not in processed_files:
+                files_to_process.append(file_name)
+
+        for file_name in files_to_process:
+            src_file = os.path.join(root, file_name)
+            rel_from_source = os.path.relpath(src_file, source_full_path)
+            dst_file = os.path.join(target_full_path, rel_from_source)
+
+            final_dst = dst_file
+            final_name = os.path.basename(final_dst)
+            if os.path.exists(final_dst):
+                base_name, ext_part = os.path.splitext(os.path.basename(dst_file))
+                dir_name = os.path.dirname(dst_file)
+                counter = 1
+                while True:
+                    final_name = f'{base_name}_{counter}{ext_part}'
+                    final_dst = os.path.join(dir_name, final_name)
+                    if not os.path.exists(final_dst):
+                        break
+                    counter += 1
+
+            action = {
+                'type': 'file',
+                'src_file': src_file,
+                'dst_file': final_dst,
+                'filename': file_name,
+            }
+            if file_name.lower().endswith('.json'):
+                rel_parent = os.path.dirname(rel_from_source).replace('\\', '/')
+                old_card_id = f"{source_path}/{rel_from_source}".replace('\\', '/')
+                new_rel_name = f"{rel_parent}/{final_name}" if rel_parent else final_name
+                new_card_id = f"{new_path_prefix}/{new_rel_name}".replace('\\', '/')
+                if new_card_id != old_card_id:
+                    old_category = os.path.dirname(old_card_id)
+                    action.update({
+                        'sync': 'exact_card',
+                        'old_card_id': old_card_id,
+                        'new_card_id': new_card_id,
+                        'final_name': final_name,
+                        'old_category': old_category,
+                    })
+            actions.append(action)
+
+    return actions
+
+
 def _normalize_sort_mode(sort_mode: str) -> str:
     allowed = {
         'date_desc', 'date_asc',
@@ -4050,76 +4136,83 @@ def api_move_folder():
         
         # 执行合并逻辑
         ui_data = load_ui_data()
-        
-        # 递归遍历源目录
-        for root, dirs, files in os.walk(source_full_path):
-            # 筛选文件：PNG 和 JSON
-            files_to_process = []
-            processed_files = set()
+        conn = get_db()
+        merge_actions = _build_move_folder_merge_actions(
+            source_path=source_path,
+            source_full_path=source_full_path,
+            target_full_path=target_full_path,
+            new_path_prefix=new_path_prefix,
+        )
 
-            # 1. 找 JSON (带伴生图)
-            for f in files:
-                if f.lower().endswith('.json'):
-                    files_to_process.append(f)
-                    processed_files.add(f)
-                    base = os.path.splitext(f)[0]
-                    for ext in SIDECAR_EXTENSIONS:
-                        if (base + ext) in files: processed_files.add(base + ext)
-            
-            # 2. 找剩余 PNG
-            for f in files:
-                if f.lower().endswith('.png') and f not in processed_files:
-                    files_to_process.append(f)
+        total_actions = len(merge_actions)
+        for index, action in enumerate(merge_actions):
+            is_last_action = index == total_actions - 1
 
-            # 移动文件
-            for filename in files_to_process:
-                src_file = os.path.join(root, filename)
-                
-                # 计算在目标文件夹中的对应位置
-                # rel_from_source: "Sub/Card.json"
-                rel_from_source = os.path.relpath(src_file, source_full_path)
-                dst_file = os.path.join(target_full_path, rel_from_source)
-                
-                # 确保目标子目录存在
-                os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-                
-                # 重名检测
-                final_dst = dst_file
-                if os.path.exists(final_dst):
-                    base_name, ext_part = os.path.splitext(os.path.basename(dst_file))
-                    dir_name = os.path.dirname(dst_file)
-                    counter = 1
-                    while True:
-                        new_name = f"{base_name}_{counter}{ext_part}"
-                        final_dst = os.path.join(dir_name, new_name)
-                        # 如果是 JSON，还需要检查伴生图是否冲突 (略简化，假设主文件冲突则全部重命名)
-                        if not os.path.exists(final_dst): break
-                        counter += 1
-                
-                # 移动主文件
-                shutil.move(src_file, final_dst)
-                
-                # 如果是 JSON，移动伴生图
-                if filename.lower().endswith('.json'):
-                    base_src = os.path.splitext(filename)[0]
-                    base_dst = os.path.splitext(os.path.basename(final_dst))[0] # 使用可能重命名后的名字
-                    src_dir = os.path.dirname(src_file)
-                    dst_dir = os.path.dirname(final_dst)
-                    
-                    for ext in SIDECAR_EXTENSIONS:
-                        s_src = os.path.join(src_dir, base_src + ext)
-                        if os.path.exists(s_src):
-                            s_dst = os.path.join(dst_dir, base_dst + ext)
-                            shutil.move(s_src, s_dst)
+            if action['type'] == 'folder':
+                shutil.move(action['src_dir'], action['dst_dir'])
+                try:
+                    sync_folder_prefix_after_fs_move(
+                        conn=conn,
+                        ui_data=ui_data,
+                        old_path=action['old_path'],
+                        new_path=action['new_path'],
+                    )
+                except Exception as e:
+                    if not is_last_action:
+                        raise
+                    logger.error(f"Folder merge sync failed after all filesystem moves completed: {e}")
+                    schedule_reload(reason='move_folder:merge_fallback')
+                    return jsonify({
+                        'success': True,
+                        'new_path': new_path_prefix,
+                        'mode': 'merge',
+                        'warning': '文件夹已合并，但数据库索引更新遇到问题，系统将自动修复。',
+                    })
+                continue
+
+            os.makedirs(os.path.dirname(action['dst_file']), exist_ok=True)
+            shutil.move(action['src_file'], action['dst_file'])
+
+            if action['filename'].lower().endswith('.json'):
+                base_src = os.path.splitext(action['filename'])[0]
+                base_dst = os.path.splitext(os.path.basename(action['dst_file']))[0]
+                src_dir = os.path.dirname(action['src_file'])
+                dst_dir = os.path.dirname(action['dst_file'])
+
+                for ext in SIDECAR_EXTENSIONS:
+                    s_src = os.path.join(src_dir, base_src + ext)
+                    if os.path.exists(s_src):
+                        s_dst = os.path.join(dst_dir, base_dst + ext)
+                        shutil.move(s_src, s_dst)
+
+                if action.get('sync') == 'exact_card':
+                    try:
+                        sync_exact_card_after_fs_move(
+                            conn=conn,
+                            ui_data=ui_data,
+                            old_card_id=action['old_card_id'],
+                            new_card_id=action['new_card_id'],
+                            dst_full_path=action['dst_file'],
+                            final_name=action['final_name'],
+                            old_category=action['old_category'],
+                        )
+                    except Exception as e:
+                        if not is_last_action:
+                            raise
+                        logger.error(f"Folder merge sync failed after all filesystem moves completed: {e}")
+                        schedule_reload(reason='move_folder:merge_fallback')
+                        return jsonify({
+                            'success': True,
+                            'new_path': new_path_prefix,
+                            'mode': 'merge',
+                            'warning': '文件夹已合并，但数据库索引更新遇到问题，系统将自动修复。',
+                        })
 
         # 删除源文件夹 (此时应为空)
         try: shutil.rmtree(source_full_path)
         except: pass
         
-        # 触发全量刷新 (仅在 Merge 模式下)
-        force_reload(reason="move_folder:merge")
-        # 由于我们没有实现复杂的 Merge 增量逻辑，告诉前端刷新
-        return jsonify({"success": True, "new_path": new_path_prefix, "mode": "merge_reload"})
+        return jsonify({"success": True, "new_path": new_path_prefix, "mode": "merge"})
     except Exception as e:
         logger.error(f"Move folder error: {e}")
         return jsonify({"success": False, "msg": str(e)})

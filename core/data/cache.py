@@ -223,6 +223,47 @@ class GlobalMetadataCache:
                 card['thumb_url'] = f"/api/thumbnail/{encoded_id}?t={mtime}"
                 
                 self.id_map[new_id] = card
+
+                source_bundle_id = self.bundle_map.get(old_category)
+                target_bundle_id = self.bundle_map.get(new_category)
+
+                if source_bundle_id and source_bundle_id == target_bundle_id:
+                    bundle_card = self.id_map.get(source_bundle_id)
+                    versions = bundle_card.get('versions') if isinstance(bundle_card, dict) else None
+                    if isinstance(versions, list):
+                        for version in versions:
+                            if not isinstance(version, dict):
+                                continue
+                            if version.get('id') in {old_id, new_id}:
+                                version['id'] = new_id
+                                version['filename'] = new_filename
+                                break
+                        else:
+                            versions.append({'id': new_id, 'filename': new_filename})
+                else:
+                    if source_bundle_id:
+                        source_bundle = self.id_map.get(source_bundle_id)
+                        source_versions = source_bundle.get('versions') if isinstance(source_bundle, dict) else None
+                        if isinstance(source_versions, list):
+                            source_bundle['versions'] = [
+                                version
+                                for version in source_versions
+                                if not (isinstance(version, dict) and version.get('id') == old_id)
+                            ]
+
+                    if target_bundle_id:
+                        target_bundle = self.id_map.get(target_bundle_id)
+                        target_versions = target_bundle.get('versions') if isinstance(target_bundle, dict) else None
+                        if isinstance(target_versions, list):
+                            for version in target_versions:
+                                if not isinstance(version, dict):
+                                    continue
+                                if version.get('id') in {old_id, new_id}:
+                                    version['id'] = new_id
+                                    version['filename'] = new_filename
+                                    break
+                            else:
+                                target_versions.append({'id': new_id, 'filename': new_filename})
                 
                 if old_category != new_category:
                     self._update_category_count(old_category, -1)
