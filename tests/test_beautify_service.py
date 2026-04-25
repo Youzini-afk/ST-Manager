@@ -476,6 +476,60 @@ def test_import_screenshot_and_update_package_identities_persist_package_detail_
     assert updated_package['identity_overrides'] == package_detail['identity_overrides']
 
 
+def test_load_library_recovers_packages_from_disk_when_ui_index_missing(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+
+    imported_theme = _import_theme_for_package(service, tmp_path, name='Recovered Demo', platform='pc')
+    package_id = imported_theme['package']['id']
+
+    ui_data.clear()
+
+    recovered_library = service.load_library()
+
+    assert package_id in recovered_library['packages']
+    recovered_package = recovered_library['packages'][package_id]
+    assert recovered_package['name'] == 'Recovered Demo'
+    assert list(recovered_package['variants'].values())[0]['theme_file'].endswith('/themes/pc.json')
+    assert get_beautify_library(ui_data)['packages'][package_id]['name'] == 'Recovered Demo'
+
+
+def test_load_library_skips_invalid_theme_files_during_disk_recovery(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+
+    themes_dir = tmp_path / 'data' / 'library' / 'beautify' / 'packages' / 'pkg_broken' / 'themes'
+    themes_dir.mkdir(parents=True)
+    (themes_dir / 'pc.json').write_text(json.dumps({'name': 'Broken Only Name'}, ensure_ascii=False), encoding='utf-8')
+
+    recovered_library = service.load_library()
+
+    assert 'pkg_broken' not in recovered_library['packages']
+    assert 'pkg_broken' not in get_beautify_library(ui_data)['packages']
+
+
+def test_load_library_uses_stable_package_name_when_recovered_variants_disagree(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+
+    themes_dir = tmp_path / 'data' / 'library' / 'beautify' / 'packages' / 'pkg_multi_variant' / 'themes'
+    themes_dir.mkdir(parents=True)
+    (themes_dir / 'mobile.json').write_text(
+        json.dumps({'name': 'Mobile Theme', 'main_text_color': '#fff'}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    (themes_dir / 'pc.json').write_text(
+        json.dumps({'name': 'Desktop Theme', 'main_text_color': '#fff'}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    recovered_library = service.load_library()
+
+    recovered_package = recovered_library['packages']['pkg_multi_variant']
+    assert recovered_package['name'] == 'multi variant'
+    assert {variant['theme_name'] for variant in recovered_package['variants'].values()} == {'Mobile Theme', 'Desktop Theme'}
+
+
 def test_import_global_avatar_and_import_package_avatar_use_stable_slots(tmp_path):
     ui_data = {}
     service = _build_service(tmp_path, ui_data)

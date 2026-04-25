@@ -308,6 +308,197 @@ function buildMessage({
   `;
 }
 
+const DEFAULT_PREVIEW_SCENE_ID = "daily";
+
+function buildPreviewScenes(normalizedPlatform = "pc") {
+  return [
+    {
+      id: "daily",
+      label: "日常陪伴",
+      description: "轻松自然的日常聊天",
+      messages: [
+        {
+          role: "system",
+          mesId: "1",
+          timestamp: "System",
+          tokenCounter: "meta",
+          extraClass: "smallSysMes",
+          messageHtml:
+            '<p>当前预览使用内置聊天场景，便于观察主题在真实聊天节奏里的表现。</p><p><a href="#" data-preview-link="disabled">Example link</a></p><hr>',
+        },
+        {
+          role: "character",
+          mesId: "2",
+          timestamp: "08:14",
+          tokenCounter: "318 tok",
+          includeReasoning: true,
+          messageHtml:
+            "<p><strong>粗体</strong>、<em>斜体</em>、<u>下划线</u> 和 <code>inline code</code>。</p><p>你总算忙完啦？先坐下缓一缓，我把灯调暗一点。</p><blockquote>Welcome back. Theme variables now drive this isolated preview.</blockquote>",
+        },
+        {
+          role: "user",
+          mesId: "3",
+          timestamp: "08:15",
+          tokenCounter: "142 tok",
+          extraClass: "last_mes",
+          messageHtml: `<p>列表、链接和代码块也需要稳定呈现。</p><ul><li>Keep the message shell realistic.</li><li>Make rich text and code samples visible.</li></ul><pre><code>const preview = buildBeautifyPreviewDocument({ platform: '${escapeHtml(normalizedPlatform)}' });</code></pre>`,
+        },
+      ],
+    },
+    {
+      id: "flirty",
+      label: "暧昧互动",
+      description: "更柔和的情绪和停顿",
+      messages: [
+        {
+          role: "character",
+          mesId: "1",
+          timestamp: "22:06",
+          tokenCounter: "204 tok",
+          messageHtml:
+            "<p>你刚刚那句“只看一眼消息”听起来，可不像真的只看一眼。</p>",
+        },
+        {
+          role: "user",
+          mesId: "2",
+          timestamp: "22:06",
+          tokenCounter: "72 tok",
+          messageHtml: "<p>被你发现了。我本来只是想确认你睡了没。</p>",
+        },
+      ],
+    },
+    {
+      id: "lore",
+      label: "设定说明",
+      description: "长段落和说明性文本",
+      messages: [
+        {
+          role: "user",
+          mesId: "1",
+          timestamp: "19:24",
+          tokenCounter: "104 tok",
+          messageHtml: "<p>你之前提过“潮灯湾”，那地方到底是什么样？</p>",
+        },
+        {
+          role: "character",
+          mesId: "2",
+          timestamp: "19:25",
+          tokenCounter: "352 tok",
+          messageHtml:
+            "<p>港口白天看着安静，到了夜里，栈桥边会亮起成串的冷色灯。</p>",
+        },
+      ],
+    },
+    {
+      id: "story",
+      label: "剧情推进",
+      description: "带动作与状态变化的连续片段",
+      messages: [
+        {
+          role: "system",
+          mesId: "1",
+          timestamp: "System",
+          tokenCounter: "meta",
+          extraClass: "smallSysMes",
+          messageHtml:
+            "<p>场景预览：轻量剧情推进，用于观察多轮叙事节奏。</p><hr>",
+        },
+        {
+          role: "character",
+          mesId: "2",
+          timestamp: "23:11",
+          tokenCounter: "180 tok",
+          messageHtml:
+            "<p>巷口的风把纸灯吹得一晃一晃的，我抬手替你挡了下火。</p>",
+        },
+      ],
+    },
+    {
+      id: "system",
+      label: "系统提示",
+      description: "系统通知与规则提醒",
+      messages: [
+        {
+          role: "system",
+          mesId: "1",
+          timestamp: "System",
+          tokenCounter: "meta",
+          extraClass: "smallSysMes",
+          messageHtml:
+            "<p>系统消息、提示条和轻量说明也会通过相同的 ST 消息壳层渲染。</p>",
+        },
+      ],
+    },
+  ];
+}
+
+function buildPreviewSceneMessage(message, previewIdentities) {
+  if (message.role === "system") {
+    return buildMessage({
+      ...message,
+      name: previewIdentities.system.name,
+      avatarLabel: previewIdentities.system.avatarLabel,
+      isSystem: true,
+    });
+  }
+
+  if (message.role === "user") {
+    return buildMessage({
+      ...message,
+      name: previewIdentities.user.name,
+      avatarLabel: "CL",
+      avatarSrc: previewIdentities.user.avatarSrc,
+      isUser: true,
+    });
+  }
+
+  return buildMessage({
+    ...message,
+    name: previewIdentities.character.name,
+    avatarLabel: "QW",
+    avatarSrc: previewIdentities.character.avatarSrc,
+  });
+}
+
+function buildPreviewSceneMessages(scene, previewIdentities) {
+  return scene.messages
+    .map((message) => buildPreviewSceneMessage(message, previewIdentities))
+    .join("");
+}
+
+function buildPreviewSceneSwitcher(scenes) {
+  return `
+    <div class="st-preview-scene-switcher" data-preview-scene-switcher>
+      ${scenes
+        .map(
+          (scene) => `
+            <button
+              type="button"
+              class="st-preview-scene-button${scene.id === DEFAULT_PREVIEW_SCENE_ID ? " is-active" : ""}"
+              data-preview-scene-button="${escapeHtml(scene.id)}"
+              aria-pressed="${scene.id === DEFAULT_PREVIEW_SCENE_ID ? "true" : "false"}"
+            >${escapeHtml(scene.label)}</button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function buildPreviewSceneTemplates(scenes, previewIdentities) {
+  return `
+    <div class="st-preview-scene-templates" hidden>
+      ${scenes
+        .map(
+          (scene) => `
+            <template data-preview-scene-template="${escapeHtml(scene.id)}" data-preview-scene-description="${escapeHtml(scene.description || "")}">${buildPreviewSceneMessages(scene, previewIdentities)}</template>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function buildPreviewBehaviorScript() {
   return `
     (() => {
@@ -317,6 +508,9 @@ function buildPreviewBehaviorScript() {
       const panels = Array.from(document.querySelectorAll('[data-panel-surface]'));
       const shells = Array.from(document.querySelectorAll('[data-panel-shell]'));
       const drawers = Array.from(document.querySelectorAll('.inline-drawer'));
+      const sceneButtons = Array.from(document.querySelectorAll('[data-preview-scene-button]'));
+      const chat = document.querySelector('[data-preview-chat-messages]') || document.querySelector('#chat');
+      const description = document.querySelector('[data-preview-scene-description]');
 
       const toggleInlineDrawer = (drawer, expand = true) => {
         const icon = drawer.querySelector(':scope > .inline-drawer-header .inline-drawer-icon');
@@ -368,6 +562,53 @@ function buildPreviewBehaviorScript() {
         });
       };
 
+      const bindPreviewLinks = () => {
+        document.querySelectorAll('[data-preview-link="disabled"]').forEach((link) => {
+          if (link.__stPreviewLinkBound) {
+            return;
+          }
+          link.__stPreviewLinkBound = true;
+          link.addEventListener('click', (event) => {
+            event.preventDefault();
+          });
+        });
+      };
+
+      const scrollChatToBottom = () => {
+        const chat = document.querySelector('#chat');
+        if (!chat) {
+          return;
+        }
+        chat.scrollTop = chat.scrollHeight;
+      };
+
+      const renderScene = (sceneId) => {
+        if (!chat) {
+          return;
+        }
+
+        const template = document.querySelector('[data-preview-scene-template="' + sceneId + '"]');
+        if (!template) {
+          return;
+        }
+
+        root.dataset.activeScene = sceneId;
+        chat.innerHTML = template.innerHTML;
+
+        if (description) {
+          description.textContent = template.dataset.previewSceneDescription || '';
+        }
+
+        sceneButtons.forEach((button) => {
+          const isActive = button.dataset.previewSceneButton === sceneId;
+          button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+          button.classList.toggle('is-active', isActive);
+        });
+
+        bindPreviewLinks();
+        window.requestAnimationFrame(scrollChatToBottom);
+      };
+
       buttons.forEach((button) => {
         button.addEventListener('click', () => {
           const nextPanel = button.dataset.panelTarget || 'none';
@@ -386,21 +627,20 @@ function buildPreviewBehaviorScript() {
         });
       });
 
-      document.querySelectorAll('[data-preview-link="disabled"]').forEach((link) => {
-        link.addEventListener('click', (event) => {
-          event.preventDefault();
+      sceneButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          renderScene(button.dataset.previewSceneButton);
         });
       });
 
-      const scrollChatToBottom = () => {
-        const chat = document.querySelector('#chat');
-        if (!chat) {
-          return;
-        }
-        chat.scrollTop = chat.scrollHeight;
-      };
-
       sync(root.dataset.activePanel || 'none');
+      bindPreviewLinks();
+      const chatRoot = document.querySelector('#chat');
+      const defaultScene =
+        root.dataset.activeScene ||
+        root.dataset.defaultScene ||
+        ((chatRoot && chatRoot.dataset && chatRoot.dataset.previewDefaultScene) || 'daily');
+      renderScene(defaultScene);
       window.requestAnimationFrame(scrollChatToBottom);
       window.addEventListener('load', scrollChatToBottom);
     })();
@@ -454,6 +694,10 @@ export function buildBeautifyPreviewSampleMarkup(
 ) {
   const normalizedPlatform = platform === "mobile" ? "mobile" : "pc";
   const previewIdentities = buildPreviewIdentities(identities);
+  const previewScenes = buildPreviewScenes(normalizedPlatform);
+  const defaultPreviewScene =
+    previewScenes.find((scene) => scene.id === DEFAULT_PREVIEW_SCENE_ID) ||
+    previewScenes[0];
   const sendFormClasses = ["no-connection"];
 
   if (theme.compact_input_area) {
@@ -771,41 +1015,14 @@ export function buildBeautifyPreviewSampleMarkup(
     </div>
   `;
   const chatMarkup = `
-    <div id="chat">
-      ${buildMessage({
-        mesId: "1",
-        name: previewIdentities.system.name,
-        avatarLabel: previewIdentities.system.avatarLabel,
-        timestamp: "System",
-        tokenCounter: "meta",
-        isSystem: true,
-        extraClass: "smallSysMes",
-        messageHtml:
-          '<p>Previewing theme surfaces with fixed sample content.</p><p><a href="#" data-preview-link="disabled">Example link</a></p><hr>',
-      })}
-      ${buildMessage({
-        mesId: "2",
-        name: previewIdentities.character.name,
-        avatarLabel: "QW",
-        avatarSrc: previewIdentities.character.avatarSrc,
-        timestamp: "08:14",
-        tokenCounter: "318 tok",
-        includeReasoning: true,
-        messageHtml:
-          "<p><strong>粗体</strong>、<em>斜体</em>、<u>下划线</u> 和 <code>inline code</code>。</p><blockquote>引用颜色、边框、留白和正文容器应该尽量贴近 ST。</blockquote><p>Welcome back. Theme variables now drive this isolated preview.</p>",
-      })}
-      ${buildMessage({
-        mesId: "3",
-        name: previewIdentities.user.name,
-        avatarLabel: "CL",
-        avatarSrc: previewIdentities.user.avatarSrc,
-        timestamp: "08:15",
-        tokenCounter: "142 tok",
-        isUser: true,
-        extraClass: "last_mes",
-        messageHtml: `<p>列表、链接和代码块也需要稳定呈现。</p><ul><li>Keep the message shell realistic.</li><li>Make rich text and code samples visible.</li></ul><pre><code>const preview = buildBeautifyPreviewDocument({ platform: '${escapeHtml(normalizedPlatform)}' });</code></pre>`,
-      })}
+    ${buildPreviewSceneSwitcher(previewScenes)}
+    <div class="st-preview-scene-description" data-preview-scene-description>${escapeHtml(defaultPreviewScene.description || "")}</div>
+    <div id="chat" data-preview-default-scene="${escapeHtml(defaultPreviewScene.id)}">
+      <div data-preview-chat-messages>
+        ${buildPreviewSceneMessages(defaultPreviewScene, previewIdentities)}
+      </div>
     </div>
+    ${buildPreviewSceneTemplates(previewScenes, previewIdentities)}
   `;
   const sendFormMarkup = `
     <div id="form_sheld">
@@ -956,6 +1173,27 @@ export function buildBeautifyPreviewDocument({
         display: flex;
         flex-direction: column;
         padding: 20px;
+      }
+
+      .st-preview-scene-switcher {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 12px;
+      }
+
+      .st-preview-scene-button {
+        border: 1px solid var(--SmartThemeBorderColor);
+        background: var(--SmartThemeChatTintColor);
+        color: var(--SmartThemeBodyColor);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font: inherit;
+        cursor: default;
+      }
+
+      .st-preview-scene-button.is-active {
+        background: var(--SmartThemeUserMesBlurTintColor);
       }
 
       #top-bar {

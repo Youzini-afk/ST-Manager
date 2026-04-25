@@ -48,8 +48,21 @@ class BeautifyService:
             self._ui_data_saver(copy.deepcopy(ui_data))
         return changed
 
+    def _load_library_state(self, ui_data: Optional[Dict] = None):
+        state = ui_data if isinstance(ui_data, dict) else self._load_ui_data()
+        library = get_beautify_library(state)
+        if not self._should_recover_library_from_disk(state, library):
+            return library
+        recovered_library = self._recover_library_from_disk(library)
+        if self._save_library(state, recovered_library):
+            return get_beautify_library(state)
+        return recovered_library
+
+    def _should_recover_library_from_disk(self, ui_data: Dict, library: Dict):
+        return not bool(library.get('packages'))
+
     def load_library(self):
-        return get_beautify_library(self._load_ui_data())
+        return self._load_library_state()
 
     def get_global_settings(self):
         return copy.deepcopy(self.load_library().get('global_settings', {}))
@@ -100,7 +113,7 @@ class BeautifyService:
             needs_review = False
 
         ui_data = self._load_ui_data()
-        library = get_beautify_library(ui_data)
+        library = self._load_library_state(ui_data)
         packages = dict(library.get('packages', {}))
 
         package_name = str(theme_payload.get('name') or '').strip() or PathLike.basename_without_ext(source_hint) or '未命名主题'
@@ -217,7 +230,7 @@ class BeautifyService:
 
     def update_global_settings(self, payload: Optional[Dict] = None):
         ui_data = self._load_ui_data()
-        library = get_beautify_library(ui_data)
+        library = self._load_library_state(ui_data)
         global_settings = copy.deepcopy(library.get('global_settings') or {})
         identities = copy.deepcopy(global_settings.get('identities') or {})
         source = payload if isinstance(payload, dict) else {}
@@ -241,14 +254,14 @@ class BeautifyService:
         global_settings['identities'] = identities
         library['global_settings'] = global_settings
         self._save_library(ui_data, library)
-        return copy.deepcopy(get_beautify_library(ui_data).get('global_settings', {}))
+        return copy.deepcopy(self._load_library_state(ui_data).get('global_settings', {}))
 
     def import_global_wallpaper(self, source_path: str, source_name: Optional[str] = None):
         if not source_path or not os.path.isfile(source_path):
             raise ValueError('壁纸文件不存在')
 
         ui_data = self._load_ui_data()
-        library = get_beautify_library(ui_data)
+        library = self._load_library_state(ui_data)
         global_settings = copy.deepcopy(library.get('global_settings') or {})
         wallpapers_dir = os.path.join(self.library_root, 'global', 'wallpapers')
         try:
@@ -317,7 +330,7 @@ class BeautifyService:
 
     def delete_package(self, package_id: str):
         ui_data = self._load_ui_data()
-        library = get_beautify_library(ui_data)
+        library = self._load_library_state(ui_data)
         resolved_package_id = str(package_id or '').strip()
         packages = dict(library.get('packages', {}))
         if resolved_package_id not in packages:
@@ -401,6 +414,261 @@ class BeautifyService:
             'wallpapers': {},
         }
 
+    def _recover_library_from_disk(self, library: Optional[Dict] = None):
+        recovered_library = copy.deepcopy(library if isinstance(library, dict) else {})
+        existing_packages = copy.deepcopy(recovered_library.get('packages') or {})
+        packages = {}
+        packages_root = os.path.join(self.library_root, 'packages')
+        if not os.path.isdir(packages_root):
+            recovered_library['packages'] = packages
+            return recovered_library
+
+        try:
+            package_ids = sorted(
+                entry
+                for entry in os.listdir(packages_root)
+                if os.path.isdir(os.path.join(packages_root, entry))
+            )
+        except OSError:
+            recovered_library['packages'] = packages
+            return recovered_library
+
+        for package_id in package_ids:
+            recovered_package = self._recover_package_from_disk(package_id, existing_packages.get(package_id))
+            if recovered_package:
+                packages[package_id] = recovered_package
+
+        recovered_library['packages'] = packages
+        return recovered_library
+
+    def _recover_package_from_disk(self, package_id: str, package_info: Optional[Dict] = None):
+        package_dir = os.path.join(self.library_root, 'packages', package_id)
+        if not os.path.isdir(package_dir):
+            return None
+
+        existing_package = copy.deepcopy(package_info) if isinstance(package_info, dict) else {}
+        existing_name = str(existing_package.get('name') or '').strip()
+        package_name = existing_name or self._display_package_name(package_id)
+        recovered_package = self._build_empty_package(package_id, package_name)
+        for key in ('author', 'tags', 'notes', 'cover_variant_id', 'created_at', 'updated_at'):
+            if key in existing_package:
+                recovered_package[key] = copy.deepcopy(existing_package.get(key))
+
+        theme_variants = self._recover_theme_variants(package_id, recovered_package, existing_package.get('variants'))
+        if theme_variants:
+            recovered_package['variants'] = theme_variants
+            first_variant = next(iter(theme_variants.values()))
+            if not existing_name and len(theme_variants) == 1:
+                recovered_package['name'] = first_variant.get('theme_name') or package_name
+            if not recovered_package.get('cover_variant_id') or recovered_package['cover_variant_id'] not in theme_variants:
+                recovered_package['cover_variant_id'] = first_variant['id']
+        elif not recovered_package.get('variants'):
+            return None
+
+        recovered_package['wallpapers'] = self._recover_assets_from_dir(package_id, 'wallpapers', 'wp')
+
+        screenshots = self._recover_assets_from_dir(package_id, 'screenshots', 'shot')
+        if not screenshots:
+            screenshots = self._recover_assets_from_dir(package_id, 'screens', 'shot')
+        recovered_package['screenshots'] = screenshots
+
+        recovered_package['identity_overrides'] = self._recover_identity_overrides(package_id, existing_package.get('identity_overrides'))
+
+        if recovered_package.get('wallpapers') and len(recovered_package.get('variants', {})) == 1:
+            variant_id = next(iter(recovered_package['variants']))
+            variant = copy.deepcopy(recovered_package['variants'][variant_id])
+            variant['wallpaper_ids'] = sorted(recovered_package['wallpapers'].keys())
+            recovered_package['variants'][variant_id] = variant
+            for wallpaper_id, wallpaper in list(recovered_package['wallpapers'].items()):
+                updated_wallpaper = copy.deepcopy(wallpaper)
+                updated_wallpaper['variant_id'] = variant_id
+                recovered_package['wallpapers'][wallpaper_id] = updated_wallpaper
+
+        updated_candidates = [int(recovered_package.get('updated_at') or 0)]
+        created_candidates = [int(recovered_package.get('created_at') or 0)]
+        for variant in recovered_package.get('variants', {}).values():
+            theme_path = self._resolve_project_relative_path(variant.get('theme_file', ''))
+            timestamp = self._safe_mtime(theme_path)
+            if timestamp:
+                updated_candidates.append(timestamp)
+                created_candidates.append(timestamp)
+        for collection_name in ('wallpapers', 'screenshots'):
+            for asset in recovered_package.get(collection_name, {}).values():
+                timestamp = int(asset.get('mtime') or 0)
+                if timestamp:
+                    updated_candidates.append(timestamp)
+                    created_candidates.append(timestamp)
+
+        created_at = min((value for value in created_candidates if value > 0), default=0)
+        updated_at = max((value for value in updated_candidates if value > 0), default=created_at)
+        if created_at:
+            recovered_package['created_at'] = created_at
+        if updated_at:
+            recovered_package['updated_at'] = updated_at
+        return recovered_package
+
+    def _recover_theme_variants(self, package_id: str, package_info: Dict, existing_variants: Optional[Dict] = None):
+        themes_dir = os.path.join(self.library_root, 'packages', package_id, 'themes')
+        if not os.path.isdir(themes_dir):
+            return {}
+
+        variants = {}
+        existing_variants = copy.deepcopy(existing_variants) if isinstance(existing_variants, dict) else {}
+        try:
+            filenames = sorted(entry for entry in os.listdir(themes_dir) if entry.lower().endswith('.json'))
+        except OSError:
+            return {}
+
+        for filename in filenames:
+            theme_path = os.path.join(themes_dir, filename)
+            theme_payload = self._read_recoverable_theme_payload(theme_path)
+            if not theme_payload:
+                continue
+            theme_name = str(theme_payload.get('name') or '').strip()
+            platform_name = os.path.splitext(filename)[0]
+            platform = self._normalize_platform(platform_name)
+            needs_platform_review = False
+            if not platform_name:
+                platform, needs_platform_review = self.guess_platform(filename, theme_name=theme_name, package_name=package_info.get('name', ''))
+            else:
+                platform = platform or platform_name.lower()
+            if platform not in ('pc', 'mobile', 'dual'):
+                platform, needs_platform_review = self.guess_platform(filename, theme_name=theme_name, package_name=package_info.get('name', ''))
+            relative_theme_file = os.path.relpath(theme_path, self._project_root_for_library()).replace('\\', '/')
+            variant_id, existing_variant = self._match_existing_variant(existing_variants, platform, relative_theme_file)
+            if not variant_id:
+                variant_id = f'var_{platform}_{self._short_hash(relative_theme_file)}'
+
+            preview_hint = copy.deepcopy((existing_variant or {}).get('preview_hint') or {})
+            preview_hint['needs_platform_review'] = bool(preview_hint.get('needs_platform_review')) or needs_platform_review
+            preview_hint['preview_accuracy'] = 'approx' if self._theme_has_custom_css(theme_payload) else ('approx' if platform in ('pc', 'mobile') else 'base')
+            variants[variant_id] = {
+                'id': variant_id,
+                'platform': platform,
+                'theme_name': theme_name or (existing_variant or {}).get('theme_name') or package_info.get('name') or self._display_package_name(package_id),
+                'theme_file': relative_theme_file,
+                'wallpaper_ids': list((existing_variant or {}).get('wallpaper_ids', [])),
+                'preview_hint': preview_hint,
+            }
+
+        return variants
+
+    def _match_existing_variant(self, existing_variants: Dict, platform: str, theme_file: str):
+        for variant_id, variant in (existing_variants or {}).items():
+            if str((variant or {}).get('theme_file') or '').strip() == theme_file:
+                return variant_id, copy.deepcopy(variant)
+        for variant_id, variant in (existing_variants or {}).items():
+            if str((variant or {}).get('platform') or '').strip() == platform:
+                return variant_id, copy.deepcopy(variant)
+        return '', None
+
+    def _recover_assets_from_dir(self, package_id: str, folder_name: str, asset_prefix: str):
+        assets_dir = os.path.join(self.library_root, 'packages', package_id, folder_name)
+        if not os.path.isdir(assets_dir):
+            return {}
+
+        assets = {}
+        try:
+            filenames = sorted(
+                entry
+                for entry in os.listdir(assets_dir)
+                if os.path.isfile(os.path.join(assets_dir, entry))
+            )
+        except OSError:
+            return {}
+
+        for filename in filenames:
+            asset_path = os.path.join(assets_dir, filename)
+            asset = self._read_image_asset(asset_path)
+            if not asset:
+                continue
+            asset_id = f'{asset_prefix}_{self._short_hash(asset["file"])}'
+            asset['id'] = asset_id
+            if asset_prefix == 'wp':
+                asset['variant_id'] = ''
+            assets[asset_id] = asset
+        return assets
+
+    def _recover_identity_overrides(self, package_id: str, existing_identities: Optional[Dict] = None):
+        avatars_dir = os.path.join(self.library_root, 'packages', package_id, 'avatars')
+        existing = copy.deepcopy(existing_identities) if isinstance(existing_identities, dict) else {}
+        identities = {
+            'character': {'name': str((existing.get('character') or {}).get('name') or '').strip(), 'avatar_file': ''},
+            'user': {'name': str((existing.get('user') or {}).get('name') or '').strip(), 'avatar_file': ''},
+        }
+        if not os.path.isdir(avatars_dir):
+            return identities
+
+        for target in ('character', 'user'):
+            avatar = self._find_slot_asset(avatars_dir, target)
+            if avatar:
+                identities[target]['avatar_file'] = avatar['file']
+        return identities
+
+    def _find_slot_asset(self, target_dir: str, slot_name: str):
+        if not os.path.isdir(target_dir):
+            return {}
+        prefix = f'{slot_name}.'
+        try:
+            filenames = sorted(entry for entry in os.listdir(target_dir) if entry.lower().startswith(prefix))
+        except OSError:
+            return {}
+        for filename in filenames:
+            asset = self._read_image_asset(os.path.join(target_dir, filename))
+            if asset:
+                return asset
+        return {}
+
+    def _read_image_asset(self, path: str):
+        if not path or not os.path.isfile(path):
+            return {}
+        try:
+            with Image.open(path) as image:
+                width, height = image.size
+        except (UnidentifiedImageError, OSError, ValueError):
+            logger.warning('Skipping invalid beautify asset during recovery: %s', path, exc_info=True)
+            return {}
+
+        return {
+            'file': os.path.relpath(path, self._project_root_for_library()).replace('\\', '/'),
+            'filename': os.path.basename(path),
+            'width': width,
+            'height': height,
+            'mtime': self._safe_mtime(path),
+        }
+
+    def _read_json_file(self, path: str):
+        if not path or not os.path.isfile(path):
+            return {}
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
+            return payload if isinstance(payload, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            logger.warning('Skipping invalid beautify theme during recovery: %s', path, exc_info=True)
+            return {}
+
+    def _read_recoverable_theme_payload(self, path: str):
+        try:
+            return self._load_theme_payload(path)
+        except ValueError:
+            logger.warning('Skipping invalid beautify theme during recovery: %s', path, exc_info=True)
+            return {}
+
+    def _safe_mtime(self, path: str):
+        if not path or not os.path.exists(path):
+            return 0
+        try:
+            return int(os.path.getmtime(path))
+        except OSError:
+            return 0
+
+    def _display_package_name(self, package_id: str):
+        normalized = str(package_id or '').strip()
+        if normalized.startswith('pkg_'):
+            normalized = normalized[4:]
+        return normalized.replace('_', ' ').strip() or str(package_id or '').strip()
+
     def _build_package_id(self, package_name: str, existing_packages: Dict):
         base = self._slugify(package_name) or 'theme'
         candidate = f'pkg_{base}'
@@ -443,7 +711,7 @@ class BeautifyService:
         return library, package_info, variant
 
     def _load_package(self, ui_data: Dict, package_id: str):
-        library = get_beautify_library(ui_data)
+        library = self._load_library_state(ui_data)
         resolved_package_id = str(package_id or '').strip()
         package_info = copy.deepcopy(library.get('packages', {}).get(resolved_package_id))
         if not package_info:
@@ -573,7 +841,7 @@ class BeautifyService:
 
         resolved_target = self._normalize_identity_target(target)
         ui_data = self._load_ui_data()
-        library = get_beautify_library(ui_data)
+        library = self._load_library_state(ui_data)
 
         if package_id is None:
             global_settings = copy.deepcopy(library.get('global_settings') or {})
@@ -613,8 +881,8 @@ class BeautifyService:
 
         self._save_library(ui_data, library)
         if package_id is None:
-            return copy.deepcopy(get_beautify_library(ui_data).get('global_settings', {}).get('identities', {}).get(resolved_target, {}))
-        return copy.deepcopy(get_beautify_library(ui_data).get('packages', {}).get(str(package_id).strip(), {}).get('identity_overrides', {}).get(resolved_target, {}))
+            return copy.deepcopy(self._load_library_state(ui_data).get('global_settings', {}).get('identities', {}).get(resolved_target, {}))
+        return copy.deepcopy(self._load_library_state(ui_data).get('packages', {}).get(str(package_id).strip(), {}).get('identity_overrides', {}).get(resolved_target, {}))
 
     def _load_theme_data(self, theme_file: str):
         path = self._resolve_project_relative_path(theme_file)

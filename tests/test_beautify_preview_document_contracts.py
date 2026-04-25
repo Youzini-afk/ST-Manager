@@ -403,6 +403,85 @@ def test_build_beautify_preview_sample_markup_contains_st_right_send_form_action
     )
 
 
+def test_build_beautify_preview_sample_markup_contains_scene_switcher_and_default_scene():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewSampleMarkup('pc');
+
+        for (const token of [
+          'data-preview-scene-switcher',
+          'data-preview-scene-button="daily"',
+          'data-preview-scene-button="flirty"',
+          'data-preview-scene-button="lore"',
+          'data-preview-scene-button="story"',
+          'data-preview-scene-button="system"',
+          'data-preview-default-scene="daily"',
+          'data-preview-chat-messages',
+          'data-preview-scene-template="daily"',
+          'data-preview-scene-template="flirty"',
+          'data-preview-scene-template="lore"',
+          'data-preview-scene-template="story"',
+          'data-preview-scene-template="system"',
+          '日常陪伴',
+          '暧昧互动',
+          '设定说明',
+          '剧情推进',
+          '系统提示',
+        ]) {
+          if (!html.includes(token)) throw new Error(`missing token: ${token}`);
+        }
+
+        const switcherIndex = html.indexOf('data-preview-scene-switcher');
+        const chatIndex = html.indexOf('id="chat"');
+        const formSheldIndex = html.indexOf('id="form_sheld"');
+
+        if (!(switcherIndex < chatIndex && chatIndex < formSheldIndex)) {
+          throw new Error('scene switcher should render before #chat and #form_sheld');
+        }
+        '''
+    )
+
+
+def test_build_beautify_preview_sample_markup_keeps_preview_link_as_marked_real_anchor():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewSampleMarkup('pc');
+
+        if (!html.includes('data-preview-link="disabled"')) throw new Error('missing marked preview link');
+        if (html.includes('<a role="link" aria-disabled="true">')) throw new Error('preview link should not use fake link semantics');
+        if (!html.includes('<a href="#" data-preview-link="disabled">')) throw new Error('preview link should remain a real anchor with a preview disable marker');
+        '''
+    )
+
+
+def test_build_beautify_preview_sample_markup_default_scene_keeps_inline_rich_text_markers():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewSampleMarkup('pc');
+
+        for (const token of [
+          '<strong>粗体</strong>',
+          '<em>斜体</em>',
+          '<u>下划线</u>',
+          '<code>inline code</code>',
+        ]) {
+          if (!html.includes(token)) throw new Error(`missing token: ${token}`);
+        }
+        '''
+    )
+
+
+def test_build_beautify_preview_sample_markup_mobile_code_sample_reflects_mobile_platform():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewSampleMarkup('mobile');
+
+        if (!html.includes("platform: 'mobile'")) throw new Error('missing mobile platform code sample');
+        if (html.includes("platform: 'pc'")) throw new Error('mobile preview should not hard-code pc platform sample');
+        '''
+    )
+
+
 def test_build_beautify_preview_sample_markup_keeps_example_link_as_marked_real_anchor():
     run_preview_document_check(
         '''
@@ -499,6 +578,231 @@ def test_build_beautify_preview_document_disables_navigation_for_marked_example_
 
         if (!event.defaultPrevented) throw new Error('marked example link click was not prevented');
         if (preventDefaultCalls !== 1) throw new Error(`expected one preventDefault call, got ${preventDefaultCalls}`);
+        '''
+    )
+
+
+def test_build_beautify_preview_document_renders_and_switches_preview_scenes_at_runtime():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewDocument({
+          platform: 'pc',
+          theme: {},
+          wallpaperUrl: '',
+        });
+
+        const scriptMatch = html.match(/<script>([\s\S]*)<\/script>/);
+        if (!scriptMatch) throw new Error('missing preview behavior script');
+
+        let loadHandler = null;
+        let requestAnimationFrameCalls = 0;
+        let scrollCalls = 0;
+        let chatMarkup = '';
+        let descriptionText = '';
+        const previewLinkHandlers = [];
+
+        const root = { dataset: { activePanel: 'none', defaultScene: 'daily' } };
+        const chat = {
+          scrollTop: 0,
+          scrollHeight: 120,
+          get innerHTML() {
+            return chatMarkup;
+          },
+          set innerHTML(value) {
+            chatMarkup = value;
+          },
+        };
+        const description = {
+          get textContent() {
+            return descriptionText;
+          },
+          set textContent(value) {
+            descriptionText = value;
+          },
+        };
+
+        function createClassList(initial = []) {
+          const set = new Set(initial);
+          return {
+            add(...tokens) {
+              tokens.forEach((token) => set.add(token));
+            },
+            remove(...tokens) {
+              tokens.forEach((token) => set.delete(token));
+            },
+            toggle(token, force) {
+              if (force === undefined) {
+                if (set.has(token)) {
+                  set.delete(token);
+                  return false;
+                }
+                set.add(token);
+                return true;
+              }
+              if (force) {
+                set.add(token);
+                return true;
+              }
+              set.delete(token);
+              return false;
+            },
+            contains(token) {
+              return set.has(token);
+            },
+          };
+        }
+
+        function createSceneButton(sceneId) {
+          let clickHandler = null;
+          return {
+            dataset: { previewSceneButton: sceneId },
+            classList: createClassList(sceneId === 'daily' ? ['is-active'] : []),
+            attributes: { 'aria-pressed': sceneId === 'daily' ? 'true' : 'false' },
+            addEventListener(type, handler) {
+              if (type === 'click') {
+                clickHandler = handler;
+              }
+            },
+            setAttribute(name, value) {
+              this.attributes[name] = String(value);
+            },
+            getAttribute(name) {
+              return this.attributes[name] ?? null;
+            },
+            click() {
+              if (typeof clickHandler !== 'function') {
+                throw new Error(`scene button ${sceneId} missing click handler`);
+              }
+              clickHandler();
+            },
+          };
+        }
+
+        function createPreviewLink(label) {
+          return {
+            label,
+            addEventListener(type, handler) {
+              if (type === 'click') {
+                previewLinkHandlers.push({ label, handler });
+              }
+            },
+          };
+        }
+
+        const previewLinkByScene = {
+          daily: createPreviewLink('daily-link'),
+          flirty: createPreviewLink('flirty-link'),
+        };
+
+        const templateByScene = {
+          daily: {
+            innerHTML: '<div class="mes">daily markup <a href="#" data-preview-link="disabled">Daily link</a></div>',
+            dataset: { previewSceneDescription: '轻松自然的日常聊天' },
+          },
+          flirty: {
+            innerHTML: '<div class="mes">flirty markup <a href="#" data-preview-link="disabled">Flirty link</a></div>',
+            dataset: { previewSceneDescription: '更柔和的情绪和停顿' },
+          },
+        };
+
+        const sceneButtons = [createSceneButton('daily'), createSceneButton('flirty')];
+
+        const document = {
+          querySelector(selector) {
+            if (selector === '.st-preview-root') return root;
+            if (selector === '#chat') return chat;
+            if (selector === '[data-preview-chat-messages]') return chat;
+            if (selector === '[data-preview-scene-description]') return description;
+            if (selector === '[data-preview-scene-template="daily"]') return templateByScene.daily;
+            if (selector === '[data-preview-scene-template="flirty"]') return templateByScene.flirty;
+            return null;
+          },
+          querySelectorAll(selector) {
+            if (selector === '[data-panel-target]' || selector === '[data-panel-surface]' || selector === '[data-panel-shell]' || selector === '.inline-drawer') {
+              return [];
+            }
+            if (selector === '[data-preview-scene-button]') return sceneButtons;
+            if (selector === '[data-preview-link="disabled"]') {
+              if (chatMarkup.includes('daily markup')) return [previewLinkByScene.daily];
+              if (chatMarkup.includes('flirty markup')) return [previewLinkByScene.flirty];
+              return [];
+            }
+            return [];
+          },
+        };
+
+        const window = {
+          requestAnimationFrame(callback) {
+            requestAnimationFrameCalls += 1;
+            callback();
+          },
+          addEventListener(type, handler) {
+            if (type === 'load') {
+              loadHandler = handler;
+            }
+          },
+        };
+
+        class CustomEvent {
+          constructor(type, options = {}) {
+            this.type = type;
+            this.bubbles = Boolean(options.bubbles);
+          }
+        }
+
+        Object.defineProperty(chat, 'scrollTop', {
+          get() {
+            return this._scrollTop || 0;
+          },
+          set(value) {
+            this._scrollTop = value;
+            scrollCalls += 1;
+          },
+        });
+
+        const runScript = new Function('document', 'window', 'CustomEvent', scriptMatch[1]);
+        runScript(document, window, CustomEvent);
+
+        if (root.dataset.activeScene !== 'daily') throw new Error(`expected default active scene to be stored on root, got ${root.dataset.activeScene}`);
+        if (!chat.innerHTML.includes('daily markup')) throw new Error('default daily scene was not rendered into chat host');
+        if (description.textContent !== '轻松自然的日常聊天') throw new Error(`expected default scene description, got ${description.textContent}`);
+        if (previewLinkHandlers.length !== 1) throw new Error(`expected one disabled-link handler after default render, got ${previewLinkHandlers.length}`);
+        if (sceneButtons[0].getAttribute('aria-pressed') !== 'true') throw new Error('default scene button should be active');
+        if (sceneButtons[1].getAttribute('aria-pressed') !== 'false') throw new Error('inactive scene button should be false before click');
+
+        const dailyEvent = {
+          defaultPrevented: false,
+          preventDefault() {
+            this.defaultPrevented = true;
+          },
+        };
+        previewLinkHandlers[0].handler(dailyEvent);
+        if (!dailyEvent.defaultPrevented) throw new Error('default scene disabled link click was not prevented');
+
+        sceneButtons[1].click();
+
+        if (root.dataset.activeScene !== 'flirty') throw new Error(`expected active scene to switch to flirty, got ${root.dataset.activeScene}`);
+        if (!chat.innerHTML.includes('flirty markup')) throw new Error('flirty scene was not rendered into chat host');
+        if (chat.innerHTML.includes('daily markup')) throw new Error('previous scene markup should be replaced on switch');
+        if (description.textContent !== '更柔和的情绪和停顿') throw new Error(`expected flirty scene description, got ${description.textContent}`);
+        if (previewLinkHandlers.length !== 2) throw new Error(`expected disabled links to be rebound after scene switch, got ${previewLinkHandlers.length}`);
+        if (sceneButtons[0].getAttribute('aria-pressed') !== 'false') throw new Error('daily scene button should be inactive after switch');
+        if (sceneButtons[1].getAttribute('aria-pressed') !== 'true') throw new Error('flirty scene button should be active after switch');
+        if (!sceneButtons[1].classList.contains('is-active')) throw new Error('flirty scene button should gain active class after switch');
+        if (sceneButtons[0].classList.contains('is-active')) throw new Error('daily scene button should lose active class after switch');
+        if (chat.scrollTop !== chat.scrollHeight) throw new Error('chat should re-scroll to bottom after scene switch');
+        if (scrollCalls < 2) throw new Error(`expected initial and switch scrolls, got ${scrollCalls}`);
+        if (requestAnimationFrameCalls < 2) throw new Error(`expected initial and switch animation frame scrolls, got ${requestAnimationFrameCalls}`);
+        if (typeof loadHandler !== 'function') throw new Error('preview script did not preserve load scroll handler');
+
+        const flirtyEvent = {
+          defaultPrevented: false,
+          preventDefault() {
+            this.defaultPrevented = true;
+          },
+        };
+        previewLinkHandlers[1].handler(flirtyEvent);
+        if (!flirtyEvent.defaultPrevented) throw new Error('switched scene disabled link click was not prevented');
         '''
     )
 
