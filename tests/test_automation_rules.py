@@ -1888,6 +1888,100 @@ def test_executor_fetch_forum_tags_preserves_processed_tags_and_exposes_governed
     assert result['tags'] == ['existing', 'allowed-tag']
 
 
+def test_executor_fetch_forum_tags_replace_mode_removes_stale_tags(monkeypatch):
+    from core.automation.executor import AutomationExecutor
+    from core.automation import executor as automation_executor
+
+    writes = []
+    fake_cache = SimpleNamespace(
+        id_map={
+            'folder/demo.json': {
+                'id': 'folder/demo.json',
+                'filename': 'demo.json',
+                'tags': ['existing'],
+            }
+        }
+    )
+
+    monkeypatch.setattr(automation_executor, 'ctx', SimpleNamespace(cache=fake_cache), raising=False)
+    monkeypatch.setattr(
+        AutomationExecutor,
+        '_fetch_forum_tags',
+        lambda self, card_id, config, ui_data=None: {
+            'success': True,
+            'tags': ['allowed-tag'],
+            'governed_tags': ['allowed-tag'],
+            'merge_mode': 'replace',
+        },
+    )
+    monkeypatch.setattr(
+        automation_executor,
+        'modify_card_attributes_internal',
+        lambda card_id, add_tags, remove_tags, fav=None: writes.append((list(add_tags), list(remove_tags))) or True,
+    )
+
+    result = AutomationExecutor().apply_plan(
+        'folder/demo.json',
+        {
+            'fetch_forum_tags': {'merge_mode': 'replace'},
+            'move': None,
+            'favorite': None,
+        },
+        ui_data={},
+    )
+
+    assert writes == [(['allowed-tag'], ['existing'])]
+    assert result['tags_added'] == ['allowed-tag']
+    assert result['tags_removed'] == ['existing']
+
+
+def test_executor_fetch_forum_tags_replace_mode_clears_existing_tags_when_fetch_returns_empty(monkeypatch):
+    from core.automation.executor import AutomationExecutor
+    from core.automation import executor as automation_executor
+
+    writes = []
+    fake_cache = SimpleNamespace(
+        id_map={
+            'folder/demo.json': {
+                'id': 'folder/demo.json',
+                'filename': 'demo.json',
+                'tags': ['existing'],
+            }
+        }
+    )
+
+    monkeypatch.setattr(automation_executor, 'ctx', SimpleNamespace(cache=fake_cache), raising=False)
+    monkeypatch.setattr(
+        AutomationExecutor,
+        '_fetch_forum_tags',
+        lambda self, card_id, config, ui_data=None: {
+            'success': True,
+            'tags': [],
+            'governed_tags': [],
+            'merge_mode': 'replace',
+        },
+    )
+    monkeypatch.setattr(
+        automation_executor,
+        'modify_card_attributes_internal',
+        lambda card_id, add_tags, remove_tags, fav=None: writes.append((list(add_tags), list(remove_tags))) or True,
+    )
+
+    result = AutomationExecutor().apply_plan(
+        'folder/demo.json',
+        {
+            'fetch_forum_tags': {'merge_mode': 'replace'},
+            'move': None,
+            'favorite': None,
+        },
+        ui_data={},
+    )
+
+    assert writes == [([], ['existing'])]
+    assert result['tags_added'] == []
+    assert result['tags_removed'] == ['existing']
+
+
 def test_sync_card_names_internal_template_rename_reuses_existing_migration_logic(monkeypatch, tmp_path):
     from core.services import card_service
 
@@ -2383,6 +2477,44 @@ def test_modify_card_attributes_internal_suppresses_fs_events_before_delayed_tag
     ]
     assert fake_conn.committed == 1
     assert fake_cache.updated == [('folder/demo.json', ['existing', 'new-tag'])]
+
+
+def test_global_metadata_cache_update_card_data_rebuilds_global_tags_when_tags_shrink():
+    from core.data.cache import GlobalMetadataCache
+
+    cache = GlobalMetadataCache()
+    cache.id_map = {
+        'folder/demo.json': {
+            'id': 'folder/demo.json',
+            'category': 'folder',
+            'tags': ['legacy', 'keep'],
+            'last_modified': 1704067200,
+        }
+    }
+    cache.global_tags = {'legacy', 'keep'}
+
+    updated = cache.update_card_data('folder/demo.json', {'tags': ['keep']})
+
+    assert updated['tags'] == ['keep']
+    assert cache.global_tags == ['keep']
+
+
+def test_global_metadata_cache_update_tags_update_rebuilds_global_tags_when_tags_shrink():
+    from core.data.cache import GlobalMetadataCache
+
+    cache = GlobalMetadataCache()
+    cache.id_map = {
+        'folder/demo.json': {
+            'id': 'folder/demo.json',
+            'tags': ['legacy', 'keep'],
+        }
+    }
+    cache.global_tags = {'legacy', 'keep'}
+
+    cache.update_tags_update('folder/demo.json', ['keep'])
+
+    assert cache.id_map['folder/demo.json']['tags'] == ['keep']
+    assert cache.global_tags == ['keep']
 
 
 def test_modify_card_attributes_internal_enqueues_incremental_index_repair_after_delayed_tag_write(monkeypatch, tmp_path):

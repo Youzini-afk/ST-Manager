@@ -49,11 +49,14 @@ class AutomationExecutor:
                 ui_data = load_ui_data()
             fetch_result = self._fetch_forum_tags(current_id, forum_tags_config, ui_data)
             result["forum_tags_fetched"] = fetch_result
-            # 如果成功抓取到标签，添加到add_tags中
-            if fetch_result and fetch_result.get('success') and fetch_result.get('tags'):
-                if 'add_tags' not in plan:
-                    plan['add_tags'] = set()
-                plan['add_tags'].update(fetch_result['tags'])
+            # 如果成功抓取到标签，按 merge/replace 语义折叠为标签增删计划
+            if fetch_result and fetch_result.get('success'):
+                existing_tags = list(ctx.cache.id_map.get(current_id, {}).get('tags') or []) if ctx.cache else []
+                final_tags = list(fetch_result['tags'])
+                plan.setdefault('add_tags', set())
+                plan.setdefault('remove_tags', set())
+                plan['add_tags'].update(tag for tag in final_tags if tag not in existing_tags)
+                plan['remove_tags'].update(tag for tag in existing_tags if tag not in final_tags)
         
         # 1. 执行属性修改 (标签、收藏)
         # 这些操作不改变 ID，先执行

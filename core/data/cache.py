@@ -52,6 +52,13 @@ class GlobalMetadataCache:
 
         return [str(t).strip() for t in raw_tags if str(t).strip()]
 
+    def _rebuild_global_tags_locked(self):
+        tags = set()
+        for card in self.id_map.values():
+            for tag in self._normalize_tags(card.get('tags')):
+                tags.add(tag)
+        self.global_tags = sorted(tags)
+
     def update_card_data(self, card_id, new_data):
         """
         [增量更新] 原地更新单个卡片对象的字段，无需重载数据库。
@@ -85,10 +92,7 @@ class GlobalMetadataCache:
                 
                 # 4. 更新全局标签池
                 if 'tags' in new_data:
-                    current_tags = set(self.global_tags)
-                    for t in card.get('tags', []):
-                        current_tags.add(t)
-                    self.global_tags = sorted(list(current_tags))
+                    self._rebuild_global_tags_locked()
 
                 return card
             return None
@@ -196,11 +200,7 @@ class GlobalMetadataCache:
             if card_id in self.id_map:
                 card = self.id_map[card_id]
                 card['tags'] = self._normalize_tags(new_tags)
-                
-                temp_tags = set(self.global_tags)
-                for t in card['tags']:
-                    temp_tags.add(t)
-                self.global_tags = sorted(list(temp_tags))
+                self._rebuild_global_tags_locked()
 
     def move_card_update(self, old_id, new_id, old_category, new_category, new_filename, full_path):
         """[增量更新] 单卡移动/重命名"""
