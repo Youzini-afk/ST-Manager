@@ -513,17 +513,38 @@ def test_move_card_internal_enqueues_incremental_cleanup_for_single_card(monkeyp
     sync_calls = []
     cache_calls = {}
     saved_ui_payloads = []
+    events = []
 
     class _FakeConn:
         def execute(self, _sql, _params=()):
             return self
 
         def commit(self):
+            events.append('commit')
             return None
 
     monkeypatch.setattr(card_service, 'CARDS_FOLDER', str(cards_root), raising=False)
-    monkeypatch.setattr(card_service, 'load_ui_data', lambda: {'src/demo.json': {'summary': 'note'}})
-    monkeypatch.setattr(card_service, 'save_ui_data', lambda payload: saved_ui_payloads.append(dict(payload)))
+    monkeypatch.setattr(
+        card_service,
+        'load_ui_data',
+        lambda: {
+            'src/demo.json': {
+                'summary': 'note',
+                card_service.VERSION_REMARKS_KEY: {
+                    'src/demo.json': {'summary': 'version note'},
+                },
+            },
+            '_worldinfo_notes_v1': {
+                'embedded::src/demo.json': {'summary': 'embedded note'},
+                'embedded::src/other.json': {'summary': 'keep other note'},
+            },
+        },
+    )
+    monkeypatch.setattr(
+        card_service,
+        'save_ui_data',
+        lambda payload: (events.append('save_ui_data'), saved_ui_payloads.append(dict(payload)))[1],
+    )
     monkeypatch.setattr(card_service, 'get_db', lambda: _FakeConn())
     monkeypatch.setattr(card_service, 'update_card_cache', lambda *args, **kwargs: (
         cache_calls.setdefault('update_card_cache', {'args': args, 'kwargs': kwargs}),
@@ -562,6 +583,19 @@ def test_move_card_internal_enqueues_incremental_cleanup_for_single_card(monkeyp
             'remove_owner_ids': ['src/demo.json'],
         }
     ]
+    assert events[:2] == ['commit', 'save_ui_data']
+    assert saved_ui_payloads[-1] == {
+        'dst/demo.json': {
+            'summary': 'note',
+            card_service.VERSION_REMARKS_KEY: {
+                'dst/demo.json': {'summary': 'version note'},
+            },
+        },
+        '_worldinfo_notes_v1': {
+            'embedded::dst/demo.json': {'summary': 'embedded note'},
+            'embedded::src/other.json': {'summary': 'keep other note'},
+        },
+    }
 
 
 def test_api_move_card_uses_shared_move_card_internal(monkeypatch):
@@ -711,8 +745,17 @@ def test_move_card_internal_directory_migrates_prefixed_ui_data_and_nested_categ
         card_service,
         'load_ui_data',
         lambda: {
-            'src/pack/sub/hero.json': {'summary': 'nested note'},
+            'src/pack/sub/hero.json': {
+                'summary': 'nested note',
+                card_service.VERSION_REMARKS_KEY: {
+                    'src/pack/sub/hero.json': {'label': 'nested remark'},
+                },
+            },
             'src/pack': {'summary': 'folder note'},
+            '_worldinfo_notes_v1': {
+                'embedded::src/pack/sub/hero.json': {'summary': 'embedded note'},
+                'resource::book.json': {'summary': 'keep resource note'},
+            },
         },
     )
     monkeypatch.setattr(
@@ -743,7 +786,16 @@ def test_move_card_internal_directory_migrates_prefixed_ui_data_and_nested_categ
     assert new_id == 'dst/pack'
     assert saved_ui_payloads[-1] == {
         'dst/pack': {'summary': 'folder note'},
-        'dst/pack/sub/hero.json': {'summary': 'nested note'},
+        'dst/pack/sub/hero.json': {
+            'summary': 'nested note',
+            card_service.VERSION_REMARKS_KEY: {
+                'dst/pack/sub/hero.json': {'label': 'nested remark'},
+            },
+        },
+        '_worldinfo_notes_v1': {
+            'embedded::dst/pack/sub/hero.json': {'summary': 'embedded note'},
+            'resource::book.json': {'summary': 'keep resource note'},
+        },
     }
     assert fake_conn.executed == [
         ("SELECT id FROM card_metadata WHERE id LIKE ? || '/%' ESCAPE '\\'", ('src/pack',)),

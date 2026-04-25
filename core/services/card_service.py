@@ -771,6 +771,7 @@ def sync_exact_card_after_fs_move(
     dst_full_path,
     final_name,
     old_category,
+    save_ui_before_commit=True,
 ):
     target_category = new_card_id.rsplit('/', 1)[0] if '/' in new_card_id else ''
     conn.execute(
@@ -790,10 +791,14 @@ def sync_exact_card_after_fs_move(
     if rename_embedded_worldinfo_note_card_prefix(ui_data, old_card_id, new_card_id):
         ui_changed = True
 
-    if ui_changed:
-        save_ui_data(ui_data)
-
-    conn.commit()
+    if save_ui_before_commit:
+        if ui_changed:
+            save_ui_data(ui_data)
+        conn.commit()
+    else:
+        conn.commit()
+        if ui_changed:
+            save_ui_data(ui_data)
 
     if ctx.cache:
         ctx.cache.move_card_update(
@@ -1299,72 +1304,24 @@ def move_card_internal(card_id, target_category):
         # 6. 数据同步 (DB, UI, Cache)
         conn = get_db()
         ui_data = load_ui_data()
-        ui_changed = False
-        moved_ids = []
 
         if is_directory:
-            moved_ids = _rename_prefixed_card_rows(conn, card_id, new_id)
-
-            if rename_folder_in_ui(ui_data, card_id, new_id):
-                ui_changed = True
-
-            if ctx.cache:
-                ctx.cache.move_folder_update(card_id, new_id)
-
-        else:
-            # === 单文件模式处理 ===
-            
-            # DB
-            conn.execute("UPDATE card_metadata SET id = ?, category = ? WHERE id = ?", (new_id, target_category, card_id))
-            
-            # UI Data
-            if card_id in ui_data:
-                ui_data[new_id] = ui_data[card_id]
-                del ui_data[card_id]
-                ui_changed = True
-            
-            # Cache
-            if ctx.cache:
-                ctx.cache.move_card_update(card_id, new_id, old_category, target_category, final_name, dst_full_path)
-
-        conn.commit()
-        if ui_changed: save_ui_data(ui_data)
-
-        if is_directory:
-            for old_sub_id, new_sub_id in moved_ids:
-                new_sub_full_path = os.path.join(CARDS_FOLDER, new_sub_id.replace('/', os.sep))
-                cache_result = update_card_cache(
-                    new_sub_id,
-                    new_sub_full_path,
-                    remove_entity_ids=[old_sub_id] if new_sub_id != old_sub_id else None,
-                )
-                sync_card_index_jobs(
-                    card_id=new_sub_id,
-                    source_path=new_sub_full_path,
-                    file_content_changed=False,
-                    rename_changed=bool(new_sub_id != old_sub_id),
-                    cache_updated=bool(cache_result.get('cache_updated')),
-                    has_embedded_wi=bool(cache_result.get('has_embedded_wi')),
-                    previous_has_embedded_wi=bool(cache_result.get('previous_has_embedded_wi')),
-                    remove_entity_ids=[old_sub_id] if new_sub_id != old_sub_id else None,
-                    remove_owner_ids=[old_sub_id] if new_sub_id != old_sub_id else None,
-                )
-        else:
-            cache_result = update_card_cache(
-                new_id,
-                dst_full_path,
-                remove_entity_ids=[card_id] if new_id != card_id else None,
+            sync_folder_prefix_after_fs_move(
+                conn=conn,
+                ui_data=ui_data,
+                old_path=card_id,
+                new_path=new_id,
             )
-            sync_card_index_jobs(
-                card_id=new_id,
-                source_path=dst_full_path,
-                file_content_changed=False,
-                rename_changed=bool(new_id != card_id),
-                cache_updated=bool(cache_result.get('cache_updated')),
-                has_embedded_wi=bool(cache_result.get('has_embedded_wi')),
-                previous_has_embedded_wi=bool(cache_result.get('previous_has_embedded_wi')),
-                remove_entity_ids=[card_id] if new_id != card_id else None,
-                remove_owner_ids=[card_id] if new_id != card_id else None,
+        else:
+            sync_exact_card_after_fs_move(
+                conn=conn,
+                ui_data=ui_data,
+                old_card_id=card_id,
+                new_card_id=new_id,
+                dst_full_path=dst_full_path,
+                final_name=final_name,
+                old_category=old_category,
+                save_ui_before_commit=False,
             )
 
         return True, new_id, "Success"
