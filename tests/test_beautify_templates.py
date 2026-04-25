@@ -465,3 +465,13 @@ def test_beautify_stage_header_actions_keep_delete_button_horizontal():
     assert 'flex: 0 0 auto;' in delete_button_block
     assert 'width: auto;' in platform_select_block
     assert 'flex: 0 1 220px;' in platform_select_block
+
+
+def test_beautify_toolbar_action_buttons_keep_import_labels_on_single_line():
+    css = read_project_file('static/css/modules/view-beautify.css')
+    action_button_block = extract_css_block(
+        css,
+        r'\.beautify-action-btn,\s*\.beautify-soft-btn,\s*\.beautify-primary-btn,\s*\.beautify-device-btn',
+    )
+
+    assert_has_css_declaration(action_button_block, 'white-space', 'nowrap')
