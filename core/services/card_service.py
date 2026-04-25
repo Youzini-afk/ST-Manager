@@ -730,6 +730,52 @@ def _rename_prefixed_version_remark_ids(ui_data, old_path, new_path):
 
     return changed
 
+
+def _merge_bundle_version_remarks_after_card_move(ui_data, old_card_id, new_card_id, dst_full_path):
+    old_bundle_dir = old_card_id.rsplit('/', 1)[0] if '/' in old_card_id else ''
+    new_bundle_dir = new_card_id.rsplit('/', 1)[0] if '/' in new_card_id else ''
+
+    if not old_bundle_dir or not new_bundle_dir or old_bundle_dir == new_bundle_dir:
+        return False
+
+    target_bundle_marker = os.path.join(os.path.dirname(dst_full_path), '.bundle')
+    if not os.path.exists(target_bundle_marker):
+        return False
+
+    old_entry = ui_data.get(old_bundle_dir)
+    if not isinstance(old_entry, dict):
+        return False
+
+    old_remarks = old_entry.get(VERSION_REMARKS_KEY)
+    if not isinstance(old_remarks, dict) or not old_remarks:
+        return False
+
+    moved_version_id = None
+    if new_card_id in old_remarks:
+        moved_version_id = new_card_id
+    elif old_card_id in old_remarks:
+        moved_version_id = old_card_id
+
+    if not moved_version_id:
+        return False
+
+    target_entry = ui_data.setdefault(new_bundle_dir, {})
+    if not isinstance(target_entry, dict):
+        target_entry = {}
+        ui_data[new_bundle_dir] = target_entry
+
+    target_remarks = target_entry.setdefault(VERSION_REMARKS_KEY, {})
+    if not isinstance(target_remarks, dict):
+        target_remarks = {}
+        target_entry[VERSION_REMARKS_KEY] = target_remarks
+
+    target_remarks[new_card_id] = old_remarks.pop(moved_version_id)
+
+    if VERSION_REMARKS_KEY in old_entry and not old_remarks:
+        del old_entry[VERSION_REMARKS_KEY]
+
+    return True
+
 def rename_folder_in_db(old_path, new_path):
     """
     在数据库中批量重命名 ID 和 Category 前缀。
@@ -786,6 +832,9 @@ def sync_exact_card_after_fs_move(
         ui_changed = True
 
     if _rename_prefixed_version_remark_ids(ui_data, old_card_id, new_card_id):
+        ui_changed = True
+
+    if _merge_bundle_version_remarks_after_card_move(ui_data, old_card_id, new_card_id, dst_full_path):
         ui_changed = True
 
     if rename_embedded_worldinfo_note_card_prefix(ui_data, old_card_id, new_card_id):

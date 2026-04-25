@@ -4245,6 +4245,19 @@ def api_move_folder():
         # 删除源文件夹 (此时应为空)
         try: shutil.rmtree(source_full_path)
         except: pass
+
+        if ctx.cache and isinstance(ctx.cache, GlobalMetadataCache):
+            try:
+                ui_data = load_ui_data()
+                source_entry = ui_data.get(source_path)
+                if isinstance(source_entry, dict):
+                    source_remarks = source_entry.get('_version_remarks')
+                    if not source_remarks:
+                        del ui_data[source_path]
+                        save_ui_data(ui_data)
+                ctx.cache.reload_from_db()
+            except Exception as e:
+                logger.warning(f'Post-merge bundle projection refresh failed: {e}')
         
         return jsonify({"success": True, "new_path": new_path_prefix, "mode": "merge"})
     except Exception as e:

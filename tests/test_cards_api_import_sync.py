@@ -1490,3 +1490,206 @@ def test_toggle_bundle_mode_enable_keeps_tags_consistent_between_file_db_cache_a
     ]
 
     real_cache_conn.close()
+
+
+def test_api_move_folder_merge_bundle_preserves_version_remarks_and_rebuilds_projection(monkeypatch, tmp_path):
+    db_path = tmp_path / 'cards_metadata.db'
+    ui_path = tmp_path / 'ui_data.json'
+    cards_dir = tmp_path / 'cards'
+    src_bundle_dir = cards_dir / 'src' / 'pack'
+    dst_bundle_dir = cards_dir / 'dst' / 'pack'
+    src_bundle_dir.mkdir(parents=True, exist_ok=True)
+    dst_bundle_dir.mkdir(parents=True, exist_ok=True)
+
+    (src_bundle_dir / '.bundle').write_text('1', encoding='utf-8')
+    (dst_bundle_dir / '.bundle').write_text('1', encoding='utf-8')
+
+    src_cover_path = src_bundle_dir / 'cover.png'
+    src_alt_path = src_bundle_dir / 'alt.png'
+    dst_cover_path = dst_bundle_dir / 'cover.png'
+    dst_renamed_cover_path = dst_bundle_dir / 'cover_1.png'
+    dst_alt_path = dst_bundle_dir / 'alt.png'
+
+    _write_png_card(src_cover_path, name='Src Cover', tags=['src'])
+    _write_png_card(src_alt_path, name='Src Alt', tags=['src'])
+    _write_png_card(dst_cover_path, name='Dst Cover', tags=['dst'])
+
+    ui_path.write_text(
+        json.dumps(
+            {
+                'src/pack': {
+                    ui_store_module.VERSION_REMARKS_KEY: {
+                        'src/pack/cover.png': {'summary': 'src cover note'},
+                        'src/pack/alt.png': {'summary': 'src alt note'},
+                    }
+                },
+                'dst/pack': {
+                    ui_store_module.VERSION_REMARKS_KEY: {
+                        'dst/pack/cover.png': {'summary': 'dst cover note'},
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding='utf-8',
+    )
+
+    _init_index_db(db_path)
+    real_cache_conn = _open_row_db(db_path)
+
+    with _open_row_db(db_path) as conn:
+        _create_card_metadata_table(conn)
+        conn.execute(
+            'INSERT INTO card_metadata (id, char_name, tags, category, last_modified, token_count, is_favorite, has_character_book, character_book_name, description, first_mes, mes_example, creator, char_version, file_hash, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            ('src/pack/cover.png', 'Src Cover', json.dumps(['src']), 'src/pack', 20.0, 11, 0, 0, '', '', '', '', '', '', 'src-cover-hash', 1),
+        )
+        conn.execute(
+            'INSERT INTO card_metadata (id, char_name, tags, category, last_modified, token_count, is_favorite, has_character_book, character_book_name, description, first_mes, mes_example, creator, char_version, file_hash, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            ('src/pack/alt.png', 'Src Alt', json.dumps(['src']), 'src/pack', 10.0, 12, 0, 0, '', '', '', '', '', '', 'src-alt-hash', 1),
+        )
+        conn.execute(
+            'INSERT INTO card_metadata (id, char_name, tags, category, last_modified, token_count, is_favorite, has_character_book, character_book_name, description, first_mes, mes_example, creator, char_version, file_hash, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            ('dst/pack/cover.png', 'Dst Cover', json.dumps(['dst']), 'dst/pack', 30.0, 13, 0, 0, '', '', '', '', '', '', 'dst-cover-hash', 1),
+        )
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'cards'")
+        conn.execute("UPDATE index_build_state SET active_generation = 1, state = 'ready', phase = 'ready' WHERE scope = 'worldinfo'")
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'card::src/pack/cover.png', 'card', str(src_cover_path), '', 'Src Cover', 'cover.png', 'src/pack', 'src/pack', 'physical', 0, 'src cover note', 20.0, 0.0, 11, 'src cover', 20.0, '', '20:1'),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'card::src/pack/alt.png', 'card', str(src_alt_path), '', 'Src Alt', 'alt.png', 'src/pack', 'src/pack', 'physical', 0, 'src alt note', 10.0, 0.0, 12, 'src alt', 10.0, '', '10:1'),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO index_entities_v2(generation, entity_id, entity_type, source_path, owner_entity_id, name, filename, display_category, physical_category, category_mode, favorite, summary_preview, updated_at, import_time, token_count, sort_name, sort_mtime, thumb_url, source_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 'card::dst/pack/cover.png', 'card', str(dst_cover_path), '', 'Dst Cover', 'cover.png', 'dst/pack', 'dst/pack', 'physical', 0, 'dst cover note', 30.0, 0.0, 13, 'dst cover', 30.0, '', '30:1'),
+        )
+        conn.commit()
+
+    cache = GlobalMetadataCache()
+
+    monkeypatch.setattr(cards_api, 'DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr(cache_service, 'DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr(index_build_service, 'DEFAULT_DB_PATH', str(db_path), raising=False)
+    monkeypatch.setattr(cache_module, 'DEFAULT_DB_PATH', str(db_path), raising=False)
+    monkeypatch.setattr(index_job_worker, 'DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cache_service, 'CARDS_FOLDER', str(cards_dir), raising=False)
+    monkeypatch.setattr(index_build_service, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cache_module, 'CARDS_FOLDER', str(cards_dir), raising=False)
+    monkeypatch.setattr(ui_store_module, 'UI_DATA_FILE', str(ui_path))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'get_db', lambda: _open_row_db(db_path))
+    monkeypatch.setattr(cache_service, 'get_db', lambda: real_cache_conn)
+    monkeypatch.setattr(
+        cache_service.os.path,
+        'getmtime',
+        lambda path: {
+            str(dst_renamed_cover_path): 20.0,
+            str(dst_alt_path): 10.0,
+        }.get(str(path), 30.0),
+    )
+    monkeypatch.setattr(
+        cache_service,
+        'get_file_hash_and_size',
+        lambda path: {
+            str(dst_renamed_cover_path): ('src-cover-hash', 1),
+            str(dst_alt_path): ('src-alt-hash', 1),
+            str(dst_cover_path): ('dst-cover-hash', 1),
+        }[str(path)],
+    )
+    monkeypatch.setattr(cache_service, 'calculate_token_count', lambda _data: 77)
+    monkeypatch.setattr(cache_service, 'get_wi_meta', lambda _data: (False, ''))
+    monkeypatch.setattr(index_build_service, 'load_config', lambda: {'world_info_dir': str(tmp_path / 'global-lorebooks'), 'resources_dir': str(tmp_path / 'resources')})
+    monkeypatch.setattr(cards_api.ctx, 'cache', cache, raising=False)
+
+    cache.reload_from_db()
+
+    client = _make_app().test_client()
+    res = client.post(
+        '/api/move_folder',
+        json={
+            'source_path': 'src/pack',
+            'target_parent_path': 'dst',
+            'merge_if_exists': True,
+        },
+    )
+
+    assert res.status_code == 200
+    assert res.get_json() == {'success': True, 'new_path': 'dst/pack', 'mode': 'merge'}
+    assert src_bundle_dir.exists() is False
+    assert dst_cover_path.exists() is True
+    assert dst_renamed_cover_path.exists() is True
+    assert dst_alt_path.exists() is True
+
+    ui_payload = json.loads(ui_path.read_text(encoding='utf-8'))
+    assert 'src/pack' not in ui_payload
+    assert ui_payload['dst/pack'][ui_store_module.VERSION_REMARKS_KEY] == {
+        'dst/pack/cover.png': {'summary': 'dst cover note'},
+        'dst/pack/cover_1.png': {'summary': 'src cover note'},
+        'dst/pack/alt.png': {'summary': 'src alt note'},
+    }
+
+    with sqlite3.connect(db_path) as verify_conn:
+        queued_before_worker = verify_conn.execute(
+            'SELECT job_type, entity_id, payload_json, status FROM index_jobs ORDER BY entity_id, job_type'
+        ).fetchall()
+
+    assert queued_before_worker == [
+        ('upsert_card', 'dst/pack/alt.png', json.dumps({'remove_entity_ids': ['src/pack/alt.png']}, ensure_ascii=False), 'pending'),
+        ('upsert_world_owner', 'dst/pack/alt.png', json.dumps({'remove_owner_ids': ['src/pack/alt.png']}, ensure_ascii=False), 'pending'),
+        ('upsert_card', 'dst/pack/cover_1.png', json.dumps({'remove_entity_ids': ['src/pack/cover.png']}, ensure_ascii=False), 'pending'),
+        ('upsert_world_owner', 'dst/pack/cover_1.png', json.dumps({'remove_owner_ids': ['src/pack/cover.png']}, ensure_ascii=False), 'pending'),
+    ]
+
+    rebuild_calls = _run_index_worker_once(monkeypatch, db_path)
+    cache.reload_from_db()
+
+    with sqlite3.connect(db_path) as verify_conn:
+        card_rows = verify_conn.execute(
+            'SELECT id, category FROM card_metadata ORDER BY id'
+        ).fetchall()
+        card_entities = verify_conn.execute(
+            "SELECT entity_id, source_path FROM index_entities_v2 WHERE generation = 1 AND entity_type = 'card' ORDER BY entity_id"
+        ).fetchall()
+        queued_after_worker = verify_conn.execute(
+            'SELECT job_type, entity_id, payload_json, status FROM index_jobs ORDER BY entity_id, job_type'
+        ).fetchall()
+
+    assert rebuild_calls == []
+    assert card_rows == [
+        ('dst/pack/alt.png', 'dst/pack'),
+        ('dst/pack/cover.png', 'dst/pack'),
+        ('dst/pack/cover_1.png', 'dst/pack'),
+    ]
+    assert card_entities == [
+        ('card::dst/pack/alt.png', str(dst_alt_path)),
+        ('card::dst/pack/cover.png', str(dst_cover_path)),
+        ('card::dst/pack/cover_1.png', str(dst_renamed_cover_path)),
+    ]
+    assert queued_after_worker == [
+        ('upsert_card', 'dst/pack/alt.png', json.dumps({'remove_entity_ids': ['src/pack/alt.png']}, ensure_ascii=False), 'done'),
+        ('upsert_world_owner', 'dst/pack/alt.png', json.dumps({'remove_owner_ids': ['src/pack/alt.png']}, ensure_ascii=False), 'done'),
+        ('upsert_card', 'dst/pack/cover_1.png', json.dumps({'remove_entity_ids': ['src/pack/cover.png']}, ensure_ascii=False), 'done'),
+        ('upsert_world_owner', 'dst/pack/cover_1.png', json.dumps({'remove_owner_ids': ['src/pack/cover.png']}, ensure_ascii=False), 'done'),
+    ]
+
+    assert cache.bundle_map == {'dst/pack': 'dst/pack/cover.png'}
+    assert cache.id_map['dst/pack/cover.png']['is_bundle'] is True
+    assert [version['id'] for version in cache.id_map['dst/pack/cover.png']['versions']] == [
+        'dst/pack/cover.png',
+        'dst/pack/cover_1.png',
+        'dst/pack/alt.png',
+    ]
+    assert {
+        version['id']: version.get('ui_summary', '')
+        for version in cache.id_map['dst/pack/cover.png']['versions']
+    } == {
+        'dst/pack/cover.png': 'dst cover note',
+        'dst/pack/cover_1.png': 'src cover note',
+        'dst/pack/alt.png': 'src alt note',
+    }
+
+    real_cache_conn.close()
