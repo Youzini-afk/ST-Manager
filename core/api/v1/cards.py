@@ -431,6 +431,38 @@ def _is_safe_filename(name: str) -> bool:
     return True
 
 
+def _remove_conflicting_card_targets(target_path: str) -> None:
+    base_path, ext = os.path.splitext(target_path)
+    ext_lower = ext.lower()
+    candidates = [target_path]
+    if ext_lower == '.png':
+        candidates.append(base_path + '.json')
+    elif ext_lower == '.json':
+        candidates.append(base_path + '.png')
+
+    for path in candidates:
+        if os.path.exists(path):
+            os.remove(path)
+
+
+def _resolve_existing_card_target(target_path: str) -> str:
+    if os.path.exists(target_path):
+        return target_path
+
+    base_path, ext = os.path.splitext(target_path)
+    ext_lower = ext.lower()
+    if ext_lower == '.png':
+        sibling_path = base_path + '.json'
+    elif ext_lower == '.json':
+        sibling_path = base_path + '.png'
+    else:
+        sibling_path = ''
+
+    if sibling_path and os.path.exists(sibling_path):
+        return sibling_path
+    return target_path
+
+
 def _coerce_request_bool(value) -> bool:
     if isinstance(value, bool):
         return value
@@ -2097,9 +2129,6 @@ def api_delete_cards():
 def api_import_from_url():
     temp_path = None
     try:
-        # 会写入 cards/ 文件，抑制 watchdog
-        suppress_fs_events(2.5)
-        
         data = request.json
         url = data.get('url')
         target_category = data.get('category', '')
@@ -2195,9 +2224,11 @@ def api_import_from_url():
         if conflict:
             if resolution == 'check':
                 # --- 发现冲突，返回对比数据 ---
+                existing_target_path = _resolve_existing_card_target(target_save_path)
+                existing_filename = os.path.basename(existing_target_path)
                 
                 # 1. 获取现有卡数据
-                existing_info = extract_card_info(target_save_path)
+                existing_info = extract_card_info(existing_target_path)
                 existing_data = existing_info.get('data', {}) if 'data' in existing_info else existing_info
                 
                 # 计算 Token
@@ -2208,8 +2239,8 @@ def api_import_from_url():
                 existing_meta = {
                     "char_name": existing_info.get('name') or existing_data.get('name'),
                     "token_count": ex_tokens,
-                    "file_size": os.path.getsize(target_save_path),
-                    "image_url": f"/cards_file/{quote(target_category + '/' + final_filename if target_category else final_filename)}?t={time.time()}"
+                    "file_size": os.path.getsize(existing_target_path),
+                    "image_url": f"/cards_file/{quote(target_category + '/' + existing_filename if target_category else existing_filename)}?t={time.time()}"
                 }
 
                 # 2. 获取新卡数据 (Temp)
@@ -2263,23 +2294,27 @@ def api_import_from_url():
                     break
                 
             elif resolution == 'overwrite':
+                existing_target_path = _resolve_existing_card_target(target_save_path)
+
                 # 1. 读取旧文件的 Tags 并合并到 info 对象
-                merged_tags = _merge_tags_into_new_info(target_save_path, info)
+                merged_tags = _merge_tags_into_new_info(existing_target_path, info)
                 
                 # 2. 如果有合并发生，将更新后的 info 写入 temp 文件
                 if merged_tags is not None:
                     write_card_metadata(temp_path, info)
-                    
-                # 3. 删除旧文件 (为 move 做准备)
-                if os.path.exists(target_save_path):
-                    os.remove(target_save_path)
-                
+
+                suppress_fs_events(2.5)
+                # 3. 删除旧文件及其冲突伴生文件 (为 move 做准备)
+                _remove_conflicting_card_targets(target_save_path)
+
             else:
                 # 未知 resolution
                 if os.path.exists(temp_path): os.remove(temp_path)
                 return jsonify({"success": False, "msg": f"无效的解决策略: {resolution}"})
         
         # === 5. 执行保存 (Move) ===
+        if resolution != 'overwrite':
+            suppress_fs_events(2.5)
         shutil.move(temp_path, target_save_path)
         
         # 最终文件名
@@ -4423,8 +4458,6 @@ def api_upload_commit():
     第二步：执行导入提交
     """
     try:
-        suppress_fs_events(5.0) 
-        
         data = request.json
         batch_id = data.get('batch_id')
         category = data.get('category', '')
@@ -4519,19 +4552,24 @@ def api_upload_commit():
                         counter += 1
             
             # 执行文件移动 (覆盖模式先删旧)
-            if action == 'overwrite' and os.path.exists(dst_path):
+            if action == 'overwrite' and filename == target_filename and has_conflict:
+                existing_target_path = _resolve_existing_card_target(dst_path)
+
                 # 解析暂存区文件
                 src_info = extract_card_info(src_path)
                 if src_info:
                     # 合并 Tags：读取 dst_path 的 tag 并合并到 src_info
-                    merged = _merge_tags_into_new_info(dst_path, src_info)
+                    merged = _merge_tags_into_new_info(existing_target_path, src_info)
                     if merged:
                         # 如果有合并，将新数据写回 src_path
                         write_card_metadata(src_path, src_info)
-                
-                # 删除目标，准备覆盖
-                os.remove(dst_path)
 
+                suppress_fs_events(5.0)
+                # 删除目标及其冲突伴生文件，准备覆盖
+                _remove_conflicting_card_targets(dst_path)
+
+            if not (action == 'overwrite' and filename == target_filename and has_conflict):
+                suppress_fs_events(5.0)
             shutil.move(src_path, dst_path)
             
             # 更新数据库 & 构建返回对象

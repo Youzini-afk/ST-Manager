@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import sqlite3
 import sys
 import threading
@@ -265,6 +267,641 @@ def test_upload_commit_enqueues_card_and_world_sync_jobs(monkeypatch, tmp_path):
             'previous_has_embedded_wi': False,
         }
     ]
+
+
+def test_import_from_url_overwrite_removes_opposite_extension_sibling(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    temp_dir = tmp_path / 'temp'
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    (cards_dir / 'Hero.json').write_text('{"spec": "chara_card_v2"}', encoding='utf-8')
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=8192):
+            del chunk_size
+            yield b'fake-card'
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TEMP_DIR', str(temp_dir))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'requests', type('Requests', (), {'get': staticmethod(lambda *_args, **_kwargs: _FakeResponse())})())
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {
+        'data': {
+            'name': 'Hero',
+            'tags': ['blue'],
+            'description': '',
+            'first_mes': '',
+            'mes_example': '',
+            'alternate_greetings': [],
+            'creator_notes': '',
+            'personality': '',
+            'scenario': '',
+            'system_prompt': '',
+            'post_history_instructions': '',
+            'character_version': '',
+            'character_book': {'name': 'Book', 'entries': {}},
+            'extensions': {},
+            'creator': '',
+        }
+    })
+    monkeypatch.setattr(cards_api, 'sanitize_filename', lambda value: value)
+    monkeypatch.setattr(cards_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(cards_api, 'save_ui_data', lambda _payload: None)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda *_args, **_kwargs: (False, 123.0))
+    monkeypatch.setattr(cards_api, 'get_file_hash_and_size', lambda _path: ('hash', 8))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'schedule_reload', lambda **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'auto_run_rules_on_card', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: {
+        'cache_updated': True,
+        'has_embedded_wi': False,
+        'previous_has_embedded_wi': False,
+    })
+    monkeypatch.setattr(cards_api, 'sync_card_index_jobs', lambda **_kwargs: {})
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'current_config', {'auto_rename_on_import': True})
+
+    class _FakeCache:
+        category_counts = {}
+
+        def add_card_update(self, payload):
+            return payload
+
+    monkeypatch.setattr(cards_api.ctx, 'cache', _FakeCache())
+
+    client = _make_app().test_client()
+    res = client.post(
+        '/api/import_from_url',
+        json={'url': 'https://example.com/hero.png', 'category': '', 'resolution': 'overwrite'},
+    )
+
+    assert res.status_code == 200
+    assert res.get_json()['success'] is True
+    assert sorted(path.name for path in cards_dir.iterdir()) == ['Hero.png']
+
+
+def test_import_from_url_cross_extension_overwrite_preserves_old_tags(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    temp_dir = tmp_path / 'temp'
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    (cards_dir / 'Hero.json').write_text('{"spec": "chara_card_v2"}', encoding='utf-8')
+
+    write_calls = []
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=8192):
+            del chunk_size
+            yield b'fake-card'
+
+    def _extract(path):
+        if str(path).endswith('Hero.json'):
+            return {'data': {'name': 'Hero', 'tags': ['old']}}
+        return {'data': {'name': 'Hero', 'tags': ['new']}}
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TEMP_DIR', str(temp_dir))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'requests', type('Requests', (), {'get': staticmethod(lambda *_args, **_kwargs: _FakeResponse())})())
+    monkeypatch.setattr(cards_api, 'extract_card_info', _extract)
+    monkeypatch.setattr(cards_api, 'write_card_metadata', lambda path, info: write_calls.append({'path': str(path), 'info': json.loads(json.dumps(info))}) or True)
+    monkeypatch.setattr(cards_api, 'sanitize_filename', lambda value: value)
+    monkeypatch.setattr(cards_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(cards_api, 'save_ui_data', lambda _payload: None)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda *_args, **_kwargs: (False, 123.0))
+    monkeypatch.setattr(cards_api, 'get_file_hash_and_size', lambda _path: ('hash', 8))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'schedule_reload', lambda **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'auto_run_rules_on_card', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: {
+        'cache_updated': True,
+        'has_embedded_wi': False,
+        'previous_has_embedded_wi': False,
+    })
+    monkeypatch.setattr(cards_api, 'sync_card_index_jobs', lambda **_kwargs: {})
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'current_config', {'auto_rename_on_import': True})
+
+    class _FakeCache:
+        category_counts = {}
+
+        def add_card_update(self, payload):
+            return payload
+
+    monkeypatch.setattr(cards_api.ctx, 'cache', _FakeCache())
+
+    client = _make_app().test_client()
+    res = client.post(
+        '/api/import_from_url',
+        json={'url': 'https://example.com/hero.png', 'category': '', 'resolution': 'overwrite'},
+    )
+
+    assert res.status_code == 200
+    assert res.get_json()['success'] is True
+    assert res.get_json()['new_card']['tags'] == ['old', 'new']
+    assert len(write_calls) == 1
+    assert Path(write_calls[0]['path']).parent == temp_dir
+    assert Path(write_calls[0]['path']).name.endswith('_hero.png')
+    assert write_calls[0]['info'] == {'data': {'name': 'Hero', 'tags': ['old', 'new']}}
+
+
+def test_import_from_url_overwrite_suppresses_delete_and_move_boundary(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    temp_dir = tmp_path / 'temp'
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    (cards_dir / 'Hero.json').write_text('{"spec": "chara_card_v2"}', encoding='utf-8')
+
+    events = []
+    real_move = shutil.move
+    real_remove = os.remove
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=8192):
+            del chunk_size
+            yield b'fake-card'
+
+    def _move(src, dst):
+        events.append(f'move:{Path(dst).name}')
+        return real_move(src, dst)
+
+    def _remove(path):
+        events.append(f'remove:{Path(path).name}')
+        return real_remove(path)
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TEMP_DIR', str(temp_dir))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: events.append('suppress'))
+    monkeypatch.setattr(cards_api.shutil, 'move', _move)
+    monkeypatch.setattr(cards_api.os, 'remove', _remove)
+    monkeypatch.setattr(cards_api, 'requests', type('Requests', (), {'get': staticmethod(lambda *_args, **_kwargs: _FakeResponse())})())
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {'data': {'name': 'Hero', 'tags': ['new']}})
+    monkeypatch.setattr(cards_api, 'sanitize_filename', lambda value: value)
+    monkeypatch.setattr(cards_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(cards_api, 'save_ui_data', lambda _payload: None)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda *_args, **_kwargs: (False, 123.0))
+    monkeypatch.setattr(cards_api, 'get_file_hash_and_size', lambda _path: ('hash', 8))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'schedule_reload', lambda **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'auto_run_rules_on_card', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: {
+        'cache_updated': True,
+        'has_embedded_wi': False,
+        'previous_has_embedded_wi': False,
+    })
+    monkeypatch.setattr(cards_api, 'sync_card_index_jobs', lambda **_kwargs: {})
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'current_config', {'auto_rename_on_import': True})
+
+    class _FakeCache:
+        category_counts = {}
+
+        def add_card_update(self, payload):
+            return payload
+
+    monkeypatch.setattr(cards_api.ctx, 'cache', _FakeCache())
+
+    client = _make_app().test_client()
+    res = client.post(
+        '/api/import_from_url',
+        json={'url': 'https://example.com/hero.png', 'category': '', 'resolution': 'overwrite'},
+    )
+
+    assert res.status_code == 200
+    assert res.get_json()['success'] is True
+    assert events == ['suppress', 'remove:Hero.json', 'move:Hero.png']
+
+
+def test_import_from_url_check_uses_existing_sibling_for_conflict_metadata(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    temp_dir = tmp_path / 'temp'
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    existing_json = cards_dir / 'Hero.json'
+    existing_json.write_text('{"spec": "chara_card_v2"}', encoding='utf-8')
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=8192):
+            del chunk_size
+            yield b'fake-card'
+
+    def _extract(path):
+        if str(path) == str(existing_json):
+            return {'data': {'name': 'ExistingHero', 'tags': ['old']}}
+        if str(path).endswith('.png'):
+            return {'data': {'name': 'Hero', 'tags': ['new']}}
+        raise AssertionError(f'unexpected extract path: {path}')
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TEMP_DIR', str(temp_dir))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'requests', type('Requests', (), {'get': staticmethod(lambda *_args, **_kwargs: _FakeResponse())})())
+    monkeypatch.setattr(cards_api, 'extract_card_info', _extract)
+    monkeypatch.setattr(cards_api, 'sanitize_filename', lambda value: value)
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda data: 11 if data.get('name') == 'ExistingHero' else 7)
+    monkeypatch.setattr(cards_api.os.path, 'getsize', lambda path: 123 if str(path) == str(existing_json) else 45)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'current_config', {'auto_rename_on_import': True})
+
+    client = _make_app().test_client()
+    res = client.post('/api/import_from_url', json={'url': 'https://example.com/hero.png', 'category': '', 'resolution': 'check'})
+
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body['success'] is False
+    assert body['status'] == 'conflict'
+    assert body['existing_card']['char_name'] == 'ExistingHero'
+    assert body['existing_card']['token_count'] == 11
+    assert body['existing_card']['file_size'] == 123
+    assert '/cards_file/Hero.json?' in body['existing_card']['image_url']
+
+
+def test_import_from_url_suppresses_watchdog_immediately_before_move(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    temp_dir = tmp_path / 'temp'
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    events = []
+    real_move = shutil.move
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=8192):
+            del chunk_size
+            events.append('download')
+            yield b'fake-card'
+
+    def _move(src, dst):
+        events.append('move')
+        return real_move(src, dst)
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TEMP_DIR', str(temp_dir))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: events.append('suppress'))
+    monkeypatch.setattr(cards_api.shutil, 'move', _move)
+    monkeypatch.setattr(cards_api, 'requests', type('Requests', (), {'get': staticmethod(lambda *_args, **_kwargs: _FakeResponse())})())
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {
+        'data': {
+            'name': 'Hero',
+            'tags': ['blue'],
+            'description': '',
+            'first_mes': '',
+            'mes_example': '',
+            'alternate_greetings': [],
+            'creator_notes': '',
+            'personality': '',
+            'scenario': '',
+            'system_prompt': '',
+            'post_history_instructions': '',
+            'character_version': '',
+            'character_book': {'name': 'Book', 'entries': {}},
+            'extensions': {},
+            'creator': '',
+        }
+    })
+    monkeypatch.setattr(cards_api, 'sanitize_filename', lambda value: value)
+    monkeypatch.setattr(cards_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(cards_api, 'save_ui_data', lambda _payload: None)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda *_args, **_kwargs: (False, 123.0))
+    monkeypatch.setattr(cards_api, 'get_file_hash_and_size', lambda _path: ('hash', 8))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'schedule_reload', lambda **_kwargs: None)
+    monkeypatch.setattr(cards_api, 'auto_run_rules_on_card', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: {
+        'cache_updated': True,
+        'has_embedded_wi': False,
+        'previous_has_embedded_wi': False,
+    })
+    monkeypatch.setattr(cards_api, 'sync_card_index_jobs', lambda **_kwargs: {})
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _path, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'current_config', {'auto_rename_on_import': True})
+
+    class _FakeCache:
+        category_counts = {}
+
+        def add_card_update(self, payload):
+            return payload
+
+    monkeypatch.setattr(cards_api.ctx, 'cache', _FakeCache())
+
+    client = _make_app().test_client()
+    res = client.post('/api/import_from_url', json={'url': 'https://example.com/hero.png', 'category': ''})
+
+    assert res.status_code == 200
+    assert res.get_json()['success'] is True
+    assert events[-2:] == ['suppress', 'move']
+    assert events.index('download') < events.index('suppress')
+
+
+def test_upload_commit_overwrite_removes_opposite_extension_sibling(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    temp_dir = tmp_path / 'temp'
+    stage_dir = temp_dir / 'batch_upload' / 'batch-1'
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    (cards_dir / 'Hero.json').write_text('{"spec": "chara_card_v2"}', encoding='utf-8')
+    staged_card = stage_dir / 'Hero.png'
+    staged_card.write_bytes(b'fake-card')
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TEMP_DIR', str(temp_dir))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, '_is_safe_filename', lambda _value: True)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _value, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'current_config', {'auto_rename_on_import': True})
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {
+        'data': {
+            'name': 'Hero',
+            'tags': ['blue'],
+            'description': '',
+            'first_mes': '',
+            'mes_example': '',
+            'alternate_greetings': [],
+            'creator_notes': '',
+            'personality': '',
+            'scenario': '',
+            'system_prompt': '',
+            'post_history_instructions': '',
+            'character_version': '',
+            'character_book': {'name': 'Book', 'entries': {}},
+            'extensions': {},
+            'creator': '',
+        }
+    })
+    monkeypatch.setattr(cards_api, 'sanitize_filename', lambda value: value)
+    monkeypatch.setattr(cards_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(cards_api, 'save_ui_data', lambda _payload: None)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda *_args, **_kwargs: (False, 123.0))
+    monkeypatch.setattr(cards_api, 'get_import_time', lambda _ui_data, _ui_key, fallback: fallback)
+    monkeypatch.setattr(cards_api, 'get_file_hash_and_size', lambda _path: ('hash', 8))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'auto_run_rules_on_card', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: {
+        'cache_updated': True,
+        'has_embedded_wi': False,
+        'previous_has_embedded_wi': False,
+    })
+    monkeypatch.setattr(cards_api, 'sync_card_index_jobs', lambda **_kwargs: {})
+
+    class _FakeCache:
+        category_counts = {}
+
+        def add_card_update(self, payload):
+            return payload
+
+    monkeypatch.setattr(cards_api.ctx, 'cache', _FakeCache())
+
+    client = _make_app().test_client()
+    res = client.post(
+        '/api/upload/commit',
+        json={
+            'batch_id': 'batch-1',
+            'category': '',
+            'decisions': [{'filename': 'Hero.png', 'action': 'overwrite'}],
+        },
+    )
+
+    assert res.status_code == 200
+    assert res.get_json()['success'] is True
+    assert sorted(path.name for path in cards_dir.iterdir()) == ['Hero.png']
+
+
+def test_upload_commit_cross_extension_overwrite_preserves_old_tags(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    temp_dir = tmp_path / 'temp'
+    stage_dir = temp_dir / 'batch_upload' / 'batch-1'
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    (cards_dir / 'Hero.json').write_text('{"spec": "chara_card_v2"}', encoding='utf-8')
+    staged_card = stage_dir / 'Hero.png'
+    staged_card.write_bytes(b'fake-card')
+
+    write_calls = []
+
+    def _extract(path):
+        if str(path).endswith('Hero.json'):
+            return {'data': {'name': 'Hero', 'tags': ['old']}}
+        return {'data': {'name': 'Hero', 'tags': ['new']}}
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TEMP_DIR', str(temp_dir))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cards_api, '_is_safe_filename', lambda _value: True)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _value, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'current_config', {'auto_rename_on_import': True})
+    monkeypatch.setattr(cards_api, 'extract_card_info', _extract)
+    monkeypatch.setattr(cards_api, 'write_card_metadata', lambda path, info: write_calls.append({'path': str(path), 'info': json.loads(json.dumps(info))}) or True)
+    monkeypatch.setattr(cards_api, 'sanitize_filename', lambda value: value)
+    monkeypatch.setattr(cards_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(cards_api, 'save_ui_data', lambda _payload: None)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda *_args, **_kwargs: (False, 123.0))
+    monkeypatch.setattr(cards_api, 'get_import_time', lambda _ui_data, _ui_key, fallback: fallback)
+    monkeypatch.setattr(cards_api, 'get_file_hash_and_size', lambda _path: ('hash', 8))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'auto_run_rules_on_card', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: {
+        'cache_updated': True,
+        'has_embedded_wi': False,
+        'previous_has_embedded_wi': False,
+    })
+    monkeypatch.setattr(cards_api, 'sync_card_index_jobs', lambda **_kwargs: {})
+
+    class _FakeCache:
+        category_counts = {}
+
+        def add_card_update(self, payload):
+            return payload
+
+    monkeypatch.setattr(cards_api.ctx, 'cache', _FakeCache())
+
+    client = _make_app().test_client()
+    res = client.post(
+        '/api/upload/commit',
+        json={
+            'batch_id': 'batch-1',
+            'category': '',
+            'decisions': [{'filename': 'Hero.png', 'action': 'overwrite'}],
+        },
+    )
+
+    assert res.status_code == 200
+    assert res.get_json()['success'] is True
+    assert write_calls == [
+        {
+            'path': str(stage_dir / 'Hero.png'),
+            'info': {'data': {'name': 'Hero', 'tags': ['old', 'new']}},
+        }
+    ]
+
+
+def test_upload_commit_overwrite_suppresses_delete_and_move_boundary(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    temp_dir = tmp_path / 'temp'
+    stage_dir = temp_dir / 'batch_upload' / 'batch-1'
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    (cards_dir / 'Hero.json').write_text('{"spec": "chara_card_v2"}', encoding='utf-8')
+    (stage_dir / 'Hero.png').write_bytes(b'fake-card')
+
+    events = []
+    real_move = shutil.move
+    real_remove = os.remove
+
+    def _move(src, dst):
+        events.append(f'move:{Path(dst).name}')
+        return real_move(src, dst)
+
+    def _remove(path):
+        events.append(f'remove:{Path(path).name}')
+        return real_remove(path)
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TEMP_DIR', str(temp_dir))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: events.append('suppress'))
+    monkeypatch.setattr(cards_api.shutil, 'move', _move)
+    monkeypatch.setattr(cards_api.os, 'remove', _remove)
+    monkeypatch.setattr(cards_api, '_is_safe_filename', lambda _value: True)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _value, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'current_config', {'auto_rename_on_import': True})
+    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {'data': {'name': 'Hero', 'tags': ['new']}})
+    monkeypatch.setattr(cards_api, 'sanitize_filename', lambda value: value)
+    monkeypatch.setattr(cards_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(cards_api, 'save_ui_data', lambda _payload: None)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda *_args, **_kwargs: (False, 123.0))
+    monkeypatch.setattr(cards_api, 'get_import_time', lambda _ui_data, _ui_key, fallback: fallback)
+    monkeypatch.setattr(cards_api, 'get_file_hash_and_size', lambda _path: ('hash', 8))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'auto_run_rules_on_card', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: {
+        'cache_updated': True,
+        'has_embedded_wi': False,
+        'previous_has_embedded_wi': False,
+    })
+    monkeypatch.setattr(cards_api, 'sync_card_index_jobs', lambda **_kwargs: {})
+
+    class _FakeCache:
+        category_counts = {}
+
+        def add_card_update(self, payload):
+            return payload
+
+    monkeypatch.setattr(cards_api.ctx, 'cache', _FakeCache())
+
+    client = _make_app().test_client()
+    res = client.post(
+        '/api/upload/commit',
+        json={
+            'batch_id': 'batch-1',
+            'category': '',
+            'decisions': [{'filename': 'Hero.png', 'action': 'overwrite'}],
+        },
+    )
+
+    assert res.status_code == 200
+    assert res.get_json()['success'] is True
+    assert events == ['suppress', 'remove:Hero.json', 'move:Hero.png']
+
+
+def test_upload_commit_suppresses_watchdog_for_each_move(monkeypatch, tmp_path):
+    cards_dir = tmp_path / 'cards'
+    temp_dir = tmp_path / 'temp'
+    stage_dir = temp_dir / 'batch_upload' / 'batch-1'
+    cards_dir.mkdir(parents=True, exist_ok=True)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    for name in ('Alpha.png', 'Beta.png'):
+        (stage_dir / name).write_bytes(b'fake-card')
+
+    events = []
+    real_move = shutil.move
+
+    def _move(src, dst):
+        events.append(f'move:{Path(dst).name}')
+        return real_move(src, dst)
+
+    def _extract(path):
+        stem = Path(path).stem
+        return {
+            'data': {
+                'name': stem,
+                'tags': ['blue'],
+                'description': '',
+                'first_mes': '',
+                'mes_example': '',
+                'alternate_greetings': [],
+                'creator_notes': '',
+                'personality': '',
+                'scenario': '',
+                'system_prompt': '',
+                'post_history_instructions': '',
+                'character_version': '',
+                'character_book': {'name': 'Book', 'entries': {}},
+                'extensions': {},
+                'creator': '',
+            }
+        }
+
+    monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(cards_api, 'TEMP_DIR', str(temp_dir))
+    monkeypatch.setattr(cards_api, 'suppress_fs_events', lambda *_args, **_kwargs: events.append('suppress'))
+    monkeypatch.setattr(cards_api.shutil, 'move', _move)
+    monkeypatch.setattr(cards_api, '_is_safe_filename', lambda _value: True)
+    monkeypatch.setattr(cards_api, '_is_safe_rel_path', lambda _value, allow_empty=False: True)
+    monkeypatch.setattr(cards_api, 'current_config', {'auto_rename_on_import': True})
+    monkeypatch.setattr(cards_api, 'extract_card_info', _extract)
+    monkeypatch.setattr(cards_api, 'sanitize_filename', lambda value: value)
+    monkeypatch.setattr(cards_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(cards_api, 'save_ui_data', lambda _payload: None)
+    monkeypatch.setattr(cards_api, 'ensure_import_time', lambda *_args, **_kwargs: (False, 123.0))
+    monkeypatch.setattr(cards_api, 'get_import_time', lambda _ui_data, _ui_key, fallback: fallback)
+    monkeypatch.setattr(cards_api, 'get_file_hash_and_size', lambda _path: ('hash', 8))
+    monkeypatch.setattr(cards_api, 'calculate_token_count', lambda _data: 0)
+    monkeypatch.setattr(cards_api, 'auto_run_rules_on_card', lambda _card_id: None)
+    monkeypatch.setattr(cards_api, 'update_card_cache', lambda *_args, **_kwargs: {
+        'cache_updated': True,
+        'has_embedded_wi': False,
+        'previous_has_embedded_wi': False,
+    })
+    monkeypatch.setattr(cards_api, 'sync_card_index_jobs', lambda **_kwargs: {})
+
+    class _FakeCache:
+        category_counts = {}
+
+        def add_card_update(self, payload):
+            return payload
+
+    monkeypatch.setattr(cards_api.ctx, 'cache', _FakeCache())
+
+    client = _make_app().test_client()
+    res = client.post(
+        '/api/upload/commit',
+        json={
+            'batch_id': 'batch-1',
+            'category': '',
+            'decisions': [
+                {'filename': 'Alpha.png', 'action': 'overwrite'},
+                {'filename': 'Beta.png', 'action': 'overwrite'},
+            ],
+        },
+    )
+
+    assert res.status_code == 200
+    assert res.get_json()['success'] is True
+    assert events == ['suppress', 'move:Alpha.png', 'suppress', 'move:Beta.png']
 
 
 def test_toggle_bundle_mode_enable_persists_merged_tags_and_enqueues_card_sync(monkeypatch, tmp_path):
