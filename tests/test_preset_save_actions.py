@@ -1227,6 +1227,378 @@ def test_preset_save_as_followup_operations_work_with_alternate_root_ids(monkeyp
     assert not (openai_dir / 'Alt Root Flow Renamed.json').exists()
 
 
+def test_preset_save_as_version_creates_parallel_file_and_upgrades_source_file(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    preset_file = presets_dir / 'legacy-openai.json'
+    _write_json(
+        preset_file,
+        {
+            'name': 'Legacy OpenAI',
+            'openai_max_context': 8192,
+            'openai_max_tokens': 1200,
+            'stream_openai': True,
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    detail_res = client.get('/api/presets/detail/global::legacy-openai.json')
+    revision = detail_res.get_json()['preset']['source_revision']
+
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global::legacy-openai.json',
+            'preset_kind': 'openai',
+            'save_mode': 'save_as',
+            'create_as_version': True,
+            'version_label': 'v2',
+            'source_revision': revision,
+            'name': 'Legacy OpenAI V2',
+            'content': {
+                'name': 'Legacy OpenAI V2',
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1600,
+                'stream_openai': False,
+                'prompts': [{'identifier': 'main', 'content': 'hello v2'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    payload = save_res.get_json()
+    cloned_path = presets_dir / 'Legacy OpenAI V2.json'
+    assert cloned_path.exists()
+    assert payload['preset_id'] == 'global::Legacy OpenAI V2.json'
+
+    source_payload = json.loads(preset_file.read_text(encoding='utf-8'))
+    cloned_payload = json.loads(cloned_path.read_text(encoding='utf-8'))
+
+    source_meta = source_payload['x_st_manager']
+    cloned_meta = cloned_payload['x_st_manager']
+    assert source_meta['preset_family_id']
+    assert cloned_meta['preset_family_id'] == source_meta['preset_family_id']
+    assert source_meta['preset_is_default_version'] is True
+    assert cloned_meta['preset_is_default_version'] is False
+    assert source_meta['preset_version_label'] == 'legacy-openai'
+    assert cloned_meta['preset_version_label'] == 'v2'
+
+    cloned_detail = payload['preset']
+    assert cloned_detail['family_info']['default_version_id'] == 'global::legacy-openai.json'
+    assert cloned_detail['current_version']['version_label'] == 'v2'
+    assert cloned_detail['current_version']['is_default_version'] is False
+
+
+def test_resource_preset_save_as_version_keeps_new_file_in_same_resource_scope(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    resource_dir = tmp_path / 'resources' / 'hero-card' / 'presets'
+    resource_file = resource_dir / 'legacy-resource.json'
+    _write_json(
+        resource_file,
+        {
+            'name': 'Legacy Resource',
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    detail_res = client.get('/api/presets/detail/resource::hero-card::legacy-resource')
+    revision = detail_res.get_json()['preset']['source_revision']
+
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'resource::hero-card::legacy-resource',
+            'preset_kind': 'generic',
+            'save_mode': 'save_as',
+            'create_as_version': True,
+            'version_label': 'v2',
+            'source_revision': revision,
+            'name': 'Legacy Resource V2',
+            'content': {
+                'name': 'Legacy Resource V2',
+                'prompts': [{'identifier': 'main', 'content': 'hello v2'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    assert (resource_dir / 'Legacy Resource V2.json').exists()
+    assert not (presets_dir / 'Legacy Resource V2.json').exists()
+    assert save_res.get_json()['preset_id'] == 'resource::hero-card::Legacy Resource V2'
+
+
+def test_global_alt_openai_preset_save_as_version_keeps_new_file_in_openai_root(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    openai_dir = tmp_path / 'st-openai-presets'
+    openai_file = openai_dir / 'legacy-alt.json'
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    openai_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        openai_file,
+        {
+            'name': 'Legacy Alt',
+            'openai_max_context': 8192,
+            'openai_max_tokens': 1200,
+            'stream_openai': True,
+            'prompts': [{'identifier': 'main', 'content': 'hello'}],
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {
+            'presets_dir': str(presets_dir),
+            'resources_dir': str(tmp_path / 'resources'),
+            'st_openai_preset_dir': str(openai_dir),
+        },
+    )
+
+    client = _make_test_app().test_client()
+    detail_res = client.get('/api/presets/detail/global-alt::st_openai_preset_dir::legacy-alt.json')
+    revision = detail_res.get_json()['preset']['source_revision']
+
+    save_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global-alt::st_openai_preset_dir::legacy-alt.json',
+            'preset_kind': 'openai',
+            'save_mode': 'save_as',
+            'create_as_version': True,
+            'version_label': 'v2',
+            'source_revision': revision,
+            'name': 'Legacy Alt V2',
+            'content': {
+                'name': 'Legacy Alt V2',
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1400,
+                'stream_openai': False,
+                'prompts': [{'identifier': 'main', 'content': 'hello v2'}],
+            },
+        },
+    )
+
+    assert save_res.status_code == 200
+    assert (openai_dir / 'Legacy Alt V2.json').exists()
+    assert not (presets_dir / 'Legacy Alt V2.json').exists()
+    assert save_res.get_json()['preset_id'] == 'global-alt::st_openai_preset_dir::Legacy Alt V2.json'
+
+
+def test_set_default_preset_version_rewrites_family_flags(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    shared_meta = {
+        'preset_family_id': 'family-alpha',
+        'preset_family_name': 'Companion Family',
+    }
+    _write_json(
+        presets_dir / 'companion-v1.json',
+        {
+            'name': 'Companion V1',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v1',
+                'preset_version_order': 10,
+                'preset_is_default_version': True,
+            },
+        },
+    )
+    _write_json(
+        presets_dir / 'companion-v2.json',
+        {
+            'name': 'Companion V2',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v2',
+                'preset_version_order': 20,
+                'preset_is_default_version': False,
+            },
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/version/set-default',
+        json={'preset_id': 'global::companion-v2.json'},
+    )
+
+    assert res.status_code == 200
+    v1_payload = json.loads((presets_dir / 'companion-v1.json').read_text(encoding='utf-8'))
+    v2_payload = json.loads((presets_dir / 'companion-v2.json').read_text(encoding='utf-8'))
+    assert v1_payload['x_st_manager']['preset_is_default_version'] is False
+    assert v2_payload['x_st_manager']['preset_is_default_version'] is True
+    assert res.get_json()['preset']['family_info']['default_version_id'] == 'global::companion-v2.json'
+
+
+def test_preset_delete_promotes_next_version_when_default_is_removed(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    shared_meta = {
+        'preset_family_id': 'family-alpha',
+        'preset_family_name': 'Companion Family',
+    }
+    _write_json(
+        presets_dir / 'companion-v1.json',
+        {
+            'name': 'Companion V1',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v1',
+                'preset_version_order': 10,
+                'preset_is_default_version': True,
+            },
+        },
+    )
+    _write_json(
+        presets_dir / 'companion-v2.json',
+        {
+            'name': 'Companion V2',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v2',
+                'preset_version_order': 20,
+                'preset_is_default_version': False,
+            },
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    detail_res = client.get('/api/presets/detail/global::companion-v1.json')
+    revision = detail_res.get_json()['preset']['source_revision']
+
+    delete_res = client.post(
+        '/api/presets/save',
+        json={
+            'preset_id': 'global::companion-v1.json',
+            'save_mode': 'delete',
+            'source_revision': revision,
+        },
+    )
+
+    assert delete_res.status_code == 200
+    assert not (presets_dir / 'companion-v1.json').exists()
+
+    survivor_payload = json.loads((presets_dir / 'companion-v2.json').read_text(encoding='utf-8'))
+    assert survivor_payload['x_st_manager']['preset_is_default_version'] is True
+
+    detail_res = client.get('/api/presets/detail/global::companion-v2.json')
+    assert detail_res.status_code == 200
+    assert detail_res.get_json()['preset']['family_info']['default_version_id'] == 'global::companion-v2.json'
+
+
+def test_delete_preset_route_promotes_next_version_when_default_is_removed(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    shared_meta = {
+        'preset_family_id': 'family-alpha',
+        'preset_family_name': 'Companion Family',
+    }
+    _write_json(
+        presets_dir / 'companion-v1.json',
+        {
+            'name': 'Companion V1',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v1',
+                'preset_version_order': 10,
+                'preset_is_default_version': True,
+            },
+        },
+    )
+    _write_json(
+        presets_dir / 'companion-v2.json',
+        {
+            'name': 'Companion V2',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v2',
+                'preset_version_order': 20,
+                'preset_is_default_version': False,
+            },
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    delete_res = client.post(
+        '/api/presets/delete',
+        json={
+            'id': 'global::companion-v1.json',
+        },
+    )
+
+    assert delete_res.status_code == 200
+    assert not (presets_dir / 'companion-v1.json').exists()
+
+    survivor_payload = json.loads((presets_dir / 'companion-v2.json').read_text(encoding='utf-8'))
+    assert survivor_payload['x_st_manager']['preset_is_default_version'] is True
+
+    detail_res = client.get('/api/presets/detail/global::companion-v2.json')
+    assert detail_res.status_code == 200
+    assert detail_res.get_json()['preset']['family_info']['default_version_id'] == 'global::companion-v2.json'
+
+
+def test_delete_preset_route_rejects_stale_source_revision_and_keeps_files(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    shared_meta = {
+        'preset_family_id': 'family-alpha',
+        'preset_family_name': 'Companion Family',
+    }
+    _write_json(
+        presets_dir / 'companion-v1.json',
+        {
+            'name': 'Companion V1',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v1',
+                'preset_version_order': 10,
+                'preset_is_default_version': True,
+            },
+        },
+    )
+    _write_json(
+        presets_dir / 'companion-v2.json',
+        {
+            'name': 'Companion V2',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v2',
+                'preset_version_order': 20,
+                'preset_is_default_version': False,
+            },
+        },
+    )
+
+    _configure(monkeypatch, tmp_path, presets_dir)
+
+    client = _make_test_app().test_client()
+    delete_res = client.post(
+        '/api/presets/delete',
+        json={
+            'id': 'global::companion-v1.json',
+            'source_revision': '1:1',
+        },
+    )
+
+    assert delete_res.status_code == 409
+    assert 'source_revision' in delete_res.get_json()['msg']
+    assert (presets_dir / 'companion-v1.json').exists()
+    assert (presets_dir / 'companion-v2.json').exists()
+
+    source_payload = json.loads((presets_dir / 'companion-v1.json').read_text(encoding='utf-8'))
+    survivor_payload = json.loads((presets_dir / 'companion-v2.json').read_text(encoding='utf-8'))
+    assert source_payload['x_st_manager']['preset_is_default_version'] is True
+    assert survivor_payload['x_st_manager']['preset_is_default_version'] is False
+
+
 def test_preset_rename_updates_filename_and_object_name(monkeypatch, tmp_path):
     presets_dir = tmp_path / 'presets'
     preset_file = presets_dir / 'old-name.json'

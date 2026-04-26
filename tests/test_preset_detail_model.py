@@ -382,6 +382,89 @@ def test_preset_detail_uses_openai_prompt_manager_when_enabled_and_simple_prompt
     assert preset['editor_profile']['id'] == 'st_chat_completion_preset'
 
 
+def test_preset_detail_returns_family_context_for_versioned_global_preset(monkeypatch, tmp_path):
+    presets_dir = tmp_path / 'presets'
+    shared_meta = {
+        'preset_family_id': 'family-alpha',
+        'preset_family_name': 'Companion Family',
+    }
+    _write_json(
+        presets_dir / '写作' / 'companion-v1.json',
+        {
+            'name': 'Companion V1',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v1',
+                'preset_version_order': 10,
+                'preset_is_default_version': True,
+            },
+        },
+    )
+    _write_json(
+        presets_dir / '写作' / 'companion-v2.json',
+        {
+            'name': 'Companion V2',
+            'x_st_manager': {
+                **shared_meta,
+                'preset_version_label': 'v2',
+                'preset_version_order': 20,
+                'preset_is_default_version': False,
+            },
+        },
+    )
+
+    monkeypatch.setattr(presets_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(
+        presets_api,
+        'load_config',
+        lambda: {'presets_dir': str(presets_dir), 'resources_dir': str(tmp_path / 'resources')},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/detail/global::写作/companion-v2.json')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['success'] is True
+
+    preset = payload['preset']
+    assert preset['id'] == 'global::写作/companion-v2.json'
+    assert preset['family_info'] == {
+        'entry_type': 'family',
+        'id': 'global::global::family-alpha',
+        'family_id': 'family-alpha',
+        'family_name': 'Companion Family',
+        'default_version_id': 'global::写作/companion-v1.json',
+        'default_version_label': 'v1',
+        'version_count': 2,
+        'source_type': 'global',
+        'root_scope_key': 'global',
+    }
+    assert preset['current_version'] == {
+        'id': 'global::写作/companion-v2.json',
+        'name': 'Companion V2',
+        'version_label': 'v2',
+        'version_order': 20,
+        'is_default_version': False,
+    }
+    assert preset['available_versions'] == [
+        {
+            'id': 'global::写作/companion-v1.json',
+            'name': 'Companion V1',
+            'version_label': 'v1',
+            'version_order': 10,
+            'is_default_version': True,
+        },
+        {
+            'id': 'global::写作/companion-v2.json',
+            'name': 'Companion V2',
+            'version_label': 'v2',
+            'version_order': 20,
+            'is_default_version': False,
+        },
+    ]
+
+
 def test_preset_detail_reader_view_stays_generic_for_prompt_and_prompt_order_without_openai_markers(
     monkeypatch, tmp_path
 ):

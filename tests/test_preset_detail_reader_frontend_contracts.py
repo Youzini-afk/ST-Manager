@@ -82,7 +82,12 @@ def run_preset_detail_reader_runtime_check(script_body):
         source = source.replace('export default function presetDetailReader()', 'function presetDetailReader()');
 
         const stubs = `
-        const getPresetDetail = async () => ({{ success: true, preset: {{}} }});
+        const getPresetDetail = async (...args) => {{
+          if (typeof globalThis.getPresetDetail === 'function') {{
+            return globalThis.getPresetDetail(...args);
+          }}
+          return {{ success: true, preset: {{}} }};
+        }};
         const apiSavePresetExtensions = async () => ({{ success: true }});
         const clearActiveRuntimeContext = () => {{}};
         const setActiveRuntimeContext = () => {{}};
@@ -196,6 +201,66 @@ def test_preset_detail_reader_js_exposes_mobile_detail_view_state_and_actions():
     assert 'closeMobileDetailView() {' in source
 
 
+def test_preset_detail_reader_runtime_exposes_version_helpers_and_switches_by_concrete_version_id():
+    run_preset_detail_reader_runtime_check(
+        """
+        const detailCalls = [];
+        globalThis.__detailCalls = detailCalls;
+        globalThis.getPresetDetail = async (presetId) => {
+          detailCalls.push(presetId);
+          return {
+            success: true,
+            preset: {
+              id: presetId,
+              name: 'Family Preset',
+              type: 'global',
+              path: '/presets/' + presetId + '.json',
+              reader_view: {
+                family: 'generic',
+                family_label: '通用预设',
+                groups: [],
+                items: [],
+                stats: { total_count: 0 },
+              },
+              family_info: {
+                entry_type: 'family',
+                family_id: 'family-alpha',
+                default_version_id: 'preset-v2',
+                default_version_label: 'v2',
+                version_count: 2,
+              },
+              available_versions: [
+                { id: 'preset-v1', version_label: 'v1', is_default: false },
+                { id: 'preset-v2', version_label: 'v2', is_default: true },
+              ],
+            },
+          };
+        };
+
+        await reader.openPreset({ id: 'family-entry-id', entry_type: 'family', default_version_id: 'preset-v2' });
+
+        if (!reader.hasMultipleVersions) {
+          throw new Error('expected versioned preset to report multiple versions');
+        }
+        if (reader.availableVersions.length !== 2) {
+          throw new Error(`expected available versions to expose two entries, got ${JSON.stringify(reader.availableVersions)}`);
+        }
+        if (reader.availableVersions[1].id !== 'preset-v2') {
+          throw new Error(`expected version list to preserve ids, got ${JSON.stringify(reader.availableVersions)}`);
+        }
+
+        await reader.switchVersion('preset-v1');
+
+        if (JSON.stringify(detailCalls) !== JSON.stringify(['preset-v2', 'preset-v1'])) {
+          throw new Error(`expected concrete detail loads for default then switched version, got ${JSON.stringify(detailCalls)}`);
+        }
+        if (reader.activePresetDetail?.id !== 'preset-v1') {
+          throw new Error(`expected switched preset detail to become active, got ${JSON.stringify(reader.activePresetDetail)}`);
+        }
+        """
+    )
+
+
 def test_preset_detail_reader_js_exposes_scalar_workspace_helpers():
     source = read_project_file('static/js/components/presetDetailReader.js')
 
@@ -287,6 +352,24 @@ def test_preset_detail_reader_template_localizes_remaining_prompt_copy():
     assert '活动 Prompt' not in source
     assert '尚未选择 Prompt' not in source
     assert 'Identifier' not in source
+
+
+def test_preset_detail_reader_template_renders_version_selector_for_multi_version_families():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    assert 'x-show="hasMultipleVersions"' in source
+    assert '@change="switchVersion($event.target.value)"' in source
+    assert 'x-for="version in availableVersions"' in source
+
+
+def test_preset_detail_reader_template_renders_mobile_version_selector_for_family_presets():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    mobile_header_block = extract_div_block(source, 'preset-reader-mobile-header')
+
+    assert 'x-show="hasMultipleVersions"' in mobile_header_block
+    assert '@change="switchVersion($event.target.value)"' in mobile_header_block
+    assert 'x-for="version in availableVersions"' in mobile_header_block
 
 
 def test_preset_detail_reader_template_mobile_header_only_renders_for_mobile_list_page():

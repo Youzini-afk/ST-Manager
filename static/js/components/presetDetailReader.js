@@ -162,6 +162,16 @@ export default function presetDetailReader() {
       return Array.isArray(this.readerView.items) ? this.readerView.items : [];
     },
 
+    get availableVersions() {
+      return Array.isArray(this.activePresetDetail?.available_versions)
+        ? this.activePresetDetail.available_versions
+        : [];
+    },
+
+    get hasMultipleVersions() {
+      return this.availableVersions.length > 1;
+    },
+
     get isPromptWorkspaceReader() {
       return this.readerView.family === "prompt_manager";
     },
@@ -424,7 +434,11 @@ export default function presetDetailReader() {
     },
 
     async openPreset(item) {
-      if (!item?.id) return;
+      const presetId =
+        item?.entry_type === "family" && item?.default_version_id
+          ? item.default_version_id
+          : item?.id;
+      if (!presetId) return;
       this.isLoading = true;
       this.showModal = true;
       this.showMobileSidebar = false;
@@ -441,7 +455,7 @@ export default function presetDetailReader() {
       this.updatePresetLayoutMetrics();
 
       try {
-        const res = await getPresetDetail(item.id);
+        const res = await getPresetDetail(presetId);
         if (!res.success) {
           this.$store.global.showToast(res.msg || "获取详情失败", "error");
           this.closeModal();
@@ -451,7 +465,7 @@ export default function presetDetailReader() {
         this.activePresetDetail = res.preset;
         setActiveRuntimeContext({
           preset: {
-            id: res.preset?.id || item.id || "",
+            id: res.preset?.id || presetId || "",
             name: res.preset?.name || "",
             type: res.preset?.type || "",
             path: res.preset?.path || "",
@@ -466,6 +480,13 @@ export default function presetDetailReader() {
       } finally {
         this.isLoading = false;
       }
+    },
+
+    async switchVersion(versionId) {
+      if (!versionId || versionId === this.activePresetDetail?.id) {
+        return;
+      }
+      await this.openPreset({ id: versionId });
     },
 
     initializeReaderState() {

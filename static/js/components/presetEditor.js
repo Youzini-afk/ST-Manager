@@ -9,6 +9,7 @@ import {
   getPresetDetail,
   savePreset,
   savePresetExtensions as apiSavePresetExtensions,
+  setDefaultPresetVersion,
 } from "../api/presets.js";
 import { estimateTokens, formatDate } from "../utils/format.js";
 import {
@@ -230,6 +231,48 @@ export default function presetEditor() {
 
     get presetKind() {
       return this.editingPresetFile?.preset_kind || "";
+    },
+
+    get availableVersions() {
+      return Array.isArray(this.editingPresetFile?.available_versions)
+        ? this.editingPresetFile.available_versions
+        : [];
+    },
+
+    get hasMultipleVersions() {
+      return this.availableVersions.length > 1;
+    },
+
+    buildReopenContext() {
+      return {
+        activeWorkspace: this.activeWorkspace,
+        activeGroup: this.activeGroup,
+        activePromptId: this.activePromptId,
+        activeGenericItemId: this.activeGenericItemId,
+        activeItemId: this.activeItemId,
+      };
+    },
+
+    normalizeReopenContext(context = null) {
+      return {
+        activeWorkspace: context?.activeWorkspace || "all",
+        activeGroup: context?.activeGroup || "all",
+        activePromptId: context?.activePromptId || "",
+        activeGenericItemId: context?.activeGenericItemId || "",
+        activeItemId: context?.activeItemId || "",
+      };
+    },
+
+    reopenPresetVersion(presetId) {
+      const targetPresetId = String(presetId || "").trim();
+      if (!targetPresetId) return Promise.resolve();
+      return this.openPresetEditor({
+        presetId: targetPresetId,
+        activeNav: this.activeNav,
+        preserveNav: true,
+        preserveContext: true,
+        context: this.buildReopenContext(),
+      });
     },
 
     getMobileHeaderMetaLine() {
@@ -1772,7 +1815,13 @@ export default function presetEditor() {
       window.addEventListener("large-editor-save", saveHandler);
     },
 
-    async openPresetEditor({ presetId, activeNav = "basic" } = {}) {
+    async openPresetEditor({
+      presetId,
+      activeNav = "basic",
+      preserveNav = false,
+      preserveContext = false,
+      context = null,
+    } = {}) {
       if (!presetId) return;
       this.isLoading = true;
       try {
@@ -1784,21 +1833,38 @@ export default function presetEditor() {
 
         this.editingPresetFile = deepClone(res.preset);
         this.editingData = deepClone(res.preset.raw_data || {});
-        this.activeNav = activeNav || this.navSections[0] || "basic";
-        this.activeWorkspace = this.isPromptWorkspaceEditor ? "prompts" : "all";
+        const nextNav = preserveNav ? this.activeNav || activeNav : activeNav;
+        const reopenContext = preserveContext
+          ? this.normalizeReopenContext(context || this.buildReopenContext())
+          : null;
+        this.activeNav = nextNav || this.navSections[0] || "basic";
+        if (!this.navSections.includes(this.activeNav)) {
+          this.activeNav = this.navSections[0] || "basic";
+        }
+        const defaultWorkspace = this.isPromptWorkspaceEditor ? "prompts" : "all";
+        this.activeWorkspace =
+          reopenContext?.activeWorkspace || defaultWorkspace;
+        if (!this.isPromptWorkspaceEditor && this.activeWorkspace !== "all") {
+          this.activeWorkspace = "all";
+        }
         this.searchTerm = "";
         this.uiFilter = "all";
-        this.activeGroup = "all";
-        this.activePromptId = "";
-        this.activeGenericItemId = "";
-        this.activeItemId = "";
+        this.activeGroup = reopenContext?.activeGroup || "all";
+        this.activePromptId = reopenContext?.activePromptId || "";
+        this.activeGenericItemId = reopenContext?.activeGenericItemId || "";
+        this.activeItemId = reopenContext?.activeItemId || "";
         this.showMobileSidebar = false;
         this.showRightPanel = this.$store?.global?.deviceType !== "mobile";
         this.showMobilePromptDetailView = false;
         this.resetMobileHeaderState();
         this.showPromptTriggers = false;
         this.markClean();
-        this.selectGroup("all");
+        if (this.isPromptWorkspaceEditor && this.activeWorkspace === "prompts") {
+          this.refreshEditorCollections();
+          this.syncActiveEditorSelections();
+        } else {
+          this.selectGroup(this.activeGroup || "all");
+        }
         this.showPresetEditor = true;
         this.draftState = { savedAt: "", restored: false };
         this.hasConflict = false;
@@ -1840,6 +1906,14 @@ export default function presetEditor() {
         this.persistLocalDraft();
       }
       await this.openPresetEditor({ presetId: this.editingPresetFile.id });
+    },
+
+    openVersion(versionId) {
+      const targetVersionId = String(versionId || "").trim();
+      if (!targetVersionId) {
+        return;
+      }
+      return this.reopenPresetVersion(targetVersionId);
     },
 
     closeEditor() {
@@ -1958,6 +2032,87 @@ export default function presetEditor() {
       } catch (error) {
         console.error(error);
         this.$store.global.showToast("另存为失败", "error");
+      } finally {
+        this.isSaving = false;
+      }
+    },
+
+    async saveAsVersion() {
+      if (!this.editingPresetFile || !this.editingData || this.isSaving) return;
+
+      const currentFamilyName =
+        this.editingPresetFile?.family_info?.family_name ||
+        this.editingData?.x_st_manager?.preset_family_name ||
+        this.editingData?.name ||
+        this.editingPresetFile?.name ||
+        "";
+      const familyName = prompt("请输入版本家族名称：", currentFamilyName);
+      if (!familyName) return;
+
+      const versionLabel = prompt("请输入版本标记：", "");
+      if (!versionLabel) return;
+
+      const fileName = prompt(
+        "请输入新版本文件名：",
+        `${familyName} ${versionLabel}`.trim(),
+      );
+      if (!fileName) return;
+
+      this.isSaving = true;
+      try {
+        const content = {
+          ...this.editingData,
+          name: fileName,
+          x_st_manager: {
+            ...(this.editingData?.x_st_manager || {}),
+            preset_family_name: familyName,
+          },
+        };
+        const res = await savePreset({
+          preset_id: this.editingPresetFile.id,
+          preset_kind: this.editingPresetFile.preset_kind,
+          save_mode: "save_as",
+          create_as_version: true,
+          version_label: versionLabel,
+          source_revision: this.editingPresetFile.source_revision,
+          name: fileName,
+          content,
+        });
+        if (!res.success) {
+          this.$store.global.showToast(res.msg || "另存为版本失败", "error");
+          return;
+        }
+        this.$store.global.showToast("已另存为新版本");
+        window.dispatchEvent(new CustomEvent("refresh-preset-list"));
+        await this.reopenPresetVersion(res.preset_id || res.preset?.id);
+      } catch (error) {
+        console.error(error);
+        this.$store.global.showToast("另存为版本失败", "error");
+      } finally {
+        this.isSaving = false;
+      }
+    },
+
+    async setCurrentVersionAsDefault() {
+      if (!this.editingPresetFile?.id || this.isSaving) return;
+
+      this.isSaving = true;
+      try {
+        const res = await setDefaultPresetVersion({
+          preset_id: this.editingPresetFile.id,
+        });
+        if (!res.success) {
+          this.$store.global.showToast(res.msg || "设置默认版本失败", "error");
+          return;
+        }
+        this.$store.global.showToast("默认版本已更新");
+        window.dispatchEvent(new CustomEvent("refresh-preset-list"));
+        await this.reopenPresetVersion(
+          res.preset_id || res.preset?.id || this.editingPresetFile.id,
+        );
+      } catch (error) {
+        console.error(error);
+        this.$store.global.showToast("设置默认版本失败", "error");
       } finally {
         this.isSaving = false;
       }
