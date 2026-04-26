@@ -78,6 +78,18 @@
         >
           <div class="settings-group-title">文件与路径设置</div>
 
+          <div
+            x-show="pathSafety.risk_level && pathSafety.risk_level !== 'safe'"
+            x-transition
+            class="settings-row p-3 rounded border"
+            :class="pathSafety.risk_level === 'danger' ? 'border-red-500/60 bg-red-950/30 text-red-200' : 'border-yellow-500/60 bg-yellow-950/20 text-yellow-100'"
+          >
+            <div class="text-sm font-bold">路径安全警告</div>
+            <div class="mt-1 text-sm" x-text="pathSafety.risk_summary || '检测到路径重叠风险，请先处理后再继续。'"></div>
+          </div>
+
+          <div class="settings-group-title">ST-Manager 管理目录</div>
+
           <div class="settings-row">
             <label class="settings-label text-blue-400"
               >角色卡存储路径 (Cards)</label
@@ -100,6 +112,7 @@
                 📂
               </button>
             </div>
+            <div x-show="getPathConflictMessage('cards_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('cards_dir')"></div>
           </div>
 
           <div class="settings-row">
@@ -113,6 +126,7 @@
               class="form-input mt-2"
               placeholder="lorebooks"
             />
+            <div x-show="getPathConflictMessage('world_info_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('world_info_dir')"></div>
           </div>
 
           <div class="settings-row">
@@ -128,6 +142,7 @@
               class="form-input mt-2"
               placeholder="data/library/chats"
             />
+            <div x-show="getPathConflictMessage('chats_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('chats_dir')"></div>
           </div>
 
           <div class="settings-row">
@@ -141,6 +156,7 @@
               class="form-input mt-2"
               placeholder="extensions/regex"
             />
+            <div x-show="getPathConflictMessage('regex_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('regex_dir')"></div>
           </div>
 
           <div class="settings-row">
@@ -156,6 +172,7 @@
               class="form-input mt-2"
               placeholder="extensions/tavern_helper"
             />
+            <div x-show="getPathConflictMessage('scripts_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('scripts_dir')"></div>
           </div>
 
           <div class="settings-row">
@@ -169,6 +186,7 @@
               class="form-input mt-2"
               placeholder="extensions/quick-replies"
             />
+            <div x-show="getPathConflictMessage('quick_replies_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('quick_replies_dir')"></div>
           </div>
 
           <div class="settings-row">
@@ -182,96 +200,7 @@
               class="form-input mt-2"
               placeholder="data/library/presets"
             />
-          </div>
-
-          <div class="settings-row">
-            <label class="settings-label text-orange-400"
-              >ST Chat Completion 预设目录</label
-            >
-            <div class="settings-desc">
-              可选：单独存放 ST Chat Completion 预设 (.json) 的目录
-            </div>
-            <input
-              type="text"
-              x-model="settingsForm.st_openai_preset_dir"
-              class="form-input mt-2"
-              placeholder="例如: D:/SillyTavern/data/default-user/openai"
-            />
-          </div>
-
-          <div class="settings-row">
-            <label class="settings-label text-orange-400"
-              >ST TextGen 预设目录</label
-            >
-            <div class="settings-desc">
-              可选：单独存放 ST TextGen 预设 (.json) 的目录
-            </div>
-            <input
-              type="text"
-              x-model="settingsForm.st_textgen_preset_dir"
-              class="form-input mt-2"
-              placeholder="例如: D:/SillyTavern/data/default-user/textgen"
-            />
-          </div>
-
-          <div class="settings-row">
-            <label class="settings-label text-orange-400"
-              >ST Instruct 模板目录</label
-            >
-            <div class="settings-desc">
-              可选：单独存放 ST Instruct 模板 (.json) 的目录
-            </div>
-            <input
-              type="text"
-              x-model="settingsForm.st_instruct_preset_dir"
-              class="form-input mt-2"
-              placeholder="例如: D:/SillyTavern/data/default-user/instruct"
-            />
-          </div>
-
-          <div class="settings-row">
-            <label class="settings-label text-orange-400"
-              >ST Context 模板目录</label
-            >
-            <div class="settings-desc">
-              可选：单独存放 ST Context 模板 (.json) 的目录
-            </div>
-            <input
-              type="text"
-              x-model="settingsForm.st_context_preset_dir"
-              class="form-input mt-2"
-              placeholder="例如: D:/SillyTavern/data/default-user/context"
-            />
-          </div>
-
-          <div class="settings-row">
-            <label class="settings-label text-orange-400"
-              >ST Sysprompt 模板目录</label
-            >
-            <div class="settings-desc">
-              可选：单独存放 ST Sysprompt 模板 (.json) 的目录
-            </div>
-            <input
-              type="text"
-              x-model="settingsForm.st_sysprompt_dir"
-              class="form-input mt-2"
-              placeholder="例如: D:/SillyTavern/data/default-user/sysprompt"
-            />
-          </div>
-
-          <div class="settings-row">
-            <label class="settings-label text-orange-400"
-              >ST Reasoning 模板目录</label
-            >
-            <div class="settings-desc">
-              可选：单独存放 ST Reasoning 模板 (.json) 的目录
-            </div>
-            <input
-              type="text"
-              x-model="settingsForm.st_reasoning_dir"
-              class="form-input mt-2"
-              placeholder="例如: D:/SillyTavern/data/default-user/reasoning"
-            />
+            <div x-show="getPathConflictMessage('presets_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('presets_dir')"></div>
           </div>
 
           <div class="settings-row">
@@ -287,6 +216,105 @@
               class="form-input mt-2"
               placeholder="resources"
             />
+            <div x-show="getPathConflictMessage('resources_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('resources_dir')"></div>
+          </div>
+
+          <div class="settings-group-title">SillyTavern 兼容目录</div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Chat Completion 预设目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Chat Completion 预设 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_openai_preset_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/openai"
+            />
+            <div x-show="getPathConflictMessage('st_openai_preset_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('st_openai_preset_dir')"></div>
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST TextGen 预设目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST TextGen 预设 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_textgen_preset_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/textgen"
+            />
+            <div x-show="getPathConflictMessage('st_textgen_preset_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('st_textgen_preset_dir')"></div>
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Instruct 模板目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Instruct 模板 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_instruct_preset_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/instruct"
+            />
+            <div x-show="getPathConflictMessage('st_instruct_preset_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('st_instruct_preset_dir')"></div>
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Context 模板目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Context 模板 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_context_preset_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/context"
+            />
+            <div x-show="getPathConflictMessage('st_context_preset_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('st_context_preset_dir')"></div>
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Sysprompt 模板目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Sysprompt 模板 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_sysprompt_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/sysprompt"
+            />
+            <div x-show="getPathConflictMessage('st_sysprompt_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('st_sysprompt_dir')"></div>
+          </div>
+
+          <div class="settings-row">
+            <label class="settings-label text-orange-400"
+              >ST Reasoning 模板目录</label
+            >
+            <div class="settings-desc">
+              可选：单独存放 ST Reasoning 模板 (.json) 的目录
+            </div>
+            <input
+              type="text"
+              x-model="settingsForm.st_reasoning_dir"
+              class="form-input mt-2"
+              placeholder="例如: D:/SillyTavern/data/default-user/reasoning"
+            />
+            <div x-show="getPathConflictMessage('st_reasoning_dir')" class="mt-2 text-sm text-yellow-300" x-text="getPathConflictMessage('st_reasoning_dir')"></div>
           </div>
         </div>
 
@@ -751,53 +779,54 @@
             <div class="settings-desc mb-3">
               将 SillyTavern 中的资源复制到 ST-Manager 管理的目录
             </div>
+            <div class="mb-3 text-xs text-[var(--text-dim)]" x-text="syncSafetySummary"></div>
             <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
               <button
                 @click="syncFromST('characters')"
                 class="btn-secondary py-2 text-sm"
-                :disabled="syncing"
+                :disabled="isSyncActionBlocked('sync_characters') || syncing"
               >
                 🎴 同步角色卡
               </button>
               <button
                 @click="syncFromST('chats')"
                 class="btn-secondary py-2 text-sm"
-                :disabled="syncing"
+                :disabled="isSyncActionBlocked('sync_chats') || syncing"
               >
                 💬 同步聊天
               </button>
               <button
                 @click="syncFromST('worlds')"
                 class="btn-secondary py-2 text-sm"
-                :disabled="syncing"
+                :disabled="isSyncActionBlocked('sync_worlds') || syncing"
               >
                 📚 同步世界书
               </button>
               <button
                 @click="syncFromST('presets')"
                 class="btn-secondary py-2 text-sm"
-                :disabled="syncing"
+                :disabled="isSyncActionBlocked('sync_presets') || syncing"
               >
                 📝 同步预设
               </button>
               <button
                 @click="syncFromST('regex')"
                 class="btn-secondary py-2 text-sm"
-                :disabled="syncing"
+                :disabled="isSyncActionBlocked('sync_regex') || syncing"
               >
                 🔧 同步正则
               </button>
               <button
                 @click="syncFromST('quick_replies')"
                 class="btn-secondary py-2 text-sm"
-                :disabled="syncing"
+                :disabled="isSyncActionBlocked('sync_quick_replies') || syncing"
               >
                 💬 同步快速回复
               </button>
               <button
                 @click="syncAllFromST()"
                 class="btn-primary py-2 text-sm"
-                :disabled="syncing"
+                :disabled="isSyncActionBlocked('sync_all') || syncing"
               >
                 ⚡ 全部同步
               </button>

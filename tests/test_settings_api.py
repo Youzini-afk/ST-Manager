@@ -338,6 +338,196 @@ def test_save_settings_does_not_forward_shared_wallpaper_ui_fields_to_config(mon
     assert 'shared_wallpapers' not in captured_configs[-1]
 
 
+def test_settings_path_safety_endpoint_returns_evaluator_payload(monkeypatch):
+    evaluation = {
+        'risk_level': 'warning',
+        'risk_summary': '检测到 1 个路径与 SillyTavern 目录重叠。',
+        'conflicts': [
+            {
+                'field': 'cards_dir',
+                'label': '角色卡存储路径',
+                'manager_path': 'D:/workspace/cards',
+                'st_path': 'D:/SillyTavern/data/default-user/characters',
+                'resource_type': 'characters',
+                'severity': 'warning',
+                'relation': 'same',
+                'message': '当前路径与 SillyTavern characters 目录重叠，ST-Manager 的独立目录结构可能与酒馆目录混用。',
+            }
+        ],
+        'blocked_actions': ['sync_all', 'sync_characters'],
+    }
+    monkeypatch.setattr(system_api, 'evaluate_st_path_safety', lambda cfg: evaluation)
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/settings_path_safety', json={'config': {'st_data_dir': 'D:/SillyTavern'}})
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload == {'success': True, **evaluation}
+
+
+def test_settings_path_safety_endpoint_accepts_legacy_flat_payload(monkeypatch):
+    seen = {}
+    evaluation = {
+        'risk_level': 'none',
+        'risk_summary': '当前路径配置安全。',
+        'conflicts': [],
+        'blocked_actions': [],
+    }
+
+    def fake_evaluate(cfg):
+        seen['config'] = dict(cfg)
+        return evaluation
+
+    monkeypatch.setattr(system_api, 'evaluate_st_path_safety', fake_evaluate)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/settings_path_safety',
+        json={'cards_dir': 'data/library/characters', 'st_data_dir': 'D:/SillyTavern'},
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload == {'success': True, **evaluation}
+    assert seen['config'] == {
+        'cards_dir': 'data/library/characters',
+        'st_data_dir': 'D:/SillyTavern',
+    }
+
+
+def test_save_settings_requires_confirmation_before_persisting_risky_paths(monkeypatch):
+    save_calls = []
+    evaluation = {
+        'risk_level': 'danger',
+        'risk_summary': '检测到 1 个路径与 SillyTavern 目录重叠。',
+        'conflicts': [
+            {
+                'field': 'chats_dir',
+                'label': '聊天记录路径',
+                'manager_path': 'D:/SillyTavern/data/default-user/chats',
+                'st_path': 'D:/SillyTavern/data/default-user/chats',
+                'resource_type': 'chats',
+                'severity': 'danger',
+                'relation': 'same',
+                'message': '当前聊天记录路径与 SillyTavern chats 目录重叠，同步聊天时可能覆盖同名聊天目录，因此聊天同步已被禁用。',
+            }
+        ],
+        'blocked_actions': ['sync_all', 'sync_chats'],
+    }
+    monkeypatch.setattr(system_api, 'evaluate_st_path_safety', lambda cfg: evaluation)
+    monkeypatch.setattr(system_api, 'save_config', lambda cfg: save_calls.append(dict(cfg)) or True)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/save_settings',
+        json={
+            'config': {
+                'chats_dir': 'D:/SillyTavern/data/default-user/chats',
+                'st_data_dir': 'D:/SillyTavern',
+            },
+            'confirm_risky_paths': False,
+        },
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 409
+    assert payload['success'] is False
+    assert payload['requires_confirmation'] is True
+    assert payload['blocked_actions'] == ['sync_all', 'sync_chats']
+    assert save_calls == []
+
+
+def test_save_settings_confirmed_request_persists_only_nested_config(monkeypatch, tmp_path):
+    saved = {}
+    evaluation = {
+        'risk_level': 'warning',
+        'risk_summary': '检测到 1 个路径与 SillyTavern 目录重叠。',
+        'conflicts': [
+            {
+                'field': 'cards_dir',
+                'label': '角色卡存储路径',
+                'manager_path': 'D:/SillyTavern/data/default-user/characters',
+                'st_path': 'D:/SillyTavern/data/default-user/characters',
+                'resource_type': 'characters',
+                'severity': 'warning',
+                'relation': 'same',
+                'message': '当前路径与 SillyTavern characters 目录重叠，ST-Manager 的独立目录结构可能与酒馆目录混用。',
+            }
+        ],
+        'blocked_actions': ['sync_all', 'sync_characters'],
+    }
+    refresh_calls = []
+    monkeypatch.setattr(system_api, 'evaluate_st_path_safety', lambda cfg: evaluation)
+    monkeypatch.setattr(system_api, 'save_config', lambda cfg: saved.setdefault('config', dict(cfg)) or True)
+    monkeypatch.setattr(system_api, 'refresh_st_client', lambda: refresh_calls.append('called'))
+    monkeypatch.setattr(system_api, 'get_cards_folder', lambda: str(tmp_path / 'cards'))
+    monkeypatch.setattr(system_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(system_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(system_api, 'save_ui_data', lambda data: True)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/save_settings',
+        json={
+            'config': {
+                'cards_dir': 'data/library/characters',
+                'st_data_dir': 'D:/SillyTavern',
+            },
+            'confirm_risky_paths': True,
+        },
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload['success'] is True
+    assert payload['saved_with_warnings'] is True
+    assert payload['blocked_actions'] == ['sync_all', 'sync_characters']
+    assert saved['config'] == {
+        'cards_dir': 'data/library/characters',
+        'st_data_dir': 'D:/SillyTavern',
+    }
+    assert refresh_calls == ['called']
+
+
+def test_save_settings_legacy_flat_payload_does_not_persist_confirm_flag(monkeypatch, tmp_path):
+    saved = {}
+    monkeypatch.setattr(
+        system_api,
+        'evaluate_st_path_safety',
+        lambda cfg: {
+            'risk_level': 'none',
+            'risk_summary': '当前路径配置安全。',
+            'conflicts': [],
+            'blocked_actions': [],
+        },
+    )
+    monkeypatch.setattr(system_api, 'save_config', lambda cfg: saved.setdefault('config', dict(cfg)) or True)
+    monkeypatch.setattr(system_api, 'refresh_st_client', lambda: None)
+    monkeypatch.setattr(system_api, 'get_cards_folder', lambda: str(tmp_path / 'cards'))
+    monkeypatch.setattr(system_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(system_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(system_api, 'save_ui_data', lambda data: True)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/save_settings',
+        json={
+            'cards_dir': 'data/library/characters',
+            'st_data_dir': 'D:/SillyTavern',
+            'confirm_risky_paths': True,
+        },
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload['success'] is True
+    assert saved['config'] == {
+        'cards_dir': 'data/library/characters',
+        'st_data_dir': 'D:/SillyTavern',
+    }
+
+
 def test_select_shared_wallpaper_endpoint_delegates_to_service(monkeypatch):
     fake_service = FakeSharedWallpaperService()
     monkeypatch.setattr(system_api, 'get_shared_wallpaper_service', lambda: fake_service, raising=False)

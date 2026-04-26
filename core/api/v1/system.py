@@ -35,6 +35,7 @@ from core.services.index_service import get_index_status, request_index_rebuild
 from core.services.shared_wallpaper_service import SharedWallpaperService
 from core.services.st_client import refresh_st_client
 from core.services.st_auth import STAuthError, build_st_http_client
+from core.services.st_path_safety import evaluate_st_path_safety
 
 # === 工具函数 ===
 from core.utils.filesystem import (
@@ -211,6 +212,15 @@ def _is_valid_preset_path(path: str) -> bool:
 
     return False
 
+
+def _extract_settings_save_payload(raw_payload):
+    payload = raw_payload if isinstance(raw_payload, dict) else {}
+    nested_config = payload.get('config') if isinstance(payload.get('config'), dict) else None
+    config = dict(nested_config if nested_config is not None else payload)
+    config.pop('confirm_risky_paths', None)
+    confirm_risky_paths = bool(payload.get('confirm_risky_paths'))
+    return config, confirm_risky_paths
+
 @bp.route('/api/status')
 def api_status():
     return jsonify(ctx.init_status)
@@ -240,14 +250,27 @@ def api_scan_now():
     except Exception as e:
         return jsonify({"success": False, "msg": str(e)})
 
+
+@bp.route('/api/settings_path_safety', methods=['POST'])
+def api_settings_path_safety():
+    config, _confirm_risky_paths = _extract_settings_save_payload(request.get_json(silent=True) or {})
+    evaluation = evaluate_st_path_safety(config)
+    return jsonify({'success': True, **evaluation})
+
 @bp.route('/api/save_settings', methods=['POST'])
 def api_save_settings():
     try:
-        new_config = request.json
+        new_config, confirm_risky_paths = _extract_settings_save_payload(request.get_json(silent=True) or {})
+        evaluation = evaluate_st_path_safety(new_config)
+        if evaluation['conflicts'] and not confirm_risky_paths:
+            return jsonify({'success': False, 'requires_confirmation': True, **evaluation}), 409
+
         config_payload = dict(new_config or {})
         config_payload.pop('manager_wallpaper_id', None)
         config_payload.pop('shared_wallpapers', None)
-        save_config(config_payload)
+        if not save_config(config_payload):
+            return jsonify({'success': False, 'msg': '保存配置失败'}), 500
+
         refresh_st_client()
 
         ui_data = load_ui_data()
@@ -289,7 +312,10 @@ def api_save_settings():
             except Exception as e:
                 logger.warning(f"无法创建聊天目录 {chats_path}: {str(e)}")
 
-        return jsonify({"success": True})
+        response = {'success': True}
+        if evaluation['conflicts']:
+            response.update({'saved_with_warnings': True, **evaluation})
+        return jsonify(response)
     except Exception as e:
         return jsonify({"success": False, "msg": str(e)})
 

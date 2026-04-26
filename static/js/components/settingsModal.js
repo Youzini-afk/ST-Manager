@@ -5,6 +5,7 @@
 
 import { uploadBackground } from "../api/resource.js";
 import {
+  evaluateSettingsPathSafety,
   openTrash,
   emptyTrash,
   performSystemAction,
@@ -18,6 +19,13 @@ if (typeof window !== "undefined") {
 }
 
 export default function settingsModal() {
+  const EMPTY_PATH_SAFETY = {
+    risk_level: "safe",
+    risk_summary: "",
+    blocked_actions: [],
+    conflicts: [],
+  };
+
   return {
     // === 本地状态 ===
     activeSettingTab: "general",
@@ -29,6 +37,9 @@ export default function settingsModal() {
 
     // 帮助模态框状态
     showSettingsHelpModal: false,
+    pathSafety: { ...EMPTY_PATH_SAFETY },
+    pathSafetyDebounceTimer: null,
+    pathSafetyEvaluationVersion: 0,
 
     // 帮助内容配置
     settingsHelpContent: {
@@ -60,6 +71,95 @@ export default function settingsModal() {
     },
 
     updateCssVariable,
+
+    get syncSafetySummary() {
+      return this.pathSafety.blocked_actions?.length
+        ? "部分同步操作因路径风险已被禁用。"
+        : "当前同步操作未发现需要拦截的路径风险。";
+    },
+
+    resetPathSafety() {
+      this.pathSafety = { ...EMPTY_PATH_SAFETY };
+    },
+
+    applyPathSafety(pathSafety) {
+      const nextState = pathSafety && typeof pathSafety === "object" ? pathSafety : {};
+      this.pathSafety = {
+        ...EMPTY_PATH_SAFETY,
+        ...nextState,
+        blocked_actions: Array.isArray(nextState.blocked_actions)
+          ? nextState.blocked_actions
+          : [],
+        conflicts: Array.isArray(nextState.conflicts) ? nextState.conflicts : [],
+      };
+    },
+
+    getPathConflict(field) {
+      return (this.pathSafety.conflicts || []).find((item) => item.field === field) || null;
+    },
+
+    getPathConflictMessage(field) {
+      return this.getPathConflict(field)?.message || "";
+    },
+
+    buildPathSafetyConfirmationText(pathSafety = this.pathSafety) {
+      const conflicts = Array.isArray(pathSafety?.conflicts) ? pathSafety.conflicts : [];
+      const lines = conflicts.map((item) => `- ${item.message}`).filter(Boolean);
+      if (!lines.length) {
+        return "检测到路径存在重叠风险，确认后将继续保存。";
+      }
+      return [
+        "检测到以下路径风险，确认后将继续保存：",
+        ...lines,
+      ].join("\n");
+    },
+
+    isSyncActionBlocked(action) {
+      return (this.pathSafety.blocked_actions || []).includes(action);
+    },
+
+    beginPathSafetyEvaluation() {
+      this.pathSafetyEvaluationVersion += 1;
+      return this.pathSafetyEvaluationVersion;
+    },
+
+    async refreshPathSafety(evaluationVersion = null) {
+      const activeVersion = evaluationVersion ?? this.beginPathSafetyEvaluation();
+      const result = await evaluateSettingsPathSafety(this.settingsForm);
+
+      if (activeVersion !== this.pathSafetyEvaluationVersion) {
+        return this.pathSafety;
+      }
+
+      if (!this.settingsForm.st_data_dir) {
+        this.resetPathSafety();
+        return this.pathSafety;
+      }
+
+      this.applyPathSafety(result);
+      return this.pathSafety;
+    },
+
+    async schedulePathSafetyEvaluation(delay = 250) {
+      if (this.pathSafetyDebounceTimer) {
+        clearTimeout(this.pathSafetyDebounceTimer);
+        this.pathSafetyDebounceTimer = null;
+      }
+
+      const evaluationVersion = this.beginPathSafetyEvaluation();
+
+      if (!this.settingsForm.st_data_dir) {
+        this.resetPathSafety();
+        return this.pathSafety;
+      }
+
+      return new Promise((resolve) => {
+        this.pathSafetyDebounceTimer = setTimeout(async () => {
+          this.pathSafetyDebounceTimer = null;
+          resolve(await this.refreshPathSafety(evaluationVersion));
+        }, delay);
+      });
+    },
 
     applyFont(type) {
       // 1. 更新全局状态 (这会让按钮的高亮 :class 重新计算)
@@ -120,7 +220,35 @@ export default function settingsModal() {
           this.allowedAbsRootsText = Array.isArray(roots)
             ? roots.join("\n")
             : String(roots || "");
+          if (this.settingsForm.st_data_dir) {
+            this.schedulePathSafetyEvaluation(0);
+          } else {
+            this.resetPathSafety();
+          }
         }
+      });
+
+      [
+        "settingsForm.cards_dir",
+        "settingsForm.world_info_dir",
+        "settingsForm.chats_dir",
+        "settingsForm.resources_dir",
+        "settingsForm.presets_dir",
+        "settingsForm.regex_dir",
+        "settingsForm.scripts_dir",
+        "settingsForm.quick_replies_dir",
+        "settingsForm.st_data_dir",
+        "settingsForm.st_openai_preset_dir",
+        "settingsForm.st_textgen_preset_dir",
+        "settingsForm.st_instruct_preset_dir",
+        "settingsForm.st_context_preset_dir",
+        "settingsForm.st_sysprompt_dir",
+        "settingsForm.st_reasoning_dir",
+      ].forEach((expression) => {
+        this.$watch(expression, () => {
+          if (!this.showSettingsModal) return;
+          this.schedulePathSafetyEvaluation();
+        });
       });
     },
 
@@ -132,18 +260,27 @@ export default function settingsModal() {
       this.showSettingsModal = true;
     },
 
-    saveSettings(closeModal = true) {
+    async saveSettings(closeModal = true, options = {}) {
       const roots = (this.allowedAbsRootsText || "")
         .split(/[\r\n,]+/)
         .map((s) => s.trim())
         .filter(Boolean);
       this.settingsForm.allowed_abs_resource_roots = roots;
-      // 调用 Store 的 Action
-      this.$store.global.saveSettings(closeModal).then((res) => {
-        if (res && res.success && closeModal) {
-          this.showSettingsModal = false; // 手动关闭
-        }
-      });
+      const res = await this.$store.global.saveSettings(closeModal, options);
+      if (res?.path_safety) {
+        this.applyPathSafety(res.path_safety);
+      }
+
+      if (res?.requires_confirmation) {
+        const confirmed = confirm(this.buildPathSafetyConfirmationText(res.path_safety));
+        if (!confirmed) return res;
+        return this.saveSettings(closeModal, { ...options, confirm_risky_paths: true });
+      }
+
+      if (res?.success && closeModal) {
+        this.showSettingsModal = false;
+      }
+      return res;
     },
 
     applyBackgroundUrlInput() {
@@ -317,20 +454,29 @@ export default function settingsModal() {
           }
           this.stPathValid = true;
           this.stResources = data.resources || {};
+          await this.refreshPathSafety();
         } else {
           this.stPathStatus = "✗ 路径无效或不是 SillyTavern 安装目录";
           this.stPathValid = false;
           this.stResources = {};
+          this.resetPathSafety();
         }
       } catch (err) {
         this.stPathStatus = "验证失败: " + err.message;
         this.stPathValid = false;
         this.stResources = {};
+        this.resetPathSafety();
       }
     },
 
     async syncFromST(resourceType) {
       if (this.syncing) return;
+      const action = `sync_${resourceType}`;
+      if (this.isSyncActionBlocked(action)) {
+        this.syncStatus = `✗ ${this.getResourceLabel(resourceType)}同步已被禁用：${this.syncSafetySummary}`;
+        this.syncSuccess = false;
+        return;
+      }
 
       this.syncing = true;
       this.syncStatus = `正在同步 ${this.getResourceLabel(resourceType)}...`;
@@ -387,6 +533,11 @@ export default function settingsModal() {
 
     async syncAllFromST() {
       if (this.syncing) return;
+      if (this.isSyncActionBlocked("sync_all")) {
+        this.syncStatus = `✗ 全部同步已被禁用：${this.syncSafetySummary}`;
+        this.syncSuccess = false;
+        return;
+      }
 
       const types = [
         "characters",

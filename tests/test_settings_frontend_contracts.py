@@ -24,7 +24,10 @@ def run_state_runtime_check(script_body):
         const stubs = `
         const getServerStatus = async () => ({{}});
         const getSettings = async () => ({{}});
-        const saveSettings = async () => ({{ success: true }});
+        const saveSettings = async (...args) => {{
+          const fn = globalThis.__saveSettingsStub;
+          return typeof fn === 'function' ? fn(...args) : {{ success: true }};
+        }};
         const performSystemAction = async () => ({{ success: true }});
         const triggerScan = async () => ({{ success: true }});
         const updateCssVariable = () => {{}};
@@ -96,6 +99,12 @@ def run_settings_modal_runtime_check(script_body):
         };
         const openTrash = async () => ({ success: true });
         const emptyTrash = async () => ({ success: true });
+        const evaluateSettingsPathSafety = (...args) => {
+          const fn = globalThis.__evaluateSettingsPathSafetyStub;
+          return typeof fn === 'function'
+            ? fn(...args)
+            : Promise.resolve({ success: true, risk_level: 'safe', risk_summary: '', blocked_actions: [], conflicts: [] });
+        };
         const performSystemAction = async () => ({ success: true });
         const triggerScan = async () => ({ success: true });
         const updateCssVariable = () => {};
@@ -221,6 +230,19 @@ def test_settings_template_exposes_profile_specific_preset_directory_inputs():
     assert 'x-model="settingsForm.st_reasoning_dir"' in source
 
 
+def test_settings_template_exposes_path_safety_warning_and_sync_blocking_bindings():
+    source = read_project_file('templates/modals/settings.html')
+
+    assert 'x-show="pathSafety.risk_level && pathSafety.risk_level !== \'safe\'"' in source
+    assert 'x-text="pathSafety.risk_summary || \'检测到路径重叠风险，请先处理后再继续。\'"' in source
+    assert 'x-text="getPathConflictMessage(\'cards_dir\')"' in source
+    assert 'x-text="getPathConflictMessage(\'resources_dir\')"' in source
+    assert 'x-text="getPathConflictMessage(\'st_openai_preset_dir\')"' in source
+    assert 'x-text="syncSafetySummary"' in source
+    assert ':disabled="isSyncActionBlocked(\'sync_characters\') || syncing"' in source
+    assert ':disabled="isSyncActionBlocked(\'sync_all\') || syncing"' in source
+
+
 def test_settings_template_keeps_background_controls_visible_for_selected_manager_wallpaper():
     source = read_project_file('templates/modals/settings.html')
 
@@ -254,6 +276,91 @@ def test_resource_api_exposes_shared_wallpaper_import_and_select_helpers():
     assert 'export async function selectSharedWallpaper(payload)' in source
     assert 'fetch("/api/shared-wallpapers/select"' in source or "fetch('/api/shared-wallpapers/select'" in source
     assert 'selection_target: payload.selection_target || "manager"' in source or "selection_target: payload.selection_target || 'manager'" in source
+
+
+def test_system_api_exposes_settings_path_safety_and_nested_save_helpers():
+    source = read_project_file('static/js/api/system.js')
+
+    assert 'export async function evaluateSettingsPathSafety(config)' in source
+    assert "fetch('/api/settings_path_safety'" in source
+    assert 'body: JSON.stringify({ config }),' in source
+    assert 'export async function saveSettings(config, options = {})' in source
+    assert 'body: JSON.stringify({' in source
+    assert 'config,' in source
+    assert 'confirm_risky_paths: !!options.confirm_risky_paths,' in source
+
+
+def test_store_save_settings_wraps_config_and_confirm_risky_paths_option():
+    run_state_runtime_check(
+        """
+        const calls = [];
+        globalThis.__saveSettingsStub = (config, options) => {
+          calls.push({ config: { ...config }, options: { ...options } });
+          return Promise.resolve({ success: true });
+        };
+
+        store.settingsForm = {
+          api_key: 'secret',
+          items_per_page: '24',
+          items_per_page_wi: '12',
+          theme_accent: 'blue',
+        };
+        store.updateItemsPerPage = () => {};
+        const events = [];
+        globalThis.window.dispatchEvent = (event) => events.push({ type: event.type, detail: event.detail });
+
+        const res = await store.saveSettings(false, { confirm_risky_paths: true });
+
+        if (!res.success) {
+          throw new Error(`expected save success, got: ${JSON.stringify(res)}`);
+        }
+        if (calls.length !== 1) {
+          throw new Error(`expected one save call, got: ${JSON.stringify(calls)}`);
+        }
+        if (calls[0].config.api_key !== 'secret') {
+          throw new Error(`expected config forwarded intact, got: ${JSON.stringify(calls)}`);
+        }
+        if (calls[0].options.confirm_risky_paths !== true) {
+          throw new Error(`expected confirm_risky_paths option forwarded, got: ${JSON.stringify(calls)}`);
+        }
+        if (events.length !== 0) {
+          throw new Error(`expected closeModal=false to avoid dispatch, got: ${JSON.stringify(events)}`);
+        }
+        """
+    )
+
+
+def test_store_save_settings_returns_requires_confirmation_without_alert():
+    run_state_runtime_check(
+        """
+        const alerts = [];
+        globalThis.alert = (message) => alerts.push(message);
+        globalThis.__saveSettingsStub = () => Promise.resolve({
+          success: false,
+          requires_confirmation: true,
+          path_safety: {
+            risk_level: 'warning',
+            conflicts: [{ field: 'cards_dir' }],
+          },
+        });
+
+        store.settingsForm = {
+          items_per_page: '24',
+          items_per_page_wi: '12',
+          theme_accent: 'blue',
+        };
+        store.updateItemsPerPage = () => {};
+
+        const res = await store.saveSettings(true, { confirm_risky_paths: false });
+
+        if (!res.requires_confirmation) {
+          throw new Error(`expected requires_confirmation response, got: ${JSON.stringify(res)}`);
+        }
+        if (alerts.length !== 0) {
+          throw new Error(`requires_confirmation should not trigger alert, got: ${JSON.stringify(alerts)}`);
+        }
+        """
+    )
 
 
 def test_resolve_manager_background_url_prefers_selected_shared_wallpaper():
@@ -769,6 +876,381 @@ def test_settings_modal_ignores_stale_shared_wallpaper_selection_detail_without_
         }
         if (backgroundUpdates.length !== 0) {
           throw new Error(`stale selection detail should not trigger background updates: ${JSON.stringify(backgroundUpdates)}`);
+        }
+        """
+    )
+
+
+def test_settings_modal_tracks_path_safety_conflicts_confirmation_and_blocked_sync_actions():
+    run_settings_modal_runtime_check(
+        """
+        const confirmMessages = [];
+        const saveCalls = [];
+        globalThis.confirm = (message) => {
+          confirmMessages.push(message);
+          return true;
+        };
+        const evaluateCalls = [];
+        globalThis.__evaluateSettingsPathSafetyStub = async (config) => {
+          evaluateCalls.push({ ...config });
+          return {
+            success: true,
+            risk_level: 'warning',
+            risk_summary: '检测到 1 个路径与 SillyTavern 目录重叠。',
+            blocked_actions: ['sync_all', 'sync_characters'],
+            conflicts: [
+              {
+                field: 'cards_dir',
+                message: '角色卡路径与 ST characters 目录重叠。',
+                severity: 'warning',
+              },
+            ],
+          };
+        };
+
+        component.$store = {
+          global: {
+            settingsForm: {
+              cards_dir: 'cards',
+              resources_dir: 'resources',
+              st_data_dir: 'D:/SillyTavern',
+              allowed_abs_resource_roots: [],
+            },
+            saveSettings(closeModal, options = {}) {
+              saveCalls.push({ closeModal, options: { ...options } });
+              if (saveCalls.length === 1) {
+                return Promise.resolve({
+                  success: false,
+                  requires_confirmation: true,
+                  path_safety: {
+                    risk_level: 'warning',
+                    risk_summary: '检测到 1 个路径与 SillyTavern 目录重叠。',
+                    blocked_actions: ['sync_all', 'sync_characters'],
+                    conflicts: [
+                      {
+                        field: 'cards_dir',
+                        message: '角色卡路径与 ST characters 目录重叠。',
+                        severity: 'warning',
+                      },
+                    ],
+                  },
+                });
+              }
+              return Promise.resolve({
+                success: true,
+                path_safety: {
+                  risk_level: 'warning',
+                  risk_summary: '检测到 1 个路径与 SillyTavern 目录重叠。',
+                  blocked_actions: ['sync_all', 'sync_characters'],
+                  conflicts: [
+                    {
+                      field: 'cards_dir',
+                      message: '角色卡路径与 ST characters 目录重叠。',
+                      severity: 'warning',
+                    },
+                  ],
+                },
+              });
+            },
+          },
+        };
+
+        await component.saveSettings(false);
+
+        if (saveCalls.length !== 2) {
+          throw new Error(`expected confirmation retry save, got: ${JSON.stringify(saveCalls)}`);
+        }
+        if (saveCalls[0].options.confirm_risky_paths !== undefined) {
+          throw new Error(`expected first save to omit confirm_risky_paths, got: ${JSON.stringify(saveCalls)}`);
+        }
+        if (saveCalls[1].options.confirm_risky_paths !== true) {
+          throw new Error(`expected retry save to confirm risky paths, got: ${JSON.stringify(saveCalls)}`);
+        }
+        if (confirmMessages.length !== 1 || !confirmMessages[0].includes('角色卡路径与 ST characters 目录重叠。')) {
+          throw new Error(`expected confirmation prompt with conflict message, got: ${JSON.stringify(confirmMessages)}`);
+        }
+        if (!component.pathSafety || component.pathSafety.risk_level !== 'warning') {
+          throw new Error(`expected warning pathSafety retained after confirmed save, got: ${JSON.stringify(component.pathSafety)}`);
+        }
+        if (component.getPathConflictMessage('cards_dir') !== '角色卡路径与 ST characters 目录重叠。') {
+          throw new Error(`unexpected field conflict message: ${component.getPathConflictMessage('cards_dir')}`);
+        }
+        if (component.getPathConflictMessage('resources_dir') !== '') {
+          throw new Error(`expected empty conflict message for unrelated field, got: ${component.getPathConflictMessage('resources_dir')}`);
+        }
+        if (!component.isSyncActionBlocked('sync_characters') || !component.isSyncActionBlocked('sync_all')) {
+          throw new Error(`expected sync actions blocked, got: ${JSON.stringify(component.pathSafety)}`);
+        }
+        if (component.syncSafetySummary !== '部分同步操作因路径风险已被禁用。') {
+          throw new Error(`unexpected sync safety summary: ${component.syncSafetySummary}`);
+        }
+
+        await component.schedulePathSafetyEvaluation();
+        if (evaluateCalls.length !== 1 || evaluateCalls[0].st_data_dir !== 'D:/SillyTavern') {
+          throw new Error(`expected path safety evaluation call, got: ${JSON.stringify(evaluateCalls)}`);
+        }
+        """
+    )
+
+
+def test_settings_modal_refreshes_path_safety_after_st_path_validation_and_blocks_sync_requests():
+    run_settings_modal_runtime_check(
+        """
+        const fetchCalls = [];
+        const evaluateCalls = [];
+        globalThis.fetch = async (url, options = {}) => {
+          fetchCalls.push({ url, options });
+          if (url === '/api/st/validate_path') {
+            return {
+              async json() {
+                return {
+                  success: true,
+                  valid: true,
+                  normalized_path: 'D:/SillyTavern',
+                  resources: {
+                    characters: { count: 1 },
+                  },
+                };
+              },
+            };
+          }
+          throw new Error(`unexpected fetch url: ${url}`);
+        };
+        globalThis.__evaluateSettingsPathSafetyStub = async (config) => {
+          evaluateCalls.push({ ...config });
+          return {
+            success: true,
+            risk_level: 'danger',
+            risk_summary: '检测到 1 个路径与 SillyTavern 目录重叠。',
+            blocked_actions: ['sync_chats', 'sync_all'],
+            conflicts: [
+              {
+                field: 'chats_dir',
+                message: '聊天路径与 ST chats 目录重叠。',
+                severity: 'danger',
+              },
+            ],
+          };
+        };
+
+        const dispatched = [];
+        globalThis.window = {
+          setTimeout,
+          clearTimeout,
+          dispatchEvent(event) {
+            dispatched.push(event.type);
+          },
+        };
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(type, options = {}) {
+            this.type = type;
+            this.detail = options.detail;
+          }
+        };
+
+        component.$store = {
+          global: {
+            settingsForm: {
+              st_data_dir: 'D:/SillyTavern/data/default-user',
+              chats_dir: 'data/library/chats',
+              allowed_abs_resource_roots: [],
+            },
+          },
+        };
+
+        await component.validateSTPath();
+
+        if (!component.stPathValid) {
+          throw new Error(`expected valid ST path, got: ${component.stPathStatus}`);
+        }
+        if (component.$store.global.settingsForm.st_data_dir !== 'D:/SillyTavern') {
+          throw new Error(`expected normalized st path stored, got: ${component.$store.global.settingsForm.st_data_dir}`);
+        }
+        if (fetchCalls.length !== 1 || evaluateCalls.length !== 1 || evaluateCalls[0].st_data_dir !== 'D:/SillyTavern') {
+          throw new Error(`expected validation plus safety refresh, got: ${JSON.stringify({ fetchCalls, evaluateCalls })}`);
+        }
+        if (!component.isSyncActionBlocked('sync_chats') || !component.isSyncActionBlocked('sync_all')) {
+          throw new Error(`expected blocked sync actions after validation, got: ${JSON.stringify(component.pathSafety)}`);
+        }
+
+        component.syncing = false;
+        component.syncStatus = '';
+        await component.syncFromST('chats');
+        if (!component.syncStatus.includes('已被禁用')) {
+          throw new Error(`expected blocked sync status, got: ${component.syncStatus}`);
+        }
+        if (fetchCalls.length !== 1) {
+          throw new Error(`blocked single sync should not hit backend, got: ${JSON.stringify(fetchCalls)}`);
+        }
+
+        await component.syncAllFromST();
+        if (!component.syncStatus.includes('已被禁用')) {
+          throw new Error(`expected blocked sync-all status, got: ${component.syncStatus}`);
+        }
+        if (fetchCalls.length !== 1) {
+          throw new Error(`blocked sync-all should not hit backend, got: ${JSON.stringify(fetchCalls)}`);
+        }
+        if (dispatched.length !== 0) {
+          throw new Error(`blocked sync should not dispatch refresh events, got: ${JSON.stringify(dispatched)}`);
+        }
+        """
+    )
+
+
+def test_settings_modal_watches_st_compatibility_fields_for_live_path_safety_refresh():
+    run_settings_modal_runtime_check(
+        """
+        const evaluateCalls = [];
+        globalThis.__evaluateSettingsPathSafetyStub = async (config) => {
+          evaluateCalls.push({ ...config });
+          return {
+            success: true,
+            risk_level: 'warning',
+            risk_summary: '检测到 1 个路径与 SillyTavern 目录重叠。',
+            blocked_actions: [],
+            conflicts: [
+              {
+                field: 'st_openai_preset_dir',
+                message: 'OpenAI 兼容目录与 ST 预设目录重叠。',
+                severity: 'warning',
+              },
+            ],
+          };
+        };
+
+        const watchers = new Map();
+        globalThis.setTimeout = (callback) => {
+          callback();
+          return 1;
+        };
+        globalThis.clearTimeout = () => {};
+        component.$watch = (expression, callback) => {
+          watchers.set(expression, callback);
+        };
+        component.$store = {
+          global: {
+            showSettingsModal: true,
+            settingsForm: {
+              st_data_dir: 'D:/SillyTavern',
+              st_openai_preset_dir: 'D:/SillyTavern/data/default-user/openai',
+              st_textgen_preset_dir: '',
+              st_instruct_preset_dir: '',
+              st_context_preset_dir: '',
+              st_sysprompt_dir: '',
+              st_reasoning_dir: '',
+              allowed_abs_resource_roots: [],
+            },
+          },
+        };
+
+        component.init();
+
+        const compatibilityFields = [
+          'settingsForm.st_openai_preset_dir',
+          'settingsForm.st_textgen_preset_dir',
+          'settingsForm.st_instruct_preset_dir',
+          'settingsForm.st_context_preset_dir',
+          'settingsForm.st_sysprompt_dir',
+          'settingsForm.st_reasoning_dir',
+        ];
+
+        for (const expression of compatibilityFields) {
+          if (!watchers.has(expression)) {
+            throw new Error(`missing watcher for compatibility field: ${expression}`);
+          }
+        }
+
+        watchers.get('settingsForm.st_openai_preset_dir')();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        if (evaluateCalls.length !== 1 || evaluateCalls[0].st_openai_preset_dir !== 'D:/SillyTavern/data/default-user/openai') {
+          throw new Error(`expected compatibility field edit to refresh path safety, got: ${JSON.stringify(evaluateCalls)}`);
+        }
+        if (component.getPathConflictMessage('st_openai_preset_dir') !== 'OpenAI 兼容目录与 ST 预设目录重叠。') {
+          throw new Error(`expected compatibility conflict retained, got: ${component.getPathConflictMessage('st_openai_preset_dir')}`);
+        }
+        """
+    )
+
+
+def test_settings_modal_clearing_st_path_invalidates_inflight_path_safety_refresh():
+    run_settings_modal_runtime_check(
+        """
+        const evaluateCalls = [];
+        let resolveEvaluation;
+        const evaluationPromise = new Promise((resolve) => {
+          resolveEvaluation = resolve;
+        });
+        globalThis.__evaluateSettingsPathSafetyStub = (config) => {
+          evaluateCalls.push({ ...config });
+          return evaluationPromise;
+        };
+
+        let nextTimerId = 1;
+        const timers = new Map();
+        globalThis.setTimeout = (callback) => {
+          const timerId = nextTimerId++;
+          timers.set(timerId, callback);
+          return timerId;
+        };
+        globalThis.clearTimeout = (timerId) => {
+          timers.delete(timerId);
+        };
+
+        component.$store = {
+          global: {
+            settingsForm: {
+              cards_dir: 'cards',
+              st_data_dir: 'D:/SillyTavern',
+              allowed_abs_resource_roots: [],
+            },
+          },
+        };
+
+        const pendingEvaluation = component.schedulePathSafetyEvaluation();
+        const scheduledRefresh = timers.get(component.pathSafetyDebounceTimer);
+        if (typeof scheduledRefresh !== 'function') {
+          throw new Error(`expected debounced refresh callback, got: ${component.pathSafetyDebounceTimer}`);
+        }
+
+        scheduledRefresh();
+        await Promise.resolve();
+
+        component.$store.global.settingsForm.st_data_dir = '';
+        const clearedState = await component.schedulePathSafetyEvaluation();
+        if (clearedState.risk_level !== 'safe') {
+          throw new Error(`expected immediate safe state after clearing ST path, got: ${JSON.stringify(clearedState)}`);
+        }
+
+        resolveEvaluation({
+          success: true,
+          risk_level: 'danger',
+          risk_summary: 'Detected overlapping path.',
+          blocked_actions: ['sync_all'],
+          conflicts: [
+            {
+              field: 'cards_dir',
+              message: 'cards_dir overlaps ST characters.',
+              severity: 'danger',
+            },
+          ],
+        });
+
+        await pendingEvaluation;
+        await Promise.resolve();
+
+        if (evaluateCalls.length !== 1 || evaluateCalls[0].st_data_dir !== 'D:/SillyTavern') {
+          throw new Error(`expected one in-flight evaluation for old ST path, got: ${JSON.stringify(evaluateCalls)}`);
+        }
+        if (component.pathSafety.risk_level !== 'safe') {
+          throw new Error(`stale evaluation should not repopulate path safety after clearing ST path: ${JSON.stringify(component.pathSafety)}`);
+        }
+        if (component.getPathConflictMessage('cards_dir') !== '') {
+          throw new Error(`stale evaluation should not restore field conflict after clearing ST path: ${component.getPathConflictMessage('cards_dir')}`);
+        }
+        if ((component.pathSafety.blocked_actions || []).length !== 0) {
+          throw new Error(`stale evaluation should not restore blocked sync actions: ${JSON.stringify(component.pathSafety)}`);
         }
         """
     )

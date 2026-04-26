@@ -846,7 +846,7 @@ export function initState() {
     },
 
     // 保存设置
-    saveSettings(closeModal = true) {
+    saveSettings(closeModal = true, options = {}) {
       this.applyTheme(this.settingsForm.theme_accent);
 
       // 乐观更新 localStorage
@@ -861,7 +861,7 @@ export function initState() {
           this.settingsForm.items_per_page_wi,
         );
 
-      return saveSettings(this.settingsForm).then((res) => {
+      return saveSettings(this.settingsForm, options).then((res) => {
         if (res.success) {
           this.updateItemsPerPage();
           // 触发事件让组件刷新
@@ -872,7 +872,7 @@ export function initState() {
               }),
             );
           }
-        } else {
+        } else if (!res.requires_confirmation) {
           alert("保存失败: " + res.msg);
         }
         return res;

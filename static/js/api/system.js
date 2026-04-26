@@ -15,12 +15,24 @@ export async function getSettings() {
   return res.json();
 }
 
+export async function evaluateSettingsPathSafety(config) {
+  const res = await fetch('/api/settings_path_safety', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config }),
+  });
+  return res.json();
+}
+
 // 保存设置
-export async function saveSettings(payload) {
-  const res = await fetch("/api/save_settings", {
+export async function saveSettings(config, options = {}) {
+  const res = await fetch('/api/save_settings', {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      config,
+      confirm_risky_paths: !!options.confirm_risky_paths,
+    }),
   });
   return res.json();
 }

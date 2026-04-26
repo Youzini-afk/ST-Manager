@@ -14,6 +14,7 @@ from typing import Dict, Any
 from flask import Blueprint, request, jsonify
 from core.config import load_config, BASE_DIR
 from core.services.st_client import get_st_client, refresh_st_client, STClient
+from core.services.st_path_safety import evaluate_st_path_safety
 from core.services.scan_service import request_scan
 from core.services.cache_service import invalidate_wi_list_cache
 from core.utils.filesystem import sanitize_filename
@@ -65,6 +66,26 @@ def _normalize_st_root(path: str) -> str:
         return parent or normalized
 
     return normalized
+
+
+def _sync_action_for(resource_type: str, resource_ids: list) -> str:
+    if resource_ids:
+        return f'sync_{resource_type}'
+    return 'sync_all'
+
+
+def _build_sync_path_safety(config: Dict[str, Any], st_data_dir: str) -> Dict[str, Any]:
+    draft = dict(config or {})
+    if st_data_dir:
+        draft['st_data_dir'] = st_data_dir
+    return evaluate_st_path_safety(draft)
+
+
+def _resolve_blocked_sync_action(resource_type: str, resource_ids: list, blocked_actions: set) -> str:
+    specific_action = f'sync_{resource_type}'
+    if specific_action in blocked_actions:
+        return specific_action
+    return _sync_action_for(resource_type, resource_ids)
 
 
 def _export_global_regex(settings_path: str, target_dir: str) -> Dict[str, Any]:
@@ -492,7 +513,23 @@ def sync_resources():
                 "success": False,
                 "error": f"未知资源类型: {resource_type}"
             }), 400
-            
+
+        path_safety = _build_sync_path_safety(config, st_data_dir)
+
+        blocked_actions = set(path_safety.get('blocked_actions') or [])
+        requested_action = _sync_action_for(resource_type, resource_ids)
+        is_blocked = requested_action in blocked_actions
+        if not resource_ids and f'sync_{resource_type}' in blocked_actions:
+            is_blocked = True
+
+        if is_blocked:
+            return jsonify({
+                'success': False,
+                'error': '当前路径配置禁止执行该同步操作。',
+                'blocked_action': _resolve_blocked_sync_action(resource_type, resource_ids, blocked_actions),
+                'path_safety': path_safety,
+            }), 409
+             
         # 处理相对路径
         if not os.path.isabs(target_dir):
             target_dir = os.path.join(BASE_DIR, target_dir)
