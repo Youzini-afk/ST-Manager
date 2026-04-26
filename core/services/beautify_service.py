@@ -11,7 +11,14 @@ from PIL import Image
 from PIL import UnidentifiedImageError
 
 from core.config import get_beautify_folder
-from core.data.ui_store import get_beautify_library, load_ui_data, save_ui_data, set_beautify_library
+from core.data.ui_store import (
+    get_beautify_library,
+    load_ui_data,
+    save_ui_data,
+    set_beautify_library,
+    set_shared_wallpaper_library,
+)
+from core.services.shared_wallpaper_service import SharedWallpaperService
 
 
 logger = logging.getLogger(__name__)
@@ -52,11 +59,12 @@ class BeautifyService:
         state = ui_data if isinstance(ui_data, dict) else self._load_ui_data()
         library = get_beautify_library(state)
         if not self._should_recover_library_from_disk(state, library):
-            return library
+            return self._reconcile_variant_wallpaper_references(state, library)
         recovered_library = self._recover_library_from_disk(library)
-        if self._save_library(state, recovered_library):
+        reconciled_library = self._reconcile_variant_wallpaper_references(state, recovered_library, persist=False)
+        if self._save_library(state, reconciled_library):
             return get_beautify_library(state)
-        return recovered_library
+        return reconciled_library
 
     def _should_recover_library_from_disk(self, ui_data: Dict, library: Dict):
         return not bool(library.get('packages'))
@@ -64,27 +72,92 @@ class BeautifyService:
     def load_library(self):
         return self._load_library_state()
 
+    def _load_shared_wallpaper_library(self, ui_data: Dict):
+        return SharedWallpaperService(
+            project_root=self._project_root_for_library(),
+            ui_data_loader=lambda: ui_data,
+            ui_data_saver=lambda data: True,
+        ).load_library()
+
+    def _reconcile_variant_wallpaper_references(self, ui_data: Dict, library: Dict, persist: bool = True):
+        shared_items = (self._load_shared_wallpaper_library(ui_data).get('items') or {})
+        packages = copy.deepcopy(library.get('packages') or {})
+        changed = False
+
+        for package_id, package_info in packages.items():
+            variants = copy.deepcopy(package_info.get('variants') or {})
+            for variant_id, variant in variants.items():
+                wallpaper_ids = [
+                    wallpaper_id
+                    for wallpaper_id in list(variant.get('wallpaper_ids', []))
+                    if wallpaper_id in shared_items
+                ]
+                selected_wallpaper_id = str(variant.get('selected_wallpaper_id') or '').strip()
+                if selected_wallpaper_id not in wallpaper_ids:
+                    selected_wallpaper_id = ''
+
+                if wallpaper_ids != list(variant.get('wallpaper_ids', [])) or selected_wallpaper_id != str(variant.get('selected_wallpaper_id') or '').strip():
+                    changed = True
+                    variant['wallpaper_ids'] = wallpaper_ids
+                    variant['selected_wallpaper_id'] = selected_wallpaper_id
+                variants[variant_id] = variant
+
+            package_info['variants'] = variants
+            packages[package_id] = package_info
+
+        reconciled_library = copy.deepcopy(library)
+        reconciled_library['packages'] = packages
+        if persist and changed and self._save_library(ui_data, reconciled_library):
+            return get_beautify_library(ui_data)
+        return reconciled_library
+
     def get_global_settings(self):
-        return copy.deepcopy(self.load_library().get('global_settings', {}))
+        ui_data = self._load_ui_data()
+        settings = copy.deepcopy(self._load_library_state(ui_data).get('global_settings', {}))
+        shared_wallpaper_library = SharedWallpaperService(
+            project_root=self._project_root_for_library(),
+            ui_data_loader=lambda: ui_data,
+            ui_data_saver=lambda data: True,
+        ).load_library()
+        preview_wallpaper_id = str(shared_wallpaper_library.get('preview_wallpaper_id') or '').strip()
+        settings['preview_wallpaper_id'] = preview_wallpaper_id
+
+        if preview_wallpaper_id:
+            preview_wallpaper = (shared_wallpaper_library.get('items') or {}).get(preview_wallpaper_id)
+            if preview_wallpaper:
+                settings['wallpaper'] = copy.deepcopy(preview_wallpaper)
+
+        return settings
 
     def list_packages(self):
         library = self.load_library()
+        shared_items = (self._load_shared_wallpaper_library(self._load_ui_data()).get('items') or {})
         packages = []
         for package_info in library.get('packages', {}).values():
             variants = list(package_info.get('variants', {}).values())
-            wallpapers = list(package_info.get('wallpapers', {}).values())
             screenshots = list(package_info.get('screenshots', {}).values())
+            active_wallpapers = []
+            seen_wallpaper_ids = set()
+            for variant in variants:
+                for wallpaper_id in variant.get('wallpaper_ids', []):
+                    if wallpaper_id in seen_wallpaper_ids:
+                        continue
+                    wallpaper = shared_items.get(wallpaper_id)
+                    if not wallpaper:
+                        continue
+                    seen_wallpaper_ids.add(wallpaper_id)
+                    active_wallpapers.append(wallpaper)
             packages.append(
                 {
                     'id': package_info['id'],
                     'name': package_info.get('name') or package_info['id'],
                     'author': package_info.get('author', ''),
                     'variant_count': len(variants),
-                    'wallpaper_count': len(wallpapers),
+                    'wallpaper_count': len(active_wallpapers),
                     'screenshot_count': len(screenshots),
                     'platforms': sorted({variant.get('platform', 'dual') for variant in variants}),
                     'updated_at': package_info.get('updated_at', 0),
-                    'wallpaper_previews': [wallpaper.get('file', '') for wallpaper in wallpapers[:3]],
+                    'wallpaper_previews': [wallpaper.get('file', '') for wallpaper in active_wallpapers[:3]],
                 }
             )
         return sorted(packages, key=lambda item: (-(item.get('updated_at') or 0), item['name'].lower()))
@@ -96,9 +169,16 @@ class BeautifyService:
             return None
 
         result = copy.deepcopy(package)
+        shared_items = (self._load_shared_wallpaper_library(self._load_ui_data()).get('items') or {})
+        wallpapers = {}
         for variant_id, variant in result.get('variants', {}).items():
             variant['theme_data'] = self._load_theme_data(variant.get('theme_file', ''))
+            for wallpaper_id in list(variant.get('wallpaper_ids', [])):
+                wallpaper = shared_items.get(wallpaper_id)
+                if wallpaper:
+                    wallpapers[wallpaper_id] = copy.deepcopy(wallpaper)
             result['variants'][variant_id] = variant
+        result['wallpapers'] = wallpapers
         return result
 
     def import_theme(self, source_path: str, package_id: Optional[str] = None, platform: Optional[str] = None, source_name: Optional[str] = None):
@@ -138,6 +218,7 @@ class BeautifyService:
             'theme_name': str(theme_payload.get('name') or package_info['name']).strip(),
             'theme_file': relative_theme_file,
             'wallpaper_ids': list((existing_variant or {}).get('wallpaper_ids', [])),
+            'selected_wallpaper_id': str((existing_variant or {}).get('selected_wallpaper_id') or '').strip(),
             'preview_hint': {
                 'needs_platform_review': needs_review,
                 'preview_accuracy': preview_accuracy,
@@ -196,27 +277,28 @@ class BeautifyService:
 
         ui_data = self._load_ui_data()
         library, package_info, variant = self._load_package_variant(ui_data, package_id, variant_id)
-
-        wallpapers_dir = os.path.join(self.library_root, 'packages', package_info['id'], 'wallpapers')
         try:
-            wallpaper = self._copy_asset_file(wallpapers_dir, source_path, source_name=source_name)
+            wallpaper = SharedWallpaperService(
+                project_root=self._project_root_for_library(),
+                ui_data_loader=lambda: ui_data,
+                ui_data_saver=lambda data: True,
+            ).import_wallpaper(
+                source_path,
+                source_name=source_name,
+                package_id=package_info['id'],
+                variant_id=variant_id,
+            )
         except ValueError as exc:
             raise ValueError('壁纸文件无效') from exc
-
-        wallpaper_id = f'wp_{self._short_hash(wallpaper["file"] + str(time.time()))}'
-        package_info['wallpapers'][wallpaper_id] = {
-            'id': wallpaper_id,
-            'variant_id': variant_id,
-            'file': wallpaper['file'],
-            'filename': wallpaper['filename'],
-            'width': wallpaper['width'],
-            'height': wallpaper['height'],
-            'mtime': wallpaper['mtime'],
-        }
+        if not wallpaper:
+            raise ValueError('壁纸文件无效')
 
         wallpaper_ids = list(variant.get('wallpaper_ids', []))
-        wallpaper_ids.append(wallpaper_id)
+        wallpaper_id = wallpaper.get('id', '')
+        if wallpaper_id and wallpaper_id not in wallpaper_ids:
+            wallpaper_ids.append(wallpaper_id)
         variant['wallpaper_ids'] = wallpaper_ids
+        variant['selected_wallpaper_id'] = wallpaper_id
         package_info['variants'][variant_id] = variant
         package_info['updated_at'] = int(time.time())
         library['packages'][package_info['id']] = package_info
@@ -225,7 +307,7 @@ class BeautifyService:
         return {
             'package': copy.deepcopy(package_info),
             'variant': copy.deepcopy(variant),
-            'wallpaper': copy.deepcopy(package_info['wallpapers'][wallpaper_id]),
+            'wallpaper': copy.deepcopy(wallpaper),
         }
 
     def update_global_settings(self, payload: Optional[Dict] = None):
@@ -238,6 +320,18 @@ class BeautifyService:
         if source.get('clear_wallpaper') is True:
             self._remove_asset_file((global_settings.get('wallpaper') or {}).get('file', ''))
             global_settings['wallpaper'] = {}
+            shared_service = SharedWallpaperService(
+                project_root=self._project_root_for_library(),
+                ui_data_loader=lambda: ui_data,
+                ui_data_saver=lambda data: True,
+            )
+            shared_library = shared_service.load_library()
+            next_shared_payload = {
+                'items': dict(shared_library.get('items') or {}),
+                'manager_wallpaper_id': shared_library.get('manager_wallpaper_id', ''),
+                'preview_wallpaper_id': '',
+            }
+            set_shared_wallpaper_library(ui_data, next_shared_payload)
 
         for key in ('character', 'user'):
             current_identity = copy.deepcopy(identities.get(key) or {})
@@ -254,7 +348,7 @@ class BeautifyService:
         global_settings['identities'] = identities
         library['global_settings'] = global_settings
         self._save_library(ui_data, library)
-        return copy.deepcopy(self._load_library_state(ui_data).get('global_settings', {}))
+        return self.get_global_settings()
 
     def import_global_wallpaper(self, source_path: str, source_name: Optional[str] = None):
         if not source_path or not os.path.isfile(source_path):
@@ -333,8 +427,37 @@ class BeautifyService:
         library = self._load_library_state(ui_data)
         resolved_package_id = str(package_id or '').strip()
         packages = dict(library.get('packages', {}))
-        if resolved_package_id not in packages:
+        package_info = packages.get(resolved_package_id)
+        if not package_info:
             return False
+
+        shared_library = self._load_shared_wallpaper_library(ui_data)
+        shared_items = dict(shared_library.get('items') or {})
+        removed_wallpaper_ids = set()
+        for variant in (package_info.get('variants') or {}).values():
+            for wallpaper_id in list(variant.get('wallpaper_ids') or []):
+                wallpaper = shared_items.get(wallpaper_id)
+                if not wallpaper:
+                    continue
+                if wallpaper.get('source_type') != 'package_embedded':
+                    continue
+                if str(wallpaper.get('origin_package_id') or '').strip() != resolved_package_id:
+                    continue
+                removed_wallpaper_ids.add(wallpaper_id)
+                self._remove_shared_wallpaper_file(wallpaper.get('file', ''))
+                shared_items.pop(wallpaper_id, None)
+
+        if removed_wallpaper_ids:
+            next_shared_payload = {
+                'items': shared_items,
+                'manager_wallpaper_id': ''
+                if shared_library.get('manager_wallpaper_id') in removed_wallpaper_ids
+                else shared_library.get('manager_wallpaper_id', ''),
+                'preview_wallpaper_id': ''
+                if shared_library.get('preview_wallpaper_id') in removed_wallpaper_ids
+                else shared_library.get('preview_wallpaper_id', ''),
+            }
+            set_shared_wallpaper_library(ui_data, next_shared_payload)
 
         del packages[resolved_package_id]
         library['packages'] = packages
@@ -346,17 +469,59 @@ class BeautifyService:
         self._save_library(ui_data, library)
         return True
 
+    def _remove_shared_wallpaper_file(self, file_path: str):
+        normalized = str(file_path or '').replace('\\', '/').strip().lstrip('/')
+        if not normalized:
+            return
+
+        if not normalized.startswith('data/library/wallpapers/package_embedded/'):
+            return
+
+        project_root = self._project_root_for_library()
+        target_path = os.path.abspath(os.path.join(project_root, normalized.replace('/', os.sep)))
+        allowed_root = os.path.abspath(
+            os.path.join(project_root, 'data', 'library', 'wallpapers', 'package_embedded')
+        )
+        try:
+            if os.path.commonpath([target_path, allowed_root]) != allowed_root:
+                return
+        except ValueError:
+            return
+
+        if os.path.isfile(target_path):
+            try:
+                os.remove(target_path)
+            except OSError:
+                logger.warning('无法删除共享壁纸文件: %s', target_path)
+
+        current_dir = os.path.dirname(target_path)
+        while current_dir and current_dir != allowed_root:
+            try:
+                os.rmdir(current_dir)
+            except OSError:
+                break
+            current_dir = os.path.dirname(current_dir)
+
     def get_preview_asset_path(self, subpath: str):
         normalized = str(subpath or '').replace('\\', '/').strip().lstrip('/')
         if not normalized or '..' in normalized.split('/'):
             return None
 
-        candidate = os.path.abspath(os.path.join(self.library_root, normalized.replace('/', os.sep)))
-        if os.path.commonpath([candidate, self.library_root]) != self.library_root:
-            return None
-        if not os.path.exists(candidate) or not os.path.isfile(candidate):
-            return None
-        return candidate
+        project_root = self._project_root_for_library()
+        candidates = [
+            (self.library_root, normalized),
+        ]
+        if normalized.startswith('static/') or normalized.startswith('data/library/wallpapers/'):
+            candidates.append((project_root, normalized))
+
+        for root, relative_path in candidates:
+            abs_root = os.path.abspath(root)
+            candidate = os.path.abspath(os.path.join(abs_root, relative_path.replace('/', os.sep)))
+            if os.path.commonpath([candidate, abs_root]) != abs_root:
+                continue
+            if os.path.exists(candidate) and os.path.isfile(candidate):
+                return candidate
+        return None
 
     def guess_platform(self, source_path: str, theme_name: str = '', package_name: str = ''):
         tokens = ' '.join(
@@ -474,16 +639,6 @@ class BeautifyService:
 
         recovered_package['identity_overrides'] = self._recover_identity_overrides(package_id, existing_package.get('identity_overrides'))
 
-        if recovered_package.get('wallpapers') and len(recovered_package.get('variants', {})) == 1:
-            variant_id = next(iter(recovered_package['variants']))
-            variant = copy.deepcopy(recovered_package['variants'][variant_id])
-            variant['wallpaper_ids'] = sorted(recovered_package['wallpapers'].keys())
-            recovered_package['variants'][variant_id] = variant
-            for wallpaper_id, wallpaper in list(recovered_package['wallpapers'].items()):
-                updated_wallpaper = copy.deepcopy(wallpaper)
-                updated_wallpaper['variant_id'] = variant_id
-                recovered_package['wallpapers'][wallpaper_id] = updated_wallpaper
-
         updated_candidates = [int(recovered_package.get('updated_at') or 0)]
         created_candidates = [int(recovered_package.get('created_at') or 0)]
         for variant in recovered_package.get('variants', {}).values():
@@ -548,6 +703,7 @@ class BeautifyService:
                 'theme_name': theme_name or (existing_variant or {}).get('theme_name') or package_info.get('name') or self._display_package_name(package_id),
                 'theme_file': relative_theme_file,
                 'wallpaper_ids': list((existing_variant or {}).get('wallpaper_ids', [])),
+                'selected_wallpaper_id': str((existing_variant or {}).get('selected_wallpaper_id') or '').strip(),
                 'preview_hint': preview_hint,
             }
 

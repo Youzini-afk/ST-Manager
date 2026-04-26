@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import re
 import subprocess
 import textwrap
 
@@ -402,3 +403,25 @@ def test_advanced_editor_runtime_blocks_unmanaged_close_paths_while_buffered_per
     )
 
     run_advanced_editor_runtime_check(script_body)
+
+
+def test_advanced_editor_template_keeps_modal_shell_transparent_while_preserving_split_panels():
+    template = (ROOT / 'templates/modals/advanced_editor.html').read_text(encoding='utf-8')
+    modal_css = (ROOT / 'static/css/modules/components.css').read_text(encoding='utf-8')
+    advanced_modal_css = (ROOT / 'static/css/modules/modal-tools.css').read_text(encoding='utf-8')
+
+    assert 'class="modal-container advanced-editor-container"' in template
+    assert 'background: var(--bg-panel);' not in template
+    assert 'border: 1px solid var(--border-light);' in template
+    assert 'class="adv-list-pane custom-scrollbar overflow-y-auto"' in template
+    assert 'class="adv-editor-pane custom-scrollbar"' in template
+    assert re.search(
+        r'\.modal-container\s*\{[^}]*background:\s*var\(--bg-panel\);',
+        modal_css,
+        re.DOTALL,
+    )
+    assert re.search(
+        r'\.modal-container\.advanced-editor-container\s*\{[^}]*background:\s*transparent;',
+        advanced_modal_css,
+        re.DOTALL,
+    )

@@ -8,8 +8,10 @@ import {
   importBeautifyPackageAvatar,
   importGlobalBeautifyAvatar,
   importGlobalBeautifyWallpaper,
+  importSharedPreviewWallpaperForBeautify,
   importBeautifyWallpaper,
   listBeautifyPackages,
+  selectSharedPreviewWallpaperForBeautify,
   updateBeautifyPackageIdentities,
   updateBeautifySettings,
   updateBeautifyVariant,
@@ -466,6 +468,16 @@ export default function beautifyGrid() {
       ) {
         return detail.wallpapers[this.selectedWallpaperId];
       }
+      const persistedWallpaperId = String(
+        variant.selected_wallpaper_id || "",
+      ).trim();
+      if (
+        persistedWallpaperId &&
+        allowedWallpaperIds.includes(persistedWallpaperId) &&
+        detail.wallpapers?.[persistedWallpaperId]
+      ) {
+        return detail.wallpapers[persistedWallpaperId];
+      }
       const nextWallpaperId = allowedWallpaperIds[0];
       return nextWallpaperId
         ? detail.wallpapers?.[nextWallpaperId] || null
@@ -562,6 +574,29 @@ export default function beautifyGrid() {
       const wallpaper = this.activeDetail?.wallpapers?.[wallpaperId] || null;
       this.$store.global.beautifyActiveWallpaper = wallpaper;
       this.selectedWallpaperId = wallpaper?.id || "";
+    },
+
+    async selectGlobalWallpaper(wallpaperId) {
+      const resolvedWallpaperId = String(wallpaperId || "").trim();
+      if (!resolvedWallpaperId) return;
+
+      const draftCharacterName = this.globalCharacterName;
+      const draftUserName = this.globalUserName;
+      this.isActionLoading = true;
+      try {
+        const res =
+          await selectSharedPreviewWallpaperForBeautify(resolvedWallpaperId);
+        if (!res?.success) {
+          throw new Error(res?.msg || res?.error || "选择全局壁纸失败");
+        }
+        await this.fetchGlobalSettings();
+        this.globalCharacterName = draftCharacterName;
+        this.globalUserName = draftUserName;
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
     },
 
     cycleWallpaper() {
@@ -682,15 +717,11 @@ export default function beautifyGrid() {
       const draftUserName = this.globalUserName;
       this.isActionLoading = true;
       try {
-        const res = await importGlobalBeautifyWallpaper(file);
+        const res = await importSharedPreviewWallpaperForBeautify(file);
         if (!res?.success) {
-          throw new Error(res?.error || "上传全局壁纸失败");
+          throw new Error(res?.msg || res?.error || "上传全局壁纸失败");
         }
-        const currentSettings = this.$store.global.beautifyGlobalSettings || {};
-        this.$store.global.beautifyGlobalSettings = {
-          ...currentSettings,
-          wallpaper: res.wallpaper || currentSettings.wallpaper || {},
-        };
+        await this.fetchGlobalSettings();
         this.globalCharacterName = draftCharacterName;
         this.globalUserName = draftUserName;
         this.$store.global.showToast("全局壁纸已更新", 2200);

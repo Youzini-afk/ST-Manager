@@ -1,5 +1,5 @@
 .beautify-layout {
-  --beautify-shell-bg: var(--bg-body);
+  --beautify-shell-bg: transparent;
   --beautify-panel-bg: var(--bg-panel);
   --beautify-panel-bg-strong: var(--bg-sub);
   --beautify-panel-bg-soft: var(--bg-sub);

@@ -28,6 +28,7 @@ class FakeBeautifyService:
     def get_global_settings(self):
         self.calls.append(('get_global_settings',))
         return {
+            'preview_wallpaper_id': 'shared:preview',
             'wallpaper': {'file': 'global/wallpapers/demo.png', 'filename': 'demo.png'},
             'identities': {
                 'character': {'name': 'Demo Character', 'avatar_file': 'global/avatars/character.png'},
@@ -38,6 +39,7 @@ class FakeBeautifyService:
     def update_global_settings(self, payload=None):
         self.calls.append(('update_global_settings', payload))
         return {
+            'preview_wallpaper_id': 'shared:updated',
             'wallpaper': {'file': 'global/wallpapers/updated.png', 'filename': 'updated.png'},
             'identities': {
                 'character': {
@@ -276,9 +278,48 @@ def test_get_settings_endpoint_returns_global_settings(monkeypatch):
 
     assert response.status_code == 200
     assert payload['success'] is True
+    assert payload['item']['preview_wallpaper_id'] == 'shared:preview'
     assert payload['item']['wallpaper']['filename'] == 'demo.png'
     assert payload['item']['identities']['character']['name'] == 'Demo Character'
     assert ('get_global_settings',) in fake_service.calls
+
+
+def test_get_settings_endpoint_preserves_selected_preview_wallpaper_object(monkeypatch):
+    app = _make_test_app()
+    client = app.test_client()
+
+    class PreviewWallpaperService(FakeBeautifyService):
+        def get_global_settings(self):
+            self.calls.append(('get_global_settings',))
+            return {
+                'preview_wallpaper_id': 'shared:preview',
+                'wallpaper': {
+                    'id': 'shared:preview',
+                    'file': 'data/library/wallpapers/imported/preview.png',
+                    'filename': 'preview.png',
+                    'source_type': 'imported',
+                },
+                'identities': {
+                    'character': {'name': 'Demo Character', 'avatar_file': 'global/avatars/character.png'},
+                    'user': {'name': 'Demo User', 'avatar_file': 'global/avatars/user.png'},
+                },
+            }
+
+    fake_service = PreviewWallpaperService()
+    monkeypatch.setattr(beautify_api, 'get_beautify_service', lambda: fake_service)
+
+    response = client.get('/api/beautify/settings')
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload['success'] is True
+    assert payload['item']['preview_wallpaper_id'] == 'shared:preview'
+    assert payload['item']['wallpaper'] == {
+        'id': 'shared:preview',
+        'file': 'data/library/wallpapers/imported/preview.png',
+        'filename': 'preview.png',
+        'source_type': 'imported',
+    }
 
 
 def test_update_settings_endpoint_forwards_json_payload(monkeypatch):
@@ -301,6 +342,7 @@ def test_update_settings_endpoint_forwards_json_payload(monkeypatch):
 
     assert response.status_code == 200
     assert payload['success'] is True
+    assert payload['item']['preview_wallpaper_id'] == 'shared:updated'
     assert payload['item']['wallpaper']['filename'] == 'updated.png'
     assert payload['item']['identities']['character']['name'] == 'Updated Character'
     assert fake_service.calls[0] == (
@@ -962,3 +1004,21 @@ def test_preview_asset_endpoint_blocks_unknown_paths(monkeypatch):
 
     assert blocked.status_code == 404
     assert allowed.status_code == 200
+
+
+def test_preview_asset_endpoint_serves_shared_imported_wallpaper_path(tmp_path):
+    app = _make_test_app()
+    client = app.test_client()
+    beautify_api._service = beautify_api.BeautifyService(library_root=tmp_path / 'data' / 'library' / 'beautify')
+
+    imported_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
+    imported_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    imported_wallpaper.write_bytes(b'preview-bytes')
+
+    try:
+        response = client.get('/api/beautify/preview-asset/data/library/wallpapers/imported/preview.png')
+    finally:
+        beautify_api._service = None
+
+    assert response.status_code == 200
+    assert response.data == b'preview-bytes'

@@ -19,6 +19,7 @@ ISOLATED_CATEGORIES_KEY = '_isolated_categories_v1'
 RESOURCE_ITEM_CATEGORIES_KEY = '_resource_item_categories_v1'
 WORLDINFO_NOTES_KEY = '_worldinfo_notes_v1'
 BEAUTIFY_LIBRARY_KEY = '_beautify_library_v1'
+SHARED_WALLPAPER_LIBRARY_KEY = '_shared_wallpaper_library_v1'
 
 DEFAULT_TAG_CATEGORY = '未分类'
 DEFAULT_TAG_CATEGORY_COLOR = '#64748b'
@@ -486,6 +487,78 @@ def _normalize_beautify_path(value):
     return path.strip('/') if path else ''
 
 
+def _normalize_shared_wallpaper_source_type(value):
+    source_type = _normalize_beautify_string(value).lower()
+    if source_type in ('builtin', 'imported', 'package_embedded'):
+        return source_type
+    return 'imported'
+
+
+def _normalize_shared_wallpaper_item(raw_item, wallpaper_id):
+    source = raw_item if isinstance(raw_item, dict) else {}
+
+    def _to_int(value):
+        try:
+            return max(0, int(float(value)))
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        'id': wallpaper_id,
+        'source_type': _normalize_shared_wallpaper_source_type(source.get('source_type')),
+        'file': _normalize_beautify_path(source.get('file')),
+        'filename': _normalize_beautify_string(source.get('filename')),
+        'width': _to_int(source.get('width')),
+        'height': _to_int(source.get('height')),
+        'mtime': _to_int(source.get('mtime')),
+        'created_at': _to_int(source.get('created_at')),
+        'origin_package_id': _normalize_beautify_string(source.get('origin_package_id')),
+        'origin_variant_id': _normalize_beautify_string(source.get('origin_variant_id')),
+    }
+
+
+def _normalize_shared_wallpaper_library(raw):
+    source = raw if isinstance(raw, dict) else {}
+    items = {}
+    raw_items = source.get('items')
+    if isinstance(raw_items, dict):
+        for raw_wallpaper_id, raw_item in raw_items.items():
+            wallpaper_id = _normalize_beautify_string(raw_wallpaper_id)
+            if not wallpaper_id:
+                continue
+            items[wallpaper_id] = _normalize_shared_wallpaper_item(raw_item, wallpaper_id)
+
+    manager_wallpaper_id = _normalize_beautify_string(source.get('manager_wallpaper_id'))
+    if manager_wallpaper_id and not manager_wallpaper_id.startswith('builtin:') and manager_wallpaper_id not in items:
+        manager_wallpaper_id = ''
+
+    preview_wallpaper_id = _normalize_beautify_string(source.get('preview_wallpaper_id'))
+    if preview_wallpaper_id and not preview_wallpaper_id.startswith('builtin:') and preview_wallpaper_id not in items:
+        preview_wallpaper_id = ''
+
+    try:
+        updated_at = max(0, int(source.get('updated_at') or 0))
+    except (TypeError, ValueError):
+        updated_at = 0
+
+    return {
+        'items': dict(sorted(items.items(), key=lambda item: item[0])),
+        'manager_wallpaper_id': manager_wallpaper_id,
+        'preview_wallpaper_id': preview_wallpaper_id,
+        'updated_at': updated_at,
+    }
+
+
+def _is_shared_wallpaper_library_equal(left, right):
+    left_norm = _normalize_shared_wallpaper_library(left)
+    right_norm = _normalize_shared_wallpaper_library(right)
+    return (
+        left_norm.get('items') == right_norm.get('items')
+        and left_norm.get('manager_wallpaper_id') == right_norm.get('manager_wallpaper_id')
+        and left_norm.get('preview_wallpaper_id') == right_norm.get('preview_wallpaper_id')
+    )
+
+
 def _normalize_beautify_platform(value):
     platform = _normalize_beautify_string(value).lower()
     if platform in ('pc', 'mobile', 'dual'):
@@ -513,11 +586,15 @@ def _normalize_beautify_wallpaper_ids(raw):
     seen = set()
     for item in raw:
         wallpaper_id = _normalize_beautify_string(item)
-        if not wallpaper_id or wallpaper_id in seen:
+        if not wallpaper_id or ':' not in wallpaper_id or wallpaper_id in seen:
             continue
         seen.add(wallpaper_id)
         result.append(wallpaper_id)
     return result
+
+
+def _normalize_beautify_selected_wallpaper_id(raw):
+    return _normalize_beautify_string(raw)
 
 
 def _normalize_beautify_variant(raw_variant, variant_id):
@@ -529,6 +606,7 @@ def _normalize_beautify_variant(raw_variant, variant_id):
         'theme_name': _normalize_beautify_string(source.get('theme_name')),
         'theme_file': _normalize_beautify_path(source.get('theme_file')),
         'wallpaper_ids': _normalize_beautify_wallpaper_ids(source.get('wallpaper_ids')),
+        'selected_wallpaper_id': _normalize_beautify_selected_wallpaper_id(source.get('selected_wallpaper_id')),
         'preview_hint': _normalize_beautify_preview_hint(source.get('preview_hint'), platform),
     }
 
@@ -649,8 +727,14 @@ def _normalize_beautify_package(raw_package, package_id):
         variant['wallpaper_ids'] = [
             wallpaper_id
             for wallpaper_id in variant.get('wallpaper_ids', [])
-            if wallpaper_id in wallpapers and wallpapers[wallpaper_id].get('variant_id') == variant['id']
+            if (
+                wallpaper_id.startswith('builtin:')
+                or ':' in wallpaper_id
+                or (wallpaper_id in wallpapers and wallpapers[wallpaper_id].get('variant_id') == variant['id'])
+            )
         ]
+        if variant.get('selected_wallpaper_id') not in variant['wallpaper_ids']:
+            variant['selected_wallpaper_id'] = ''
 
     return {
         'id': package_id,
@@ -712,6 +796,12 @@ def get_beautify_library(ui_data):
     return _normalize_beautify_library(ui_data.get(BEAUTIFY_LIBRARY_KEY))
 
 
+def get_shared_wallpaper_library(ui_data):
+    if not isinstance(ui_data, dict):
+        return _normalize_shared_wallpaper_library({})
+    return _normalize_shared_wallpaper_library(ui_data.get(SHARED_WALLPAPER_LIBRARY_KEY))
+
+
 def set_beautify_library(ui_data, payload):
     if not isinstance(ui_data, dict):
         return False
@@ -725,6 +815,22 @@ def set_beautify_library(ui_data, payload):
 
     next_norm['updated_at'] = int(time.time())
     ui_data[BEAUTIFY_LIBRARY_KEY] = next_norm
+    return True
+
+
+def set_shared_wallpaper_library(ui_data, payload):
+    if not isinstance(ui_data, dict):
+        return False
+
+    previous_raw = ui_data.get(SHARED_WALLPAPER_LIBRARY_KEY)
+    previous_norm = _normalize_shared_wallpaper_library(previous_raw)
+    next_norm = _normalize_shared_wallpaper_library(payload)
+
+    if _is_shared_wallpaper_library_equal(previous_norm, next_norm) and isinstance(previous_raw, dict):
+        return False
+
+    next_norm['updated_at'] = int(time.time())
+    ui_data[SHARED_WALLPAPER_LIBRARY_KEY] = next_norm
     return True
 
 

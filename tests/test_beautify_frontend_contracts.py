@@ -83,8 +83,10 @@ def run_beautify_grid_runtime_check(script_body):
         const importBeautifyPackageAvatar = getGridStub('importBeautifyPackageAvatar', async () => ({{ success: true, item: {{}} }}));
         const importGlobalBeautifyAvatar = getGridStub('importGlobalBeautifyAvatar', async () => ({{ success: true, item: null }}));
         const importGlobalBeautifyWallpaper = getGridStub('importGlobalBeautifyWallpaper', async () => ({{ success: true, item: null }}));
+        const importSharedPreviewWallpaperForBeautify = getGridStub('importSharedPreviewWallpaperForBeautify', async () => ({{ success: true, item: null }}));
         const importBeautifyWallpaper = getGridStub('importBeautifyWallpaper', async () => ({{ success: true, wallpaper: {{ id: '' }} }}));
         const listBeautifyPackages = getGridStub('listBeautifyPackages', async () => ({{ success: true, items: [] }}));
+        const selectSharedPreviewWallpaperForBeautify = getGridStub('selectSharedPreviewWallpaperForBeautify', async () => ({{ success: true, wallpaper: null }}));
         const updateBeautifyPackageIdentities = getGridStub('updateBeautifyPackageIdentities', async () => ({{ success: true, item: {{}} }}));
         const updateBeautifySettings = getGridStub('updateBeautifySettings', async () => ({{ success: true, item: null }}));
         const updateBeautifyVariant = getGridStub('updateBeautifyVariant', async () => ({{ success: true, item: null }}));
@@ -400,6 +402,27 @@ def test_beautify_api_exports_settings_and_screenshot_helpers():
     assert 'formData.append("target", target);' in beautify_api
 
 
+def test_beautify_api_exports_shared_preview_wallpaper_helpers():
+    beautify_api = read_project_file('static/js/api/beautify.js')
+
+    for export_name in (
+        'importSharedPreviewWallpaperForBeautify',
+        'selectSharedPreviewWallpaperForBeautify',
+    ):
+        assert_contains_any(
+            beautify_api,
+            (
+                f'export async function {export_name}(',
+                f'export function {export_name}(',
+            ),
+        )
+
+    assert '/api/shared-wallpapers/import' in beautify_api
+    assert '/api/shared-wallpapers/select' in beautify_api
+    assert 'formData.append("selection_target", "preview");' in beautify_api
+    assert 'selection_target: "preview"' in beautify_api
+
+
 def test_beautify_api_removes_install_and_apply_client_exports():
     beautify_api = read_project_file('static/js/api/beautify.js')
 
@@ -604,6 +627,45 @@ def test_beautify_grid_switching_variant_rebinds_wallpaper_when_previous_selecti
         }
         if (component.$store.global.beautifyActiveWallpaper?.id !== 'wall_new') {
           throw new Error('active wallpaper should follow the new variant wallpaper binding');
+        }
+        '''
+    )
+
+
+def test_beautify_grid_restores_persisted_variant_selected_wallpaper_after_package_reload():
+    run_beautify_grid_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyActiveDetail: {
+              wallpapers: {
+                wall_first: { id: 'wall_first', file: 'first.png' },
+                wall_selected: { id: 'wall_selected', file: 'selected.png' },
+              },
+            },
+            beautifyActiveVariant: null,
+            beautifyActiveWallpaper: null,
+            beautifyPreviewDevice: 'pc',
+          },
+        };
+        component.selectedWallpaperId = '';
+        component.selectedVariantPlatform = 'pc';
+
+        const variant = {
+          id: 'var_pc',
+          platform: 'pc',
+          wallpaper_ids: ['wall_first', 'wall_selected'],
+          selected_wallpaper_id: 'wall_selected',
+        };
+
+        component.applyActiveVariant(variant);
+
+        if (component.selectedWallpaperId !== 'wall_selected') {
+          throw new Error(`expected persisted selected wallpaper restore, got: ${component.selectedWallpaperId}`);
+        }
+        if (component.$store.global.beautifyActiveWallpaper?.id !== 'wall_selected') {
+          throw new Error(`expected active wallpaper to restore selected id, got: ${component.$store.global.beautifyActiveWallpaper?.id}`);
         }
         '''
     )
@@ -847,6 +909,84 @@ def test_beautify_grid_preserves_package_name_drafts_during_avatar_uploads():
 
         if (component.packageCharacterName !== '草稿角色' || component.packageUserName !== '草稿用户') {
           throw new Error('package draft names should survive avatar uploads');
+        }
+        '''
+    )
+
+
+def test_beautify_grid_imported_global_wallpaper_uses_shared_preview_selection_flow():
+    run_beautify_grid_runtime_check(
+        '''
+        let importedCalls = 0;
+        let settingsFetches = 0;
+        globalThis.__gridStubs = {
+          importSharedPreviewWallpaperForBeautify: async (file) => {
+            importedCalls += 1;
+            if (!file || file.name !== 'preview.png') {
+              throw new Error('expected uploaded preview wallpaper file');
+            }
+            return {
+              success: true,
+              item: {
+                id: 'imported:preview',
+                file: 'data/library/wallpapers/imported/preview.png',
+                filename: 'preview.png',
+                source_type: 'imported',
+              },
+            };
+          },
+          getBeautifySettings: async () => {
+            settingsFetches += 1;
+            return {
+              success: true,
+              item: {
+                preview_wallpaper_id: 'imported:preview',
+                wallpaper: {
+                  id: 'imported:preview',
+                  file: 'data/library/wallpapers/imported/preview.png',
+                  filename: 'preview.png',
+                  source_type: 'imported',
+                },
+                identities: {
+                  character: { name: '', avatar_file: '' },
+                  user: { name: '', avatar_file: '' },
+                },
+              },
+            };
+          },
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyGlobalSettings: {
+              identities: {
+                character: { name: '', avatar_file: '' },
+                user: { name: '', avatar_file: '' },
+              },
+            },
+            showToast: () => {},
+          },
+        };
+        component.globalCharacterName = '草稿角色';
+        component.globalUserName = '草稿用户';
+
+        await component.handleGlobalWallpaperFiles([{ name: 'preview.png' }]);
+
+        if (importedCalls !== 1) {
+          throw new Error(`expected shared preview wallpaper import once, got ${importedCalls}`);
+        }
+        if (settingsFetches !== 1) {
+          throw new Error(`expected one settings refresh after import, got ${settingsFetches}`);
+        }
+        if (component.$store.global.beautifyGlobalSettings?.preview_wallpaper_id !== 'imported:preview') {
+          throw new Error('expected refreshed settings to keep preview wallpaper id');
+        }
+        if (component.$store.global.beautifyGlobalSettings?.wallpaper?.id !== 'imported:preview') {
+          throw new Error('expected refreshed settings to expose resolved shared wallpaper object');
+        }
+        if (component.globalCharacterName !== '草稿角色' || component.globalUserName !== '草稿用户') {
+          throw new Error('global draft names should survive shared preview wallpaper imports');
         }
         '''
     )
@@ -1500,10 +1640,17 @@ def test_beautify_preview_frame_prefers_package_assets_then_global_settings():
                 user: { name: '', avatar_file: '' },
               },
             },
-            beautifyActiveVariant: { theme_data: { name: 'Demo' } },
+            beautifyActiveVariant: {
+              theme_data: { name: 'Demo' },
+              selected_wallpaper_id: '',
+            },
             beautifyActiveWallpaper: null,
             beautifyGlobalSettings: {
-              wallpaper: { file: 'data/library/beautify/global/wallpapers/wallpaper.png' },
+              preview_wallpaper_id: 'global-wallpaper',
+              wallpaper: {
+                id: 'global-wallpaper',
+                file: 'data/library/wallpapers/shared/wallpaper.png',
+              },
               identities: {
                 character: { name: '全局角色', avatar_file: 'data/library/beautify/global/avatars/character.png' },
                 user: { name: '全局用户', avatar_file: 'data/library/beautify/global/avatars/user.png' },
@@ -1513,7 +1660,7 @@ def test_beautify_preview_frame_prefers_package_assets_then_global_settings():
         };
 
         const state = component.resolvePreviewState();
-        if (state.wallpaperUrl !== 'data/library/beautify/global/wallpapers/wallpaper.png') throw new Error('missing global wallpaper fallback');
+        if (state.wallpaperUrl !== 'data/library/wallpapers/shared/wallpaper.png') throw new Error('missing global wallpaper fallback');
         if (state.identities.character.name !== '包角色') throw new Error('package override should win');
         if (state.identities.user.name !== '全局用户') throw new Error('global user fallback should win');
         '''
@@ -1528,13 +1675,29 @@ def test_beautify_preview_frame_prefers_selected_package_wallpaper_over_global_f
           global: {
             beautifyWorkspace: 'packages',
             beautifyPreviewDevice: 'pc',
-            beautifyActiveDetail: { identity_overrides: {} },
-            beautifyActiveVariant: { theme_data: { name: 'Demo' } },
+            beautifyActiveDetail: {
+              identity_overrides: {},
+              wallpapers: {
+                wall_pkg: {
+                  id: 'wall_pkg',
+                  file: 'data/library/wallpapers/shared/package.png',
+                },
+              },
+            },
+            beautifyActiveVariant: {
+              theme_data: { name: 'Demo' },
+              selected_wallpaper_id: 'wall_pkg',
+            },
             beautifyActiveWallpaper: {
-              file: 'data/library/beautify/packages/pkg_demo/wallpapers/package.png',
+              id: 'wall_stale',
+              file: 'data/library/wallpapers/shared/stale-active.png',
             },
             beautifyGlobalSettings: {
-              wallpaper: { file: 'data/library/beautify/global/wallpapers/global.png' },
+              preview_wallpaper_id: 'wall_global',
+              wallpaper: {
+                id: 'wall_global',
+                file: 'data/library/wallpapers/shared/global.png',
+              },
               identities: {
                 character: { name: '全局角色', avatar_file: '' },
                 user: { name: '全局用户', avatar_file: '' },
@@ -1544,8 +1707,128 @@ def test_beautify_preview_frame_prefers_selected_package_wallpaper_over_global_f
         };
 
         const state = component.resolvePreviewState();
-        if (state.wallpaperUrl !== 'data/library/beautify/packages/pkg_demo/wallpapers/package.png') {
+        if (state.wallpaperUrl !== 'data/library/wallpapers/shared/package.png') {
           throw new Error('selected package wallpaper should win');
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_falls_back_to_global_wallpaper_when_variant_selection_has_no_resolved_wallpaper():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'pc',
+            beautifyActiveDetail: {
+              identity_overrides: {},
+              wallpapers: {},
+            },
+            beautifyActiveVariant: {
+              theme_data: { name: 'Demo' },
+              selected_wallpaper_id: 'missing-wallpaper',
+            },
+            beautifyActiveWallpaper: {
+              id: 'wall_stale',
+              file: 'data/library/wallpapers/shared/stale-active.png',
+            },
+            beautifyGlobalSettings: {
+              preview_wallpaper_id: 'wall_global',
+              wallpaper: {
+                id: 'wall_global',
+                file: 'data/library/wallpapers/shared/global-fallback.png',
+              },
+              identities: {
+                character: { name: '全局角色', avatar_file: '' },
+                user: { name: '全局用户', avatar_file: '' },
+              },
+            },
+          },
+        };
+
+        const state = component.resolvePreviewState();
+        if (state.wallpaperUrl !== 'data/library/wallpapers/shared/global-fallback.png') {
+          throw new Error('global wallpaper should be used when variant selection is unresolved');
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_allows_preview_without_wallpaper_when_variant_and_global_wallpapers_are_missing():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'pc',
+            beautifyActiveDetail: {
+              identity_overrides: {},
+              wallpapers: {},
+            },
+            beautifyActiveVariant: {
+              theme_data: { name: 'Demo' },
+              selected_wallpaper_id: 'missing-wallpaper',
+            },
+            beautifyActiveWallpaper: {
+              id: 'wall_stale',
+              file: 'data/library/wallpapers/shared/stale-active.png',
+            },
+            beautifyGlobalSettings: {
+              preview_wallpaper_id: '',
+              wallpaper: null,
+              identities: {
+                character: { name: '全局角色', avatar_file: '' },
+                user: { name: '全局用户', avatar_file: '' },
+              },
+            },
+          },
+        };
+
+        const state = component.resolvePreviewState();
+        if (state.wallpaperUrl !== '') {
+          throw new Error(`expected wallpaperUrl to be empty when no wallpaper is resolved, got ${state.wallpaperUrl}`);
+        }
+        '''
+    )
+
+
+def test_beautify_preview_frame_ignores_stale_active_wallpaper_when_variant_selection_is_cleared():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'pc',
+            beautifyActiveDetail: {
+              identity_overrides: {},
+              wallpapers: {},
+            },
+            beautifyActiveVariant: {
+              theme_data: { name: 'Demo' },
+              selected_wallpaper_id: '',
+            },
+            beautifyActiveWallpaper: {
+              id: 'wall_stale',
+              file: 'data/library/wallpapers/shared/stale-active.png',
+            },
+            beautifyGlobalSettings: {
+              preview_wallpaper_id: '',
+              wallpaper: null,
+              identities: {
+                character: { name: '全局角色', avatar_file: '' },
+                user: { name: '全局用户', avatar_file: '' },
+              },
+            },
+          },
+        };
+
+        const state = component.resolvePreviewState();
+        if (state.wallpaperUrl !== '') {
+          throw new Error(`expected cleared variant selection to ignore stale active wallpaper, got ${state.wallpaperUrl}`);
         }
         '''
     )
@@ -1567,10 +1850,15 @@ def test_beautify_preview_frame_uses_global_only_preview_in_settings_workspace()
             },
             beautifyActiveVariant: { theme_data: { name: 'Package Theme' } },
             beautifyActiveWallpaper: {
-              file: 'data/library/beautify/packages/pkg_demo/wallpapers/package.png',
+              id: 'wall_pkg',
+              file: 'data/library/wallpapers/shared/package.png',
             },
             beautifyGlobalSettings: {
-              wallpaper: { file: 'data/library/beautify/global/wallpapers/global.png' },
+              preview_wallpaper_id: 'wall_global',
+              wallpaper: {
+                id: 'wall_global',
+                file: 'data/library/wallpapers/shared/global.png',
+              },
               identities: {
                 character: { name: '全局角色', avatar_file: 'data/library/beautify/global/avatars/character.png' },
                 user: { name: '全局用户', avatar_file: 'data/library/beautify/global/avatars/user.png' },
@@ -1582,7 +1870,7 @@ def test_beautify_preview_frame_uses_global_only_preview_in_settings_workspace()
         const state = component.resolvePreviewState();
         if (state.platform !== 'mobile') throw new Error('settings workspace should still respect preview shell mode');
         if (state.theme.name) throw new Error('settings workspace should ignore package theme data');
-        if (state.wallpaperUrl !== 'data/library/beautify/global/wallpapers/global.png') throw new Error('settings workspace should use global wallpaper');
+        if (state.wallpaperUrl !== 'data/library/wallpapers/shared/global.png') throw new Error('settings workspace should use global wallpaper');
         if (state.identities.character.name !== '全局角色') throw new Error('settings workspace should ignore package character override');
         if (state.identities.user.name !== '全局用户') throw new Error('settings workspace should ignore package user override');
         '''

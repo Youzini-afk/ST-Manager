@@ -1659,6 +1659,10 @@
   background-color: var(--bg-panel);
 }
 
+.modal-container.advanced-editor-container {
+  background: transparent;
+}
+
 .adv-split-view {
   display: flex;
   flex: 1;

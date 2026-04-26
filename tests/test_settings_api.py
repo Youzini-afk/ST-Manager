@@ -1,3 +1,4 @@
+import io
 import sys
 from pathlib import Path
 
@@ -11,12 +12,62 @@ if str(ROOT) not in sys.path:
 
 from core.api.v1 import system as system_api
 from core.config import build_default_config
+from core.services.shared_wallpaper_service import SharedWallpaperService
 
 
 def _make_test_app():
     app = Flask(__name__)
     app.register_blueprint(system_api.bp)
     return app
+
+
+class FakeSharedWallpaperService:
+    def __init__(self):
+        self.calls = []
+        self.library = {
+            'items': {
+                'builtin:space/stars.png': {
+                    'id': 'builtin:space/stars.png',
+                    'file': 'static/assets/wallpapers/builtin/space/stars.png',
+                    'filename': 'stars.png',
+                    'source_type': 'builtin',
+                },
+                'imported:demo': {
+                    'id': 'imported:demo',
+                    'file': 'data/library/wallpapers/imported/demo.png',
+                    'filename': 'demo.png',
+                    'source_type': 'imported',
+                },
+            },
+            'manager_wallpaper_id': 'builtin:space/stars.png',
+            'preview_wallpaper_id': 'imported:demo',
+            'updated_at': 123,
+        }
+
+    def load_library(self):
+        self.calls.append(('load_library',))
+        return self.library
+
+    def migrate_legacy_backgrounds(self, ui_data=None):
+        self.calls.append(('migrate_legacy_backgrounds', ui_data))
+        return self.library
+
+    def import_wallpaper(self, source_path, selection_target='', source_name=None):
+        self.calls.append(('import_wallpaper', source_path, selection_target, source_name))
+        return {
+            'id': 'imported:new',
+            'file': 'data/library/wallpapers/imported/new.png',
+            'filename': source_name or 'new.png',
+            'source_type': 'imported',
+        }
+
+    def select_wallpaper(self, wallpaper_id, selection_target):
+        self.calls.append(('select_wallpaper', wallpaper_id, selection_target))
+        return {
+            'selected': True,
+            'selection_target': selection_target,
+            'wallpaper_id': wallpaper_id,
+        }
 
 
 def test_build_default_config_includes_profile_specific_preset_directories():
@@ -62,3 +113,247 @@ def test_get_settings_returns_profile_specific_preset_directories(monkeypatch):
     assert payload['st_context_preset_dir'] == 'st/context'
     assert payload['st_sysprompt_dir'] == 'st/sysprompt'
     assert payload['st_reasoning_dir'] == 'st/reasoning'
+
+
+def test_get_settings_includes_shared_wallpaper_library_for_manager(monkeypatch):
+    fake_service = FakeSharedWallpaperService()
+    monkeypatch.setattr(
+        system_api,
+        'load_config',
+        lambda: {
+            'cards_dir': 'cards',
+            'world_info_dir': 'worlds',
+            'chats_dir': 'chats',
+            'presets_dir': 'presets',
+            'quick_replies_dir': 'quick',
+        },
+    )
+    monkeypatch.setattr(system_api, 'get_shared_wallpaper_service', lambda: fake_service, raising=False)
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/get_settings')
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload['manager_wallpaper_id'] == 'builtin:space/stars.png'
+    assert payload['shared_wallpapers'] == [
+        {
+            'id': 'builtin:space/stars.png',
+            'file': 'static/assets/wallpapers/builtin/space/stars.png',
+            'filename': 'stars.png',
+            'source_type': 'builtin',
+        },
+        {
+            'id': 'imported:demo',
+            'file': 'data/library/wallpapers/imported/demo.png',
+            'filename': 'demo.png',
+            'source_type': 'imported',
+        },
+    ]
+    assert ('migrate_legacy_backgrounds', {'bg_url': ''}) in fake_service.calls
+
+
+def test_get_settings_migrates_config_backed_legacy_manager_background_before_serializing_shared_wallpapers(monkeypatch, tmp_path):
+    legacy_path = tmp_path / 'data' / 'assets' / 'backgrounds' / 'legacy-bg.png'
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+
+    from PIL import Image
+
+    Image.new('RGB', (1024, 768), (12, 34, 56)).save(legacy_path)
+
+    ui_data = {}
+    service = SharedWallpaperService(
+        project_root=str(tmp_path),
+        ui_data_loader=lambda: ui_data,
+        ui_data_saver=lambda data: True,
+    )
+
+    monkeypatch.setattr(
+        system_api,
+        'load_config',
+        lambda: {
+            'cards_dir': 'cards',
+            'world_info_dir': 'worlds',
+            'chats_dir': 'chats',
+            'presets_dir': 'presets',
+            'quick_replies_dir': 'quick',
+            'bg_url': '/assets/backgrounds/legacy-bg.png',
+        },
+    )
+    monkeypatch.setattr(system_api, 'get_shared_wallpaper_service', lambda: service, raising=False)
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/get_settings')
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload['manager_wallpaper_id']
+    assert payload['shared_wallpapers']
+    manager_item = next(item for item in payload['shared_wallpapers'] if item['id'] == payload['manager_wallpaper_id'])
+    assert manager_item['filename'] == 'legacy-bg.png'
+    assert manager_item['source_type'] == 'imported'
+
+
+def test_import_shared_wallpaper_endpoint_delegates_to_service(monkeypatch):
+    fake_service = FakeSharedWallpaperService()
+    monkeypatch.setattr(system_api, 'get_shared_wallpaper_service', lambda: fake_service, raising=False)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/shared-wallpapers/import',
+        data={
+            'selection_target': 'manager',
+            'file': (io.BytesIO(b'png-data'), 'manager-bg.png'),
+        },
+        content_type='multipart/form-data',
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload['success'] is True
+    assert payload['item']['id'] == 'imported:new'
+    assert fake_service.calls[0][0] == 'import_wallpaper'
+    assert fake_service.calls[0][2:] == ('manager', 'manager-bg.png')
+
+
+def test_import_shared_wallpaper_endpoint_rejects_invalid_image(monkeypatch):
+    fake_service = FakeSharedWallpaperService()
+
+    def import_invalid(source_path, selection_target='', source_name=None):
+        fake_service.calls.append(('import_wallpaper', source_path, selection_target, source_name))
+        return {}
+
+    fake_service.import_wallpaper = import_invalid
+    monkeypatch.setattr(system_api, 'get_shared_wallpaper_service', lambda: fake_service, raising=False)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/shared-wallpapers/import',
+        data={
+            'selection_target': 'manager',
+            'file': (io.BytesIO(b'not-a-real-image'), 'broken.png'),
+        },
+        content_type='multipart/form-data',
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 400
+    assert payload['success'] is False
+    assert payload['msg'] == '导入壁纸失败，请确认文件是有效图片'
+
+
+def test_import_shared_wallpaper_endpoint_rejects_invalid_selection_target(monkeypatch):
+    fake_service = FakeSharedWallpaperService()
+    monkeypatch.setattr(system_api, 'get_shared_wallpaper_service', lambda: fake_service, raising=False)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/shared-wallpapers/import',
+        data={
+            'selection_target': 'broken-target',
+            'file': (io.BytesIO(b'png-data'), 'manager-bg.png'),
+        },
+        content_type='multipart/form-data',
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 400
+    assert payload['success'] is False
+    assert payload['msg'] == '无效的 selection_target'
+
+
+def test_save_settings_persists_manager_wallpaper_id_to_shared_library(monkeypatch):
+    ui_data = {
+        '_shared_wallpaper_library_v1': {
+            'items': {},
+            'manager_wallpaper_id': 'builtin:space/stars.png',
+            'preview_wallpaper_id': '',
+        }
+    }
+
+    monkeypatch.setattr(system_api, 'save_config', lambda cfg: True)
+    monkeypatch.setattr(system_api, 'refresh_st_client', lambda: None)
+    monkeypatch.setattr(system_api, 'get_cards_folder', lambda: 'cards')
+    monkeypatch.setattr(system_api, 'BASE_DIR', 'D:/Workspace/MyOwn/ST-Manager')
+    monkeypatch.setattr(system_api, '_shared_wallpaper_service', None, raising=False)
+    monkeypatch.setattr(system_api, 'load_ui_data', lambda: ui_data)
+    monkeypatch.setattr(system_api, 'save_ui_data', lambda data: True)
+
+    client = _make_test_app().test_client()
+    response = client.post('/api/save_settings', json={'manager_wallpaper_id': '', 'bg_url': '/legacy/background.png'})
+
+    assert response.status_code == 200
+    assert ui_data['_shared_wallpaper_library_v1']['manager_wallpaper_id'] == ''
+
+
+def test_save_settings_preserves_existing_manager_wallpaper_when_field_is_omitted(monkeypatch):
+    ui_data = {
+        '_shared_wallpaper_library_v1': {
+            'items': {},
+            'manager_wallpaper_id': 'builtin:space/stars.png',
+            'preview_wallpaper_id': '',
+        }
+    }
+
+    monkeypatch.setattr(system_api, 'save_config', lambda cfg: True)
+    monkeypatch.setattr(system_api, 'refresh_st_client', lambda: None)
+    monkeypatch.setattr(system_api, 'get_cards_folder', lambda: 'cards')
+    monkeypatch.setattr(system_api, 'BASE_DIR', 'D:/Workspace/MyOwn/ST-Manager')
+    monkeypatch.setattr(system_api, '_shared_wallpaper_service', None, raising=False)
+    monkeypatch.setattr(system_api, 'load_ui_data', lambda: ui_data)
+    monkeypatch.setattr(system_api, 'save_ui_data', lambda data: True)
+
+    client = _make_test_app().test_client()
+    response = client.post('/api/save_settings', json={'bg_url': '/legacy/background.png'})
+
+    assert response.status_code == 200
+    assert ui_data['_shared_wallpaper_library_v1']['manager_wallpaper_id'] == 'builtin:space/stars.png'
+
+
+def test_save_settings_does_not_forward_shared_wallpaper_ui_fields_to_config(monkeypatch):
+    captured_configs = []
+
+    monkeypatch.setattr(system_api, 'save_config', lambda cfg: captured_configs.append(dict(cfg)) or True)
+    monkeypatch.setattr(system_api, 'refresh_st_client', lambda: None)
+    monkeypatch.setattr(system_api, 'get_cards_folder', lambda: 'cards')
+    monkeypatch.setattr(system_api, 'BASE_DIR', 'D:/Workspace/MyOwn/ST-Manager')
+    monkeypatch.setattr(system_api, 'load_ui_data', lambda: {})
+    monkeypatch.setattr(system_api, 'save_ui_data', lambda data: True)
+
+    client = _make_test_app().test_client()
+    response = client.post(
+        '/api/save_settings',
+        json={
+            'bg_url': '/legacy/background.png',
+            'manager_wallpaper_id': 'imported:demo',
+            'shared_wallpapers': [
+                {'id': 'imported:demo', 'file': 'data/library/wallpapers/imported/demo.png'}
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured_configs
+    assert 'manager_wallpaper_id' not in captured_configs[-1]
+    assert 'shared_wallpapers' not in captured_configs[-1]
+
+
+def test_select_shared_wallpaper_endpoint_delegates_to_service(monkeypatch):
+    fake_service = FakeSharedWallpaperService()
+    monkeypatch.setattr(system_api, 'get_shared_wallpaper_service', lambda: fake_service, raising=False)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/shared-wallpapers/select',
+        json={
+            'wallpaper_id': 'builtin:space/stars.png',
+            'selection_target': 'manager',
+        },
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload['success'] is True
+    assert payload['wallpaper_id'] == 'builtin:space/stars.png'
+    assert payload['selection_target'] == 'manager'
+    assert fake_service.calls == [('select_wallpaper', 'builtin:space/stars.png', 'manager')]

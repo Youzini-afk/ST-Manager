@@ -4,6 +4,7 @@ import platform
 import subprocess
 import shutil
 import logging
+import tempfile
 import time
 import re
 import uuid
@@ -16,7 +17,14 @@ from core.config import (
     load_config, save_config, get_cards_folder
 )
 from core.context import ctx
-from core.data.ui_store import load_ui_data, save_ui_data, set_last_sent_to_st, UI_DATA_FILE
+from core.data.ui_store import (
+    UI_DATA_FILE,
+    get_shared_wallpaper_library,
+    load_ui_data,
+    save_ui_data,
+    set_last_sent_to_st,
+    set_shared_wallpaper_library,
+)
 from core.consts import SIDECAR_EXTENSIONS, RESERVED_RESOURCE_NAMES
 
 # === 核心服务 ===
@@ -24,6 +32,7 @@ from core.services.scan_service import request_scan, suppress_fs_events
 from core.services.cache_service import schedule_reload, invalidate_wi_list_cache, update_card_cache
 from core.services.card_service import resolve_ui_key
 from core.services.index_service import get_index_status, request_index_rebuild
+from core.services.shared_wallpaper_service import SharedWallpaperService
 from core.services.st_client import refresh_st_client
 from core.services.st_auth import STAuthError, build_st_http_client
 
@@ -38,6 +47,27 @@ from core.utils.hash import _calculate_data_hash
 bp = Blueprint('system', __name__)
 
 logger = logging.getLogger(__name__)
+
+_shared_wallpaper_service = None
+
+
+def get_shared_wallpaper_service():
+    global _shared_wallpaper_service
+    if _shared_wallpaper_service is None:
+        _shared_wallpaper_service = SharedWallpaperService()
+    return _shared_wallpaper_service
+
+
+def _serialize_shared_wallpaper_items(items):
+    return [items[wallpaper_id] for wallpaper_id in sorted(items.keys())]
+
+
+def _save_upload_to_temp(upload):
+    suffix = os.path.splitext(upload.filename or '')[1]
+    fd, temp_path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    upload.save(temp_path)
+    return temp_path
 
 
 def _format_st_auth_error(error):
@@ -214,8 +244,25 @@ def api_scan_now():
 def api_save_settings():
     try:
         new_config = request.json
-        save_config(new_config)
+        config_payload = dict(new_config or {})
+        config_payload.pop('manager_wallpaper_id', None)
+        config_payload.pop('shared_wallpapers', None)
+        save_config(config_payload)
         refresh_st_client()
+
+        ui_data = load_ui_data()
+        shared_wallpaper_library = get_shared_wallpaper_library(ui_data)
+        manager_wallpaper_id = shared_wallpaper_library.get('manager_wallpaper_id', '')
+        if isinstance(new_config, dict) and 'manager_wallpaper_id' in new_config:
+            manager_wallpaper_id = str(new_config.get('manager_wallpaper_id') or '').strip()
+        next_shared_wallpaper_payload = {
+            'items': dict(shared_wallpaper_library.get('items') or {}),
+            'manager_wallpaper_id': manager_wallpaper_id,
+            'preview_wallpaper_id': shared_wallpaper_library.get('preview_wallpaper_id', ''),
+        }
+        if set_shared_wallpaper_library(ui_data, next_shared_wallpaper_payload):
+            save_ui_data(ui_data)
+
         # 确保新卡片目录存在（使用动态路径解析）
         new_full_path = get_cards_folder()
         if not os.path.exists(new_full_path):
@@ -276,7 +323,56 @@ def api_get_settings():
         cfg['default_sort'] = 'date_desc'
     if 'show_header_sort' not in cfg:
         cfg['show_header_sort'] = True
+
+    shared_wallpaper_library = get_shared_wallpaper_service().migrate_legacy_backgrounds({
+        'bg_url': cfg.get('bg_url', ''),
+    })
+    cfg['manager_wallpaper_id'] = shared_wallpaper_library.get('manager_wallpaper_id', '')
+    cfg['shared_wallpapers'] = _serialize_shared_wallpaper_items(shared_wallpaper_library.get('items') or {})
     return jsonify(cfg)
+
+
+@bp.route('/api/shared-wallpapers/import', methods=['POST'])
+def api_import_shared_wallpaper():
+    upload = request.files.get('file')
+    if not upload:
+        return jsonify({'success': False, 'msg': '请上传壁纸文件'}), 400
+
+    selection_target = str(request.form.get('selection_target') or '').strip()
+    if selection_target and selection_target not in ('manager', 'preview'):
+        return jsonify({'success': False, 'msg': '无效的 selection_target'}), 400
+    temp_path = _save_upload_to_temp(upload)
+    try:
+        item = get_shared_wallpaper_service().import_wallpaper(
+            temp_path,
+            selection_target=selection_target,
+            source_name=upload.filename,
+        )
+        if not item:
+            return jsonify({'success': False, 'msg': '导入壁纸失败，请确认文件是有效图片'}), 400
+        return jsonify({'success': True, 'item': item})
+    except ValueError as exc:
+        return jsonify({'success': False, 'msg': str(exc)}), 400
+    finally:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+
+
+@bp.route('/api/shared-wallpapers/select', methods=['POST'])
+def api_select_shared_wallpaper():
+    payload = request.get_json(silent=True) or {}
+    wallpaper_id = str(payload.get('wallpaper_id') or '').strip()
+    selection_target = str(payload.get('selection_target') or '').strip()
+    if not wallpaper_id or not selection_target:
+        return jsonify({'success': False, 'msg': '缺少 wallpaper_id 或 selection_target'}), 400
+
+    try:
+        result = get_shared_wallpaper_service().select_wallpaper(wallpaper_id, selection_target)
+        return jsonify({'success': True, **result})
+    except ValueError as exc:
+        return jsonify({'success': False, 'msg': str(exc)}), 400
 
 @bp.route('/api/system_action', methods=['POST'])
 def api_system_action():

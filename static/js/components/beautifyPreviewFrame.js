@@ -23,6 +23,16 @@ function resolvePreviewIdentityValue(
   };
 }
 
+function resolveVariantWallpaper(detail = {}, variant = {}) {
+  const selectedWallpaperId = String(
+    variant?.selected_wallpaper_id || "",
+  ).trim();
+  if (!selectedWallpaperId) {
+    return null;
+  }
+  return detail?.wallpapers?.[selectedWallpaperId] || null;
+}
+
 const MAX_PREVIEW_HOST_RETRIES = 3;
 
 export default function beautifyPreviewFrame() {
@@ -161,14 +171,14 @@ export default function beautifyPreviewFrame() {
       const globalSettings = this.$store.global.beautifyGlobalSettings || {};
       const detail = this.$store.global.beautifyActiveDetail || {};
       const variant = this.$store.global.beautifyActiveVariant || {};
-      const wallpaper = this.$store.global.beautifyActiveWallpaper || {};
+      const variantWallpaper = resolveVariantWallpaper(detail, variant);
       const globalWallpaper = globalSettings.wallpaper || {};
       const packageIdentities = detail.identity_overrides || {};
       const globalIdentities = globalSettings.identities || {};
       const useGlobalOnly = workspace === "settings";
       const resolvedWallpaperFile = useGlobalOnly
         ? globalWallpaper.file
-        : wallpaper.file || globalWallpaper.file;
+        : variantWallpaper?.file || globalWallpaper.file;
 
       return {
         platform: this.previewShellMode === "mobile" ? "mobile" : "pc",

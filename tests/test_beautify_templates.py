@@ -363,6 +363,19 @@ def test_beautify_layout_css_replaces_dark_shell_colors_with_theme_driven_surfac
     assert_has_css_declaration(primary_button_block, 'border-color', 'transparent')
 
 
+def test_beautify_layout_css_keeps_shell_root_transparent_while_stage_and_cards_stay_themed():
+    css = read_project_file('static/css/modules/view-beautify.css')
+    layout_block = extract_css_block_for_selector(css, '.beautify-layout')
+    stage_block = extract_css_block_for_selector(css, '.beautify-stage-pane')
+    detail_card_block = extract_css_block_for_selector(css, '.beautify-detail-card')
+
+    assert '--beautify-shell-bg: transparent;' in layout_block
+    assert not has_css_declaration(layout_block, 'background', 'var(--bg-body)')
+    assert_has_css_declaration(layout_block, 'background', 'var(--beautify-shell-bg)')
+    assert_has_css_declaration(stage_block, 'background', 'var(--beautify-stage-surface)')
+    assert_has_css_declaration(detail_card_block, 'background', 'var(--beautify-card-surface)')
+
+
 def test_beautify_layout_css_styles_isolated_preview_host_shell():
     css = read_project_file('static/css/modules/view-beautify.css')
     unloaded_block = css.split('.beautify-preview-unloaded-card {', 1)[1].split('}', 1)[0]

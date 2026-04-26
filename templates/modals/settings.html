@@ -516,7 +516,7 @@
               <input
                 type="text"
                 x-model="settingsForm.bg_url"
-                @change="updateBackgroundImage(settingsForm.bg_url)"
+                @change="applyBackgroundUrlInput()"
                 class="form-input text-sm"
                 placeholder="输入图片 URL 或上传 ->"
               />
@@ -534,7 +534,7 @@
                 style="display: none"
               />
               <button
-                @click="settingsForm.bg_url=''; updateBackgroundImage('')"
+                @click="clearBackgroundSelection()"
                 class="btn-secondary px-3"
                 title="清除"
               >
@@ -543,7 +543,89 @@
             </div>
 
             <div
-              x-show="settingsForm.bg_url"
+              x-data="sharedWallpaperPicker({ sourceFilter: 'all' })"
+              @shared-wallpaper-selected.window="applySharedWallpaperSelection($event.detail)"
+              class="bg-[var(--bg-sub)] p-3 rounded border border-[var(--border-light)] mt-3"
+            >
+              <div class="flex flex-wrap items-center gap-2 mb-3">
+                <span class="settings-label mb-0">共享壁纸库</span>
+                <button
+                  type="button"
+                  class="btn-secondary px-3 py-1 text-xs"
+                  :class="sourceFilter === 'all' ? 'ring-1 ring-[var(--accent-main)]' : ''"
+                  @click="setSourceFilter('all')"
+                >
+                  全部
+                </button>
+                <button
+                  type="button"
+                  class="btn-secondary px-3 py-1 text-xs"
+                  :class="sourceFilter === 'builtin' ? 'ring-1 ring-[var(--accent-main)]' : ''"
+                  @click="setSourceFilter('builtin')"
+                >
+                  内置
+                </button>
+                <button
+                  type="button"
+                  class="btn-secondary px-3 py-1 text-xs"
+                  :class="sourceFilter === 'imported' ? 'ring-1 ring-[var(--accent-main)]' : ''"
+                  @click="setSourceFilter('imported')"
+                >
+                  用户导入
+                </button>
+                <button
+                  type="button"
+                  class="btn-secondary px-3 py-1 text-xs"
+                  :class="sourceFilter === 'beautify' ? 'ring-1 ring-[var(--accent-main)]' : ''"
+                  @click="setSourceFilter('beautify')"
+                >
+                  Beautify 导入
+                </button>
+                <label class="btn-secondary px-3 py-1 text-xs cursor-pointer">
+                  导入壁纸
+                  <input
+                    type="file"
+                    class="hidden"
+                    accept="image/*"
+                    @change="handleImport"
+                  />
+                </label>
+              </div>
+              <div class="settings-desc mb-3">
+                可直接为管理器选择共享壁纸，当前仅提供设置页内的轻量选择器。
+              </div>
+              <div
+                class="grid grid-cols-2 md:grid-cols-3 gap-2"
+                x-show="filteredWallpapers.length > 0"
+              >
+                <template x-for="item in filteredWallpapers" :key="item.id">
+                  <button
+                    type="button"
+                    class="text-left p-2 rounded border border-[var(--border-light)] hover:border-[var(--accent-main)] transition bg-[var(--bg-main)]"
+                    :class="isSelected(item) ? 'ring-1 ring-[var(--accent-main)] border-[var(--accent-main)]' : ''"
+                    @click="selectWallpaper(item)"
+                  >
+                    <div
+                      class="text-sm font-medium truncate"
+                      x-text="item.name || item.id"
+                    ></div>
+                    <div
+                      class="text-xs text-gray-400 mt-1"
+                      x-text="item.source_type || 'imported'"
+                    ></div>
+                  </button>
+                </template>
+              </div>
+              <div
+                class="settings-desc"
+                x-show="filteredWallpapers.length === 0"
+              >
+                当前筛选下还没有可用共享壁纸。
+              </div>
+            </div>
+
+            <div
+              x-show="settingsForm.bg_url || settingsForm.manager_wallpaper_id"
               x-transition
               class="bg-[var(--bg-sub)] p-3 rounded border border-[var(--border-light)] mt-2"
             >

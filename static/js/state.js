@@ -333,6 +333,7 @@ export function initState() {
     beautifyActiveDetail: null,
     beautifyActiveVariant: null,
     beautifyActiveWallpaper: null,
+    sharedWallpapers: [],
 
     // 预设筛选状态
     presetFilterType: "all", // 'all', 'global', 'resource'
@@ -380,6 +381,7 @@ export function initState() {
       dark_mode: true,
       font_style: "sans",
       card_width: 220,
+      manager_wallpaper_id: "",
       bg_url: "",
       bg_opacity: 0.95,
       bg_blur: 0,
@@ -573,6 +575,9 @@ export function initState() {
             fast_search_use_index: !!settings.fast_search_use_index,
             worldinfo_list_use_index: !!settings.worldinfo_list_use_index,
           };
+          this.sharedWallpapers = Array.isArray(settings.shared_wallpapers)
+            ? settings.shared_wallpapers
+            : [];
 
           this.currentSort = this.settingsForm.default_sort || "date_desc";
 
@@ -588,8 +593,9 @@ export function initState() {
             (this.settingsForm.card_width || 220) + "px",
           );
 
-          if (this.settingsForm.bg_url) {
-            this.updateBackgroundImage(this.settingsForm.bg_url);
+          const managerBackgroundUrl = this.resolveManagerBackgroundUrl();
+          if (managerBackgroundUrl) {
+            this.updateBackgroundImage(this.resolveManagerBackgroundUrl());
             updateCssVariable(
               "--bg-blur",
               (this.settingsForm.bg_blur || 0) + "px",
@@ -818,6 +824,25 @@ export function initState() {
             : 0.95;
         updateCssVariable("--bg-overlay-opacity", opacity);
       }
+    },
+
+    resolveManagerBackgroundUrl() {
+      const selectedId = String(
+        this.settingsForm.manager_wallpaper_id || "",
+      ).trim();
+      if (selectedId) {
+        const item = this.sharedWallpapers.find(
+          (item) => item.id === selectedId,
+        );
+        if (item && item.file) {
+          return `/api/beautify/preview-asset/${item.file
+            .split("/")
+            .map(encodeURIComponent)
+            .join("/")}`;
+        }
+      }
+
+      return this.settingsForm.bg_url || "";
     },
 
     // 保存设置

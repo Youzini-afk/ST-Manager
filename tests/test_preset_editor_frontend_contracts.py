@@ -294,6 +294,14 @@ def test_preset_editor_template_removes_prompt_and_unknown_raw_editor_sections()
     assert 'applyRawUnknownJson(text) {' not in js_source
 
 
+def test_grid_presets_template_leaves_manager_wallpaper_visible_at_root_surface():
+    source = read_project_file('templates/components/grid_presets.html')
+
+    assert 'x-data="presetGrid"' in source
+    assert 'class="flex-1 flex flex-col overflow-hidden w-full relative h-full bg-[var(--bg-body)]"' not in source
+    assert 'class="flex-1 flex flex-col overflow-hidden w-full relative h-full"' in source
+
+
 def test_preset_editor_template_uses_user_facing_copy_for_prompt_and_mirrored_workspaces():
     source = read_project_file('templates/modals/detail_preset_fullscreen.html')
 

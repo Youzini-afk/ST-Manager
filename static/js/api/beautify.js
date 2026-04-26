@@ -63,6 +63,30 @@ export async function importGlobalBeautifyWallpaper(file) {
   return parseJson(res);
 }
 
+export async function importSharedPreviewWallpaperForBeautify(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("selection_target", "preview");
+
+  const res = await fetch("/api/shared-wallpapers/import", {
+    method: "POST",
+    body: formData,
+  });
+  return parseJson(res);
+}
+
+export async function selectSharedPreviewWallpaperForBeautify(wallpaperId) {
+  const res = await fetch("/api/shared-wallpapers/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      wallpaper_id: wallpaperId,
+      selection_target: "preview",
+    }),
+  });
+  return parseJson(res);
+}
+
 export async function importGlobalBeautifyAvatar(file, target) {
   const formData = new FormData();
   formData.append("file", file);

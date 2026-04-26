@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 
 from core.data.ui_store import get_beautify_library, set_beautify_library
 from core.services.beautify_service import BeautifyService
+from core.services.shared_wallpaper_service import SharedWallpaperService
 
 
 def _build_service(tmp_path, ui_data):
@@ -49,6 +50,7 @@ def test_set_beautify_library_normalizes_package_variant_and_wallpaper_shape():
                             'theme_name': ' Demo Theme ',
                             'theme_file': 'data\\library\\beautify\\packages\\pkg_demo\\themes\\mobile.json',
                             'wallpaper_ids': [' wp_1 ', '', 'wp_1'],
+                            'selected_wallpaper_id': ' wp_1 ',
                             'preview_hint': {
                                 'needs_platform_review': 'yes',
                                 'preview_accuracy': 'unknown',
@@ -81,7 +83,8 @@ def test_set_beautify_library_normalizes_package_variant_and_wallpaper_shape():
     assert package_info['name'] == 'Demo Theme'
     assert variant_info['platform'] == 'mobile'
     assert variant_info['theme_file'] == 'data/library/beautify/packages/pkg_demo/themes/mobile.json'
-    assert variant_info['wallpaper_ids'] == ['wp_1']
+    assert variant_info['wallpaper_ids'] == []
+    assert variant_info['selected_wallpaper_id'] == ''
     assert variant_info['preview_hint']['needs_platform_review'] is True
     assert variant_info['preview_hint']['preview_accuracy'] == 'approx'
     assert wallpaper_info['variant_id'] == 'var_mobile'
@@ -91,6 +94,55 @@ def test_set_beautify_library_normalizes_package_variant_and_wallpaper_shape():
     assert wallpaper_info['height'] == 1920
     assert wallpaper_info['mtime'] == 123
     assert payload['updated_at'] > 0
+
+
+def test_set_beautify_library_drops_package_local_variant_wallpaper_references_from_active_shape():
+    ui_data = {}
+
+    changed = set_beautify_library(
+        ui_data,
+        {
+            'packages': {
+                'pkg_demo': {
+                    'id': 'pkg_demo',
+                    'name': 'Demo Theme',
+                    'variants': {
+                        'var_mobile': {
+                            'id': 'var_mobile',
+                            'platform': 'mobile',
+                            'theme_name': 'Demo Theme',
+                            'theme_file': 'data/library/beautify/packages/pkg_demo/themes/mobile.json',
+                            'wallpaper_ids': ['wp_legacy', 'package_embedded:shared123'],
+                            'selected_wallpaper_id': 'wp_legacy',
+                            'preview_hint': {
+                                'needs_platform_review': False,
+                                'preview_accuracy': 'approx',
+                            },
+                        },
+                    },
+                    'wallpapers': {
+                        'wp_legacy': {
+                            'id': 'wp_legacy',
+                            'variant_id': 'var_mobile',
+                            'file': 'data/library/beautify/packages/pkg_demo/wallpapers/mobile-1.webp',
+                            'filename': 'mobile-1.webp',
+                            'width': 1080,
+                            'height': 1920,
+                            'mtime': 123,
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+    assert changed is True
+
+    payload = get_beautify_library(ui_data)
+    variant_info = payload['packages']['pkg_demo']['variants']['var_mobile']
+
+    assert variant_info['wallpaper_ids'] == ['package_embedded:shared123']
+    assert variant_info['selected_wallpaper_id'] == ''
 
 
 def test_set_beautify_library_normalizes_global_settings_screenshots_and_identity_overrides():
@@ -362,7 +414,7 @@ def test_import_theme_defaults_to_dual_and_marks_platform_review_when_guess_is_u
     assert result['variant']['preview_hint']['preview_accuracy'] == 'base'
 
 
-def test_import_wallpaper_binds_file_to_specific_variant_and_persists_dimensions(tmp_path):
+def test_import_wallpaper_registers_shared_variant_wallpaper_and_selects_it(tmp_path):
     library_root = tmp_path / 'data' / 'library' / 'beautify'
     ui_data = {}
 
@@ -388,60 +440,403 @@ def test_import_wallpaper_binds_file_to_specific_variant_and_persists_dimensions
         str(wallpaper_file),
     )
 
-    assert result['wallpaper']['variant_id'] == imported_theme['variant']['id']
+    assert result['wallpaper']['id'].startswith('package_embedded:')
+    assert result['wallpaper']['source_type'] == 'package_embedded'
+    assert result['wallpaper']['origin_package_id'] == imported_theme['package']['id']
+    assert result['wallpaper']['origin_variant_id'] == imported_theme['variant']['id']
     assert result['wallpaper']['width'] == 1440
     assert result['wallpaper']['height'] == 900
-    assert result['wallpaper']['file'].endswith('/wallpapers/wallpaper.png')
+    assert result['wallpaper']['file'].endswith(f"/{imported_theme['package']['id']}/{imported_theme['variant']['id']}/wallpaper.png")
     assert (tmp_path / result['wallpaper']['file']).exists()
 
     package_info = service.get_package(imported_theme['package']['id'])
-    assert package_info['variants'][imported_theme['variant']['id']]['wallpaper_ids'] == [result['wallpaper']['id']]
+    variant_info = package_info['variants'][imported_theme['variant']['id']]
+    assert variant_info['wallpaper_ids'] == [result['wallpaper']['id']]
+    assert variant_info['selected_wallpaper_id'] == result['wallpaper']['id']
+    assert package_info['wallpapers'][result['wallpaper']['id']] == result['wallpaper']
+    assert ui_data['_shared_wallpaper_library_v1']['items'][result['wallpaper']['id']] == result['wallpaper']
 
 
-def test_import_global_wallpaper_replaces_stable_slot_and_updates_global_settings(tmp_path):
+def test_get_package_hydrates_shared_wallpapers_for_variant_references(tmp_path):
     ui_data = {}
     service = _build_service(tmp_path, ui_data)
+    imported_theme = _import_theme_for_package(service, tmp_path, name='Hydration Demo', platform='pc')
 
-    first_wallpaper = tmp_path / 'first-wallpaper.png'
-    second_wallpaper = tmp_path / 'second-wallpaper.png'
-    Image.new('RGB', (1080, 1920), '#112233').save(first_wallpaper)
-    Image.new('RGB', (720, 1280), '#445566').save(second_wallpaper)
+    wallpaper_file = tmp_path / 'hydrated.png'
+    Image.new('RGB', (1280, 720), '#445566').save(wallpaper_file)
+    imported_wallpaper = service.import_wallpaper(
+        imported_theme['package']['id'],
+        imported_theme['variant']['id'],
+        str(wallpaper_file),
+    )['wallpaper']
 
-    first_result = service.import_global_wallpaper(str(first_wallpaper))
-    second_result = service.import_global_wallpaper(str(second_wallpaper))
+    package_detail = service.get_package(imported_theme['package']['id'])
 
-    assert first_result['wallpaper']['file'] == 'data/library/beautify/global/wallpapers/wallpaper.png'
-    assert second_result['wallpaper']['file'] == 'data/library/beautify/global/wallpapers/wallpaper.png'
-    assert second_result['wallpaper']['filename'] == 'wallpaper.png'
-    assert second_result['wallpaper']['width'] == 720
-    assert second_result['wallpaper']['height'] == 1280
-    assert (tmp_path / second_result['wallpaper']['file']).exists()
-
-    saved_library = get_beautify_library(ui_data)
-    assert saved_library['global_settings']['wallpaper'] == second_result['wallpaper']
+    assert package_detail['wallpapers'][imported_wallpaper['id']] == imported_wallpaper
 
 
-def test_get_global_settings_returns_saved_wallpaper_and_identities(tmp_path):
+def test_list_packages_uses_shared_variant_wallpaper_references_not_legacy_package_wallpapers(tmp_path):
     ui_data = {}
     service = _build_service(tmp_path, ui_data)
+    imported_theme = _import_theme_for_package(service, tmp_path, name='Summary Demo', platform='pc')
 
-    wallpaper_file = tmp_path / 'global-wallpaper.png'
-    character_avatar = tmp_path / 'character.png'
-    Image.new('RGB', (1080, 1920), '#123456').save(wallpaper_file)
-    Image.new('RGB', (256, 256), '#654321').save(character_avatar)
+    shared_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'package_embedded' / imported_theme['package']['id'] / imported_theme['variant']['id'] / 'selected.png'
+    shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1440, 900), '#2468ac').save(shared_wallpaper)
 
-    imported_wallpaper = service.import_global_wallpaper(str(wallpaper_file))
-    service.import_global_avatar('character', str(character_avatar))
-    service.update_global_settings({'character_name': 'Alice'})
+    ui_data['_beautify_library_v1']['packages'][imported_theme['package']['id']]['variants'][imported_theme['variant']['id']]['wallpaper_ids'] = [
+        'package_embedded:selected',
+    ]
+    ui_data['_beautify_library_v1']['packages'][imported_theme['package']['id']]['variants'][imported_theme['variant']['id']]['selected_wallpaper_id'] = 'package_embedded:selected'
+    ui_data['_beautify_library_v1']['packages'][imported_theme['package']['id']]['wallpapers'] = {
+        'wp_legacy': {
+            'id': 'wp_legacy',
+            'variant_id': imported_theme['variant']['id'],
+            'file': 'data/library/beautify/packages/%s/wallpapers/legacy.png' % imported_theme['package']['id'],
+            'filename': 'legacy.png',
+            'width': 1080,
+            'height': 1920,
+            'mtime': 1,
+        }
+    }
+    ui_data['_shared_wallpaper_library_v1'] = {
+        'items': {
+            'package_embedded:selected': {
+                'id': 'package_embedded:selected',
+                'source_type': 'package_embedded',
+                'file': 'data/library/wallpapers/package_embedded/%s/%s/selected.png' % (
+                    imported_theme['package']['id'],
+                    imported_theme['variant']['id'],
+                ),
+                'filename': 'selected.png',
+                'width': 1440,
+                'height': 900,
+                'mtime': int(shared_wallpaper.stat().st_mtime),
+                'created_at': int(shared_wallpaper.stat().st_mtime),
+                'origin_package_id': imported_theme['package']['id'],
+                'origin_variant_id': imported_theme['variant']['id'],
+            }
+        },
+        'manager_wallpaper_id': '',
+        'preview_wallpaper_id': '',
+    }
+
+    package_summary = service.list_packages()[0]
+
+    assert package_summary['wallpaper_count'] == 1
+    assert package_summary['wallpaper_previews'] == [
+        'data/library/wallpapers/package_embedded/%s/%s/selected.png' % (
+            imported_theme['package']['id'],
+            imported_theme['variant']['id'],
+        )
+    ]
+
+
+def test_load_library_drops_stale_shared_wallpaper_ids_from_variant_state(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+    imported_theme = _import_theme_for_package(service, tmp_path, name='Stale Shared Demo', platform='pc')
+
+    variant_id = imported_theme['variant']['id']
+    package_id = imported_theme['package']['id']
+    ui_data['_beautify_library_v1']['packages'][package_id]['variants'][variant_id]['wallpaper_ids'] = [
+        'package_embedded:missing',
+        'package_embedded:live',
+    ]
+    ui_data['_beautify_library_v1']['packages'][package_id]['variants'][variant_id]['selected_wallpaper_id'] = 'package_embedded:missing'
+    ui_data['_shared_wallpaper_library_v1'] = {
+        'items': {
+            'package_embedded:live': {
+                'id': 'package_embedded:live',
+                'source_type': 'package_embedded',
+                'file': 'data/library/wallpapers/package_embedded/%s/%s/live.png' % (package_id, variant_id),
+                'filename': 'live.png',
+                'width': 1440,
+                'height': 900,
+                'mtime': 1,
+                'created_at': 1,
+                'origin_package_id': package_id,
+                'origin_variant_id': variant_id,
+            }
+        },
+        'manager_wallpaper_id': '',
+        'preview_wallpaper_id': '',
+    }
+
+    library = service.load_library()
+    variant_info = library['packages'][package_id]['variants'][variant_id]
+    persisted_variant = ui_data['_beautify_library_v1']['packages'][package_id]['variants'][variant_id]
+
+    assert variant_info['wallpaper_ids'] == ['package_embedded:live']
+    assert variant_info['selected_wallpaper_id'] == ''
+    assert persisted_variant['wallpaper_ids'] == ['package_embedded:live']
+    assert persisted_variant['selected_wallpaper_id'] == ''
+
+
+def test_get_global_settings_reads_preview_wallpaper_id_from_shared_library_even_when_beautify_state_has_stale_value(tmp_path):
+    shared_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
+    shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1440, 900), '#2468ac').save(shared_wallpaper)
+
+    ui_data = {
+        '_beautify_library_v1': {
+            'global_settings': {
+                'preview_wallpaper_id': 'stale:beautify',
+                'wallpaper': {
+                    'file': 'data/library/beautify/global/wallpapers/legacy.png',
+                    'filename': 'legacy.png',
+                    'width': 1080,
+                    'height': 1920,
+                    'mtime': 1,
+                },
+            },
+            'packages': {},
+        },
+        '_shared_wallpaper_library_v1': {
+            'items': {
+                'imported:preview': {
+                    'id': 'imported:preview',
+                    'source_type': 'imported',
+                    'file': 'data/library/wallpapers/imported/preview.png',
+                    'filename': 'preview.png',
+                    'width': 1440,
+                    'height': 900,
+                    'mtime': int(shared_wallpaper.stat().st_mtime),
+                    'created_at': int(shared_wallpaper.stat().st_mtime),
+                    'origin_package_id': '',
+                    'origin_variant_id': '',
+                }
+            },
+            'manager_wallpaper_id': '',
+            'preview_wallpaper_id': 'imported:preview',
+        },
+    }
+    service = _build_service(tmp_path, ui_data)
 
     settings = service.get_global_settings()
 
-    assert settings['wallpaper'] == imported_wallpaper['wallpaper']
-    assert settings['identities']['character'] == {
-        'name': 'Alice',
-        'avatar_file': 'data/library/beautify/global/avatars/character.png',
+    assert settings['preview_wallpaper_id'] == 'imported:preview'
+    assert settings['wallpaper']['id'] == 'imported:preview'
+    assert settings['wallpaper']['file'] == 'data/library/wallpapers/imported/preview.png'
+    assert settings['identities'] == {
+        'character': {'name': '', 'avatar_file': ''},
+        'user': {'name': '', 'avatar_file': ''},
     }
-    assert settings['identities']['user'] == {'name': '', 'avatar_file': ''}
+
+
+def test_update_global_settings_clear_wallpaper_clears_shared_preview_selection(tmp_path):
+    shared_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
+    shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1440, 900), '#334455').save(shared_wallpaper)
+
+    ui_data = {
+        '_beautify_library_v1': {
+            'global_settings': {},
+            'packages': {},
+        },
+        '_shared_wallpaper_library_v1': {
+            'items': {
+                'imported:preview': {
+                    'id': 'imported:preview',
+                    'source_type': 'imported',
+                    'file': 'data/library/wallpapers/imported/preview.png',
+                    'filename': 'preview.png',
+                    'width': 1440,
+                    'height': 900,
+                    'mtime': int(shared_wallpaper.stat().st_mtime),
+                    'created_at': int(shared_wallpaper.stat().st_mtime),
+                    'origin_package_id': '',
+                    'origin_variant_id': '',
+                }
+            },
+            'manager_wallpaper_id': '',
+            'preview_wallpaper_id': 'imported:preview',
+        },
+    }
+    service = _build_service(tmp_path, ui_data)
+
+    settings = service.update_global_settings({'clear_wallpaper': True})
+
+    assert settings['preview_wallpaper_id'] == ''
+    assert settings['wallpaper'] == {
+        'file': '',
+        'filename': '',
+        'width': 0,
+        'height': 0,
+        'mtime': 0,
+    }
+    assert ui_data['_shared_wallpaper_library_v1']['preview_wallpaper_id'] == ''
+
+
+def test_get_global_settings_resolves_preview_wallpaper_from_shared_library(tmp_path):
+    shared_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
+    shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1440, 900), '#2468ac').save(shared_wallpaper)
+
+    ui_data = {
+        '_shared_wallpaper_library_v1': {
+            'items': {
+                'imported:preview': {
+                    'id': 'imported:preview',
+                    'source_type': 'imported',
+                    'file': 'data/library/wallpapers/imported/preview.png',
+                    'filename': 'preview.png',
+                    'width': 1440,
+                    'height': 900,
+                    'mtime': int(shared_wallpaper.stat().st_mtime),
+                    'created_at': int(shared_wallpaper.stat().st_mtime),
+                    'origin_package_id': '',
+                    'origin_variant_id': '',
+                }
+            },
+            'manager_wallpaper_id': '',
+            'preview_wallpaper_id': 'imported:preview',
+        }
+    }
+    service = _build_service(tmp_path, ui_data)
+
+    settings = service.get_global_settings()
+
+    assert settings['preview_wallpaper_id'] == 'imported:preview'
+    assert settings['wallpaper'] == {
+        'id': 'imported:preview',
+        'source_type': 'imported',
+        'file': 'data/library/wallpapers/imported/preview.png',
+        'filename': 'preview.png',
+        'width': 1440,
+        'height': 900,
+        'mtime': int(shared_wallpaper.stat().st_mtime),
+        'created_at': int(shared_wallpaper.stat().st_mtime),
+        'origin_package_id': '',
+        'origin_variant_id': '',
+    }
+    assert settings['identities'] == {
+        'character': {'name': '', 'avatar_file': ''},
+        'user': {'name': '', 'avatar_file': ''},
+    }
+
+
+def test_get_global_settings_resolves_builtin_preview_wallpaper_from_shared_library_view(tmp_path):
+    builtin_wallpaper = tmp_path / 'static' / 'assets' / 'wallpapers' / 'builtin' / 'space' / 'stars.png'
+    builtin_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1920, 1080), '#112244').save(builtin_wallpaper)
+
+    ui_data = {
+        '_shared_wallpaper_library_v1': {
+            'items': {},
+            'manager_wallpaper_id': '',
+            'preview_wallpaper_id': 'builtin:space/stars.png',
+        }
+    }
+    service = _build_service(tmp_path, ui_data)
+
+    settings = service.get_global_settings()
+
+    assert settings['preview_wallpaper_id'] == 'builtin:space/stars.png'
+    assert settings['wallpaper'] == {
+        'id': 'builtin:space/stars.png',
+        'source_type': 'builtin',
+        'file': 'static/assets/wallpapers/builtin/space/stars.png',
+        'filename': 'stars.png',
+        'width': 1920,
+        'height': 1080,
+        'mtime': int(builtin_wallpaper.stat().st_mtime),
+        'created_at': int(builtin_wallpaper.stat().st_mtime),
+        'origin_package_id': '',
+        'origin_variant_id': '',
+    }
+
+
+def test_get_global_settings_prefers_migrated_manager_wallpaper_state_without_disturbing_preview_selection(tmp_path):
+    legacy_wallpaper = tmp_path / 'data' / 'assets' / 'backgrounds' / 'legacy.png'
+    legacy_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1200, 800), '#223344').save(legacy_wallpaper)
+
+    preview_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
+    preview_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1080, 1920), '#556677').save(preview_wallpaper)
+    preview_mtime = int(preview_wallpaper.stat().st_mtime)
+
+    ui_data = {
+        'settings': {
+            'bg_url': '/assets/backgrounds/legacy.png',
+        },
+        '_beautify_library_v1': {
+            'global_settings': {
+                'preview_wallpaper_id': 'stale:beautify',
+                'wallpaper': {
+                    'file': 'data/library/beautify/global/wallpapers/stale.png',
+                    'filename': 'stale.png',
+                    'width': 300,
+                    'height': 200,
+                    'mtime': 1,
+                },
+            },
+            'packages': {},
+        },
+        '_shared_wallpaper_library_v1': {
+            'items': {
+                'imported:preview': {
+                    'id': 'imported:preview',
+                    'source_type': 'imported',
+                    'file': 'data/library/wallpapers/imported/preview.png',
+                    'filename': 'preview.png',
+                    'width': 1080,
+                    'height': 1920,
+                    'mtime': preview_mtime,
+                    'created_at': preview_mtime,
+                    'origin_package_id': '',
+                    'origin_variant_id': '',
+                },
+            },
+            'manager_wallpaper_id': '',
+            'preview_wallpaper_id': 'imported:preview',
+        },
+    }
+    service = _build_service(tmp_path, ui_data)
+
+    SharedWallpaperService(
+        project_root=str(tmp_path),
+        ui_data_loader=lambda: ui_data,
+        ui_data_saver=lambda data: True,
+    ).migrate_legacy_backgrounds(ui_data)
+
+    settings = service.get_global_settings()
+    shared_library = SharedWallpaperService(
+        project_root=str(tmp_path),
+        ui_data_loader=lambda: ui_data,
+        ui_data_saver=lambda data: True,
+    ).load_library()
+
+    assert shared_library['manager_wallpaper_id']
+    assert shared_library['preview_wallpaper_id'] == 'imported:preview'
+    assert settings['preview_wallpaper_id'] == 'imported:preview'
+    assert settings['wallpaper']['id'] == 'imported:preview'
+    assert settings['wallpaper']['file'] == 'data/library/wallpapers/imported/preview.png'
+
+
+def test_get_preview_asset_path_resolves_builtin_wallpaper_under_project_static(tmp_path):
+    builtin_wallpaper = tmp_path / 'static' / 'assets' / 'wallpapers' / 'builtin' / 'space' / 'stars.png'
+    builtin_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1920, 1080), '#112244').save(builtin_wallpaper)
+
+    service = _build_service(tmp_path, {})
+
+    asset_path = service.get_preview_asset_path('static/assets/wallpapers/builtin/space/stars.png')
+
+    assert asset_path == str(builtin_wallpaper)
+
+
+def test_get_preview_asset_path_resolves_shared_imported_wallpaper_under_project_data_library(tmp_path):
+    imported_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
+    imported_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1440, 900), '#2468ac').save(imported_wallpaper)
+
+    service = _build_service(tmp_path, {})
+
+    asset_path = service.get_preview_asset_path('data/library/wallpapers/imported/preview.png')
+
+    assert asset_path == str(imported_wallpaper)
 
 
 def test_import_screenshot_and_update_package_identities_persist_package_detail_fields(tmp_path):
@@ -492,6 +887,26 @@ def test_load_library_recovers_packages_from_disk_when_ui_index_missing(tmp_path
     assert recovered_package['name'] == 'Recovered Demo'
     assert list(recovered_package['variants'].values())[0]['theme_file'].endswith('/themes/pc.json')
     assert get_beautify_library(ui_data)['packages'][package_id]['name'] == 'Recovered Demo'
+
+
+def test_load_library_recovery_does_not_rebuild_variant_wallpaper_truth_from_package_local_wallpapers(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+
+    imported_theme = _import_theme_for_package(service, tmp_path, name='Recovered Local Wallpaper Demo', platform='pc')
+    package_id = imported_theme['package']['id']
+    package_wallpaper_dir = tmp_path / 'data' / 'library' / 'beautify' / 'packages' / package_id / 'wallpapers'
+    package_wallpaper_dir.mkdir(parents=True)
+    Image.new('RGB', (1280, 720), '#445566').save(package_wallpaper_dir / 'legacy.png')
+
+    ui_data.clear()
+
+    recovered_library = service.load_library()
+
+    recovered_package = recovered_library['packages'][package_id]
+    recovered_variant = next(iter(recovered_package['variants'].values()))
+    assert recovered_variant['wallpaper_ids'] == []
+    assert recovered_variant['selected_wallpaper_id'] == ''
 
 
 def test_load_library_skips_invalid_theme_files_during_disk_recovery(tmp_path):
@@ -665,6 +1080,67 @@ def test_update_global_settings_ignores_non_boolean_clear_flags(tmp_path):
     assert updated_settings['identities']['character']['avatar_file'].endswith('/global/avatars/character.png')
 
 
+def test_update_global_settings_returns_resolved_shared_preview_wallpaper_view(tmp_path):
+    shared_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
+    shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1440, 900), '#2468ac').save(shared_wallpaper)
+
+    ui_data = {
+        '_beautify_library_v1': {
+            'global_settings': {
+                'wallpaper': {
+                    'file': 'data/library/beautify/global/wallpapers/legacy.png',
+                    'filename': 'legacy.png',
+                    'width': 1080,
+                    'height': 1920,
+                    'mtime': 1,
+                },
+                'identities': {
+                    'character': {'name': '', 'avatar_file': ''},
+                    'user': {'name': '', 'avatar_file': ''},
+                },
+            },
+            'packages': {},
+        },
+        '_shared_wallpaper_library_v1': {
+            'items': {
+                'imported:preview': {
+                    'id': 'imported:preview',
+                    'source_type': 'imported',
+                    'file': 'data/library/wallpapers/imported/preview.png',
+                    'filename': 'preview.png',
+                    'width': 1440,
+                    'height': 900,
+                    'mtime': int(shared_wallpaper.stat().st_mtime),
+                    'created_at': int(shared_wallpaper.stat().st_mtime),
+                    'origin_package_id': '',
+                    'origin_variant_id': '',
+                }
+            },
+            'manager_wallpaper_id': '',
+            'preview_wallpaper_id': 'imported:preview',
+        },
+    }
+    service = _build_service(tmp_path, ui_data)
+
+    updated_settings = service.update_global_settings({'character_name': 'Alice'})
+
+    assert updated_settings['preview_wallpaper_id'] == 'imported:preview'
+    assert updated_settings['wallpaper'] == {
+        'id': 'imported:preview',
+        'source_type': 'imported',
+        'file': 'data/library/wallpapers/imported/preview.png',
+        'filename': 'preview.png',
+        'width': 1440,
+        'height': 900,
+        'mtime': int(shared_wallpaper.stat().st_mtime),
+        'created_at': int(shared_wallpaper.stat().st_mtime),
+        'origin_package_id': '',
+        'origin_variant_id': '',
+    }
+    assert updated_settings['identities']['character']['name'] == 'Alice'
+
+
 def test_update_package_identities_uses_flat_payload_and_clear_flags(tmp_path):
     ui_data = {}
     service = _build_service(tmp_path, ui_data)
@@ -795,7 +1271,15 @@ def test_import_wallpaper_raises_value_error_for_invalid_image_and_removes_copie
 
     invalid_file = tmp_path / 'invalid-wallpaper.png'
     invalid_file.write_bytes(b'not-an-image')
-    wallpapers_dir = tmp_path / 'data' / 'library' / 'beautify' / 'packages' / imported_theme['package']['id'] / 'wallpapers'
+    wallpapers_dir = (
+        tmp_path
+        / 'data'
+        / 'library'
+        / 'wallpapers'
+        / 'package_embedded'
+        / imported_theme['package']['id']
+        / imported_theme['variant']['id']
+    )
 
     try:
         service.import_wallpaper(imported_theme['package']['id'], imported_theme['variant']['id'], str(invalid_file))
@@ -919,7 +1403,7 @@ def test_import_wallpaper_sanitizes_malicious_source_name(tmp_path):
 
     assert result['wallpaper']['filename'] == 'outside.png'
     assert saved_path.exists()
-    assert saved_path.parent.name == 'wallpapers'
+    assert saved_path.parent.name == imported_theme['variant']['id']
     assert '..' not in result['wallpaper']['file']
 
 
@@ -980,6 +1464,31 @@ def test_delete_package_removes_package_screenshots_and_avatars_with_directory(t
     assert package_dir.exists() is False
     assert (tmp_path / screenshot_result['screenshot']['file']).exists() is False
     assert (tmp_path / avatar_result['identity']['avatar_file']).exists() is False
+
+
+def test_delete_package_removes_package_embedded_shared_wallpapers_from_disk_and_library(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+    imported_theme = _import_theme_for_package(service, tmp_path, name='Delete Wallpaper Demo')
+    package_id = imported_theme['package']['id']
+    variant_id = imported_theme['variant']['id']
+
+    wallpaper_file = tmp_path / 'delete-wallpaper.png'
+    Image.new('RGB', (1280, 720), '#345678').save(wallpaper_file)
+
+    wallpaper_result = service.import_wallpaper(package_id, variant_id, str(wallpaper_file))
+    shared_wallpaper = wallpaper_result['wallpaper']
+    shared_wallpaper_path = tmp_path / shared_wallpaper['file']
+
+    assert shared_wallpaper_path.exists()
+    assert shared_wallpaper['id'] in ui_data['_shared_wallpaper_library_v1']['items']
+
+    deleted = service.delete_package(package_id)
+
+    assert deleted is True
+    assert service.get_package(package_id) is None
+    assert shared_wallpaper_path.exists() is False
+    assert shared_wallpaper['id'] not in ui_data['_shared_wallpaper_library_v1']['items']
 
 
 def test_beautify_package_shape_no_longer_requires_install_state(tmp_path):
