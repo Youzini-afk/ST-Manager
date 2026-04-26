@@ -195,7 +195,20 @@
                       📝
                     </button>
                   </div>
-                  <div class="wi-card-footer-tools-right"></div>
+                  <div class="wi-card-footer-tools-right">
+                    <button
+                      type="button"
+                      x-show="canSendWorldInfoToST(item)"
+                      class="card-send-st-btn"
+                      :class="{ 'has-sent': Number(item.last_sent_to_st || 0) > 0, 'is-sending': isSendingWorldInfoToST(item.id) }"
+                      :disabled="isSendingWorldInfoToST(item.id)"
+                      :title="getWorldInfoSendToSTTitle(item)"
+                      @click.stop="sendWorldInfoToST(item)"
+                    >
+                      <span x-show="!isSendingWorldInfoToST(item.id)">🚀</span>
+                      <span x-show="isSendingWorldInfoToST(item.id)">⏳</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

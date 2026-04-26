@@ -9,6 +9,7 @@ import {
   getWorldInfoDetail,
   searchWorldInfoDetail,
   saveWorldInfoNote,
+  sendWorldInfoToSillyTavern,
 } from "../api/wi.js";
 import { getCardDetail, updateCard } from "../api/card.js";
 import { normalizeWiBook } from "../utils/data.js";
@@ -28,6 +29,7 @@ export default function wiDetailPopup() {
     activeWiDetail: null, // 当前查看的 WI 对象 (包含 id, name, type, path 等)
     activeWiNoteDraft: "",
     isSavingWorldInfoNote: false,
+    isSendingWorldInfoToST: false,
 
     // 阅览室数据
     isLoading: false,
@@ -116,6 +118,18 @@ export default function wiDetailPopup() {
             ui_summary: detail.ui_summary || "",
           };
           this.activeWiNoteDraft = detail.ui_summary || "";
+        }
+      });
+
+      window.addEventListener("wi-sent-to-st", (e) => {
+        const detail = e.detail || {};
+        if (!detail?.id) return;
+        if (!detail.last_sent_to_st) return;
+        if (this.activeWiDetail && this.activeWiDetail.id === detail.id) {
+          this.activeWiDetail = {
+            ...this.activeWiDetail,
+            last_sent_to_st: Number(detail.last_sent_to_st || 0),
+          };
         }
       });
 
@@ -332,6 +346,9 @@ export default function wiDetailPopup() {
                 "",
               ui_summary:
                 res.ui_summary || this.activeWiDetail?.ui_summary || "",
+              last_sent_to_st: Number(
+                res.last_sent_to_st || this.activeWiDetail?.last_sent_to_st || 0,
+              ),
             };
             this.activeWiNoteDraft = this.activeWiDetail.ui_summary || "";
             if (res.truncated) {
@@ -666,6 +683,55 @@ export default function wiDetailPopup() {
         source_revision: this.activeWiDetail?.source_revision || "",
         ui_only: true,
       };
+    },
+
+    canSendActiveWorldInfoToST() {
+      const sourceType = this.activeWiDetail?.source_type || this.activeWiDetail?.type;
+      return sourceType === "global" || sourceType === "resource";
+    },
+
+    getActiveWorldInfoSendToSTTitle() {
+      if (!this.canSendActiveWorldInfoToST()) return "仅全局/资源世界书可发送到 ST";
+      if (this.isSendingWorldInfoToST) return "正在发送到 ST";
+      if (Number(this.activeWiDetail?.last_sent_to_st || 0) > 0) {
+        return `已发送到 ST：${new Date(this.activeWiDetail.last_sent_to_st * 1000).toLocaleString()}`;
+      }
+      return "发送到 ST";
+    },
+
+    async sendActiveWorldInfoToST() {
+      if (!this.activeWiDetail) return;
+      if (!this.canSendActiveWorldInfoToST()) return;
+      if (this.isSendingWorldInfoToST) return;
+
+      this.isSendingWorldInfoToST = true;
+      try {
+        const res = await sendWorldInfoToSillyTavern({
+          id: this.activeWiDetail.id,
+          source_type: this.activeWiDetail.source_type || this.activeWiDetail.type,
+          file_path: this.activeWiDetail.path,
+        });
+        if (res?.success) {
+          const sentAt = Number(res.last_sent_to_st || Date.now() / 1000);
+          this.activeWiDetail = {
+            ...this.activeWiDetail,
+            last_sent_to_st: sentAt,
+          };
+          window.dispatchEvent(new CustomEvent("wi-sent-to-st", {
+            detail: {
+              id: this.activeWiDetail.id,
+              last_sent_to_st: sentAt,
+            },
+          }));
+          this.$store.global.showToast("🚀 已发送到 ST", 1800);
+        } else {
+          this.$store.global.showToast(`❌ ${res?.msg || "发送失败"}`, 2600);
+        }
+      } catch (error) {
+        this.$store.global.showToast(`❌ ${error?.message || "发送失败"}`, 2600);
+      } finally {
+        this.isSendingWorldInfoToST = false;
+      }
     },
 
     emitWorldInfoNoteUpdated(uiSummary) {
