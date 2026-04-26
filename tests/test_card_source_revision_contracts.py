@@ -16,7 +16,10 @@ def test_detail_and_embedded_editors_send_source_revision():
     assert 'this.editingData.source_revision = safeCard.source_revision || "";' in detail_source
     assert 'source_revision: this.editingData.source_revision || "",' in detail_source
     assert 'source_revision: this.editingData.source_revision || "",' in wi_editor_source
-    assert 'source_revision: this.activeWiDetail.source_revision || "",' in wi_popup_source
+    assert (
+        'source_revision: this.activeWiDetail.source_revision || "",' in wi_popup_source
+        or 'source_revision: this.activeWiDetail?.source_revision || "",' in wi_popup_source
+    )
 
 
 def test_detail_and_embedded_editors_refresh_source_revision_after_save():

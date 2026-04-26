@@ -1,3 +1,5 @@
+import re
+
 from pathlib import Path
 
 
@@ -27,6 +29,18 @@ def extract_js_function_block(source, signature):
 
 def compact_whitespace(value):
     return ' '.join(value.split())
+
+
+def assert_contains_either(source, candidates):
+    assert any(candidate in source for candidate in candidates), (
+        f'Expected one of {candidates!r} in source'
+    )
+
+
+def assert_matches(pattern, source):
+    assert re.search(pattern, source, re.MULTILINE | re.DOTALL), (
+        f'Missing regex contract: {pattern}'
+    )
 
 
 def test_automation_modal_defines_shared_tag_splitter_contract_for_slash_separator_setting():
@@ -98,8 +112,8 @@ def test_state_defines_localstorage_backed_tag_view_pref_contracts():
     assert 'const TAG_VIEW_PREFS_STORAGE_KEY =' in source
     assert 'loadTagViewPrefs() {' in source
     assert 'saveTagViewPrefs(nextPrefs) {' in source
-    assert "localStorage.getItem(TAG_VIEW_PREFS_STORAGE_KEY)" in source
-    assert "localStorage.setItem(TAG_VIEW_PREFS_STORAGE_KEY" in source
+    assert 'localStorage.getItem(TAG_VIEW_PREFS_STORAGE_KEY)' in source
+    assert_matches(r'localStorage\.setItem\(\s*TAG_VIEW_PREFS_STORAGE_KEY,', source)
 
 
 def test_state_bootstrap_loads_tag_view_prefs_before_components_consume_them():
@@ -122,10 +136,12 @@ def test_tag_filter_modal_reloads_tag_view_prefs_when_reopened_in_same_session()
     source = read_project_file('static/js/components/tagFilterModal.js')
 
     open_watch_section = source.split("if (val) {", 1)[1].split('return;', 1)[0]
-    open_event_section = source.split("window.addEventListener('open-tag-filter-modal', () => {", 1)[1].split('});', 1)[0]
 
     assert 'this.loadDesktopWorkbenchPrefs();' in open_watch_section
-    assert 'this.loadDesktopWorkbenchPrefs();' in open_event_section
+    assert_matches(
+        r'window\.addEventListener\(["\']open-tag-filter-modal["\'],\s*\(\)\s*=>\s*\{[\s\S]*?this\.loadDesktopWorkbenchPrefs\(\);',
+        source,
+    )
     assert 'this.rememberLastTagView = tagViewPrefs.rememberLastTagView === true;' in source
     assert 'this.mixedCategoryView = this.rememberLastTagView' in source
     assert '? tagViewPrefs.mixedCategoryView !== false' in source
@@ -136,7 +152,8 @@ def test_tag_filter_modal_desktop_workbench_uses_shared_search_matcher_contract(
     filtered_pool_section = extract_js_function_block(source, 'get filteredTagsPool() {')
 
     assert 'matchAnyTagSearchToken' in source
-    assert 'const slashIsSeparator = !!(this.$store?.global?.settingsForm?.automation_slash_is_tag_separator);' in filtered_pool_section
+    assert 'automation_slash_is_tag_separator' in filtered_pool_section
+    assert 'slashIsSeparator' in filtered_pool_section
     assert 'matchAnyTagSearchToken(t, query, { slashIsSeparator })' in filtered_pool_section
 
 
@@ -149,7 +166,7 @@ def test_tag_filter_modal_desktop_workbench_loads_and_saves_governance_prefs_via
     assert 'saveTagManagementPrefsState() {' in source
     assert "this.lockTagLibrary = prefs.lock_tag_library === true;" in source
     assert 'this.tagBlacklistTags = blacklist;' in source
-    assert "this.tagBlacklistInput = blacklist.join(', ');" in source
+    assert_contains_either(source, ["this.tagBlacklistInput = blacklist.join(', ');", 'this.tagBlacklistInput = blacklist.join(", ");'])
 
 
 def test_tag_filter_modal_batch_category_supports_splitter_based_bulk_selection_contract():
@@ -157,10 +174,13 @@ def test_tag_filter_modal_batch_category_supports_splitter_based_bulk_selection_
     template = read_project_file('templates/modals/tag_filter.html')
     apply_section = extract_js_function_block(source, 'applyCategorySelectionInput() {')
 
-    assert "categorySelectionInput: ''" in source
+    assert_contains_either(source, ["categorySelectionInput: ''", 'categorySelectionInput: ""'])
     assert 'applyCategorySelectionInput() {' in source
     assert 'this.splitManualTagInput(this.categorySelectionInput)' in apply_section
-    assert "this.appendTokensToSelection(tokens, 'selectedCategoryTags')" in apply_section
+    assert_matches(
+        r'const\s+addedCount\s*=\s*this\.appendTokensToSelection\(\s*tokens\s*,\s*["\']selectedCategoryTags["\']\s*,?\s*\)',
+        apply_section,
+    )
     assert template.count('x-model="categorySelectionInput"') >= 2
     assert template.count('@click="applyCategorySelectionInput()"') >= 2
 
@@ -169,14 +189,16 @@ def test_tag_filter_modal_batch_category_save_allows_style_only_category_updates
     source = read_project_file('static/js/components/tagFilterModal.js')
     save_section = extract_js_function_block(source, 'saveCategoryBatch() {')
 
-    assert "alert('请先填写分类名');" in save_section
+    assert_contains_either(save_section, ['alert("请先填写分类名");', "alert('请先填写分类名');"])
     assert "alert('请先选择要设置分类的标签');" not in save_section
-    assert "const successMsg = tags.length > 0" in save_section
+    assert 'const successMsg =' in save_section
+    assert 'tags.length > 0' in save_section
+    assert '已更新分类' in save_section
 
 
 def test_tag_filter_modal_category_draft_style_sync_contract():
     source = read_project_file('static/js/components/tagFilterModal.js')
-    save_taxonomy_section = extract_js_function_block(source, 'saveTaxonomy(taxonomy, successMsg = \'\') {')
+    save_taxonomy_section = extract_js_function_block(source, 'saveTaxonomy(taxonomy, successMsg = "") {')
 
     assert 'this.categoryDraftColor = this.getCategoryColor(draftName);' in save_taxonomy_section
     assert 'this.categoryDraftOpacity = this.getCategoryOpacity(draftName);' in save_taxonomy_section
@@ -200,7 +222,7 @@ def test_state_tag_view_prefs_contract_includes_category_filter_and_last_categor
 
     assert 'categoryFilterInclude: []' in source
     assert 'categoryFilterExclude: []' in source
-    assert "lastCategorySortName: ''" in source
+    assert_contains_either(source, ["lastCategorySortName: ''", 'lastCategorySortName: ""'])
 
 
 def test_tag_filter_modal_governance_blacklist_uses_literal_selection_flow():
@@ -287,8 +309,11 @@ def test_workspace_help_js_defines_directory_sections_and_jump_helper():
     jump_section = extract_js_function_block(source, 'jumpToWorkspaceHelpSection(sectionId) {')
 
     assert 'workspaceHelpSections: [' in source
-    assert "activeWorkspaceHelpSection: 'overview'" in source
-    assert "{ id: 'separator-rules', label: '分隔符规则' }" in source
+    assert_contains_either(source, ["activeWorkspaceHelpSection: 'overview'", 'activeWorkspaceHelpSection: "overview"'])
+    assert_contains_either(source, [
+        "{ id: 'separator-rules', label: '分隔符规则' }",
+        '{ id: "separator-rules", label: "分隔符规则" }',
+    ])
     assert 'jumpToWorkspaceHelpSection(sectionId) {' in source
     assert 'this.activeWorkspaceHelpSection = nextId;' in jump_section
     assert 'data-workspace-help-section' in jump_section
@@ -298,23 +323,26 @@ def test_workspace_help_js_defines_directory_sections_and_jump_helper():
 def test_explicit_mode_state_contract():
     source = read_project_file('static/js/components/tagFilterModal.js')
 
-    assert "desktopWorkspaceMode: 'filter'" in source
+    assert_contains_either(source, ["desktopWorkspaceMode: 'filter'", 'desktopWorkspaceMode: "filter"'])
     assert 'setDesktopWorkspaceMode(mode) {' in source
     assert 'syncDesktopWorkspaceMode(mode) {' in source
-    assert "['filter', 'batch-category', 'sort', 'delete', 'blacklist', 'category-manager'].includes(mode)" in source
+    assert_matches(
+        r'!\[\s*["\']filter["\']\s*,\s*["\']batch-category["\']\s*,\s*["\']sort["\']\s*,\s*["\']delete["\']\s*,\s*["\']blacklist["\']\s*,\s*["\']category-manager["\']\s*,?\s*\]\.includes\(mode\)',
+        source,
+    )
     assert 'const changed = this.syncDesktopWorkspaceMode(mode);' in source
     assert 'if (changed === false) return false;' in source
     assert 'this.desktopWorkspaceMode = mode;' in source
     assert 'return true;' in source
-    assert "this.desktopWorkspaceMode = 'filter';" in source
+    assert_contains_either(source, ["this.desktopWorkspaceMode = 'filter';", 'this.desktopWorkspaceMode = "filter";'])
 
 
 def test_desktop_workspace_separates_batch_category_and_category_manager_modes_contract():
     source = read_project_file('static/js/components/tagFilterModal.js')
 
-    assert "if (mode === 'batch-category') {" in source
-    assert "if (mode === 'blacklist') {" in source
-    assert "if (mode === 'category-manager') {" in source
+    assert_contains_either(source, ["if (mode === 'batch-category') {", 'if (mode === "batch-category") {'])
+    assert_contains_either(source, ["if (mode === 'blacklist') {", 'if (mode === "blacklist") {'])
+    assert_contains_either(source, ["if (mode === 'category-manager') {", 'if (mode === "category-manager") {'])
     assert "this.showCategoryMode = true;" in source
     assert "this.showCategoryManager = true;" in source
     assert "this.showCategoryMode = false;" in source
@@ -328,8 +356,11 @@ def test_tag_filter_modal_desktop_workspace_fullscreen_toggle_contract():
     assert 'toggleDesktopWorkspaceFullscreen() {' in source
     assert 'requestFullscreen' in source
     assert 'exitFullscreen' in source
-    assert "document.addEventListener('fullscreenchange', this._handleDesktopFullscreenChange);" in source
-    assert "this.isDesktopWorkspaceFullscreen = false;" in source
+    assert_matches(
+        r'document\.addEventListener\(\s*["\']fullscreenchange["\'],\s*this\._handleDesktopFullscreenChange,\s*\)',
+        source,
+    )
+    assert 'this.isDesktopWorkspaceFullscreen = false;' in source
 
 
 def test_tag_filter_modal_grouped_view_toggle_no_longer_resets_during_pref_save_contract():

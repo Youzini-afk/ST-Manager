@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -22,7 +23,11 @@ def test_worldinfo_editors_store_and_send_source_revision():
     assert 'const targetId = item.id;' in wi_editor
     assert 'if (!this.editingWiFile || this.editingWiFile.id !== targetId) return;' in wi_editor
     assert 'const openRequestToken = ++this.openWorldInfoEditorRequestToken;' in wi_editor
-    assert 'if (openRequestToken !== this.openWorldInfoEditorRequestToken) return;' in wi_editor
+    assert re.search(
+        r'if\s*\(\s*openRequestToken\s*!==\s*this\.openWorldInfoEditorRequestToken\s*\)\s*return;',
+        wi_editor,
+        re.MULTILINE | re.DOTALL,
+    )
     assert 'if (targetId && this.activeWiDetail.id !== targetId) return;' in wi_popup
     assert 'window.dispatchEvent(new CustomEvent("refresh-wi-list"));' in wi_editor
     assert 'const loadToken = ++this.loadRequestToken;' in wi_popup

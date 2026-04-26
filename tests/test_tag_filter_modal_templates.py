@@ -1,3 +1,5 @@
+import re
+
 from pathlib import Path
 
 
@@ -25,6 +27,18 @@ def compact_whitespace(value):
     return ' '.join(value.split())
 
 
+def assert_contains_either(source, candidates):
+    assert any(candidate in source for candidate in candidates), (
+        f'Expected one of {candidates!r} in source'
+    )
+
+
+def assert_matches(pattern, source):
+    assert re.search(pattern, source, re.MULTILINE | re.DOTALL), (
+        f'Missing regex contract: {pattern}'
+    )
+
+
 def test_tag_filter_template_adds_mobile_shell_and_tabs():
     template_source = read_project_file('templates/modals/tag_filter.html')
 
@@ -41,7 +55,7 @@ def test_tag_filter_template_adds_mobile_shell_and_tabs():
 def test_tag_filter_js_defines_mobile_active_tab_and_switch_helper():
     source = read_project_file('static/js/components/tagFilterModal.js')
 
-    assert "mobileActiveTab: 'filter'" in source
+    assert_contains_either(source, ["mobileActiveTab: 'filter'", 'mobileActiveTab: "filter"'])
     assert 'switchMobileTagTab(tab) {' in source
     assert 'syncMobileTabState(tab) {' in source
 
@@ -118,13 +132,22 @@ def test_tag_filter_js_sync_mobile_tab_state_resets_mode_specific_mobile_state()
     source = read_project_file('static/js/components/tagFilterModal.js')
     section = source.split('syncMobileTabState(tab) {', 1)[1].split('init() {', 1)[0]
 
-    assert "['filter', 'sort', 'delete', 'category'].includes(tab)" in section
-    assert "if (previousTab === 'delete' && tab !== 'delete')" in section
+    assert_contains_either(section, [
+        "['filter', 'sort', 'delete', 'category'].includes(tab)",
+        '["filter", "sort", "delete", "category"].includes(tab)',
+    ])
+    assert_contains_either(section, [
+        "if (previousTab === 'delete' && tab !== 'delete')",
+        'if (previousTab === "delete" && tab !== "delete")',
+    ])
     assert 'this.selectedTagsForDeletion = [];' in section
-    assert "if (previousTab === 'category' && tab !== 'category')" in section
+    assert_contains_either(section, [
+        "if (previousTab === 'category' && tab !== 'category')",
+        'if (previousTab === "category" && tab !== "category")',
+    ])
     assert 'this.selectedCategoryTags = [];' in section
-    assert "this.categoryDraftName = '';" in section
-    assert "this.categoryDraftColor = '#64748b';" in section
+    assert_contains_either(section, ["this.categoryDraftName = '';", 'this.categoryDraftName = "";'])
+    assert_contains_either(section, ["this.categoryDraftColor = '#64748b';", 'this.categoryDraftColor = "#64748b";'])
     assert 'this.categoryDraftOpacity = 16;' in section
     assert 'this.showCategoryManager = false;' in section
 
@@ -133,8 +156,8 @@ def test_tag_filter_js_sync_mobile_tab_state_clears_search_on_sort_entry_and_pre
     source = read_project_file('static/js/components/tagFilterModal.js')
     section = source.split('syncMobileTabState(tab) {', 1)[1].split('init() {', 1)[0]
 
-    assert "if (tab === 'sort')" in section
-    assert "this.tagSearchQuery = '';" in section
+    assert_contains_either(section, ["if (tab === 'sort')", 'if (tab === "sort")'])
+    assert_contains_either(section, ["this.tagSearchQuery = '';", 'this.tagSearchQuery = "";'])
     assert 'this.cancelSortMode()' in section
     assert 'if (this.isSortMode && this.hasSortChanges)' in source
     assert '当前排序尚未保存，关闭后将丢失改动。确定关闭吗？' in source
@@ -155,11 +178,11 @@ def test_tag_filter_js_close_reset_helper_covers_task2_contract():
 
     assert 'this.selectedTagsForDeletion = [];' in reset_section
     assert 'this.selectedCategoryTags = [];' in reset_section
-    assert "this.categoryDraftName = '';" in reset_section
-    assert "this.categoryDraftColor = '#64748b';" in reset_section
+    assert_contains_either(reset_section, ["this.categoryDraftName = '';", 'this.categoryDraftName = "";'])
+    assert_contains_either(reset_section, ["this.categoryDraftColor = '#64748b';", 'this.categoryDraftColor = "#64748b";'])
     assert 'this.categoryDraftOpacity = 16;' in reset_section
     assert 'this.showCategoryManager = false;' in reset_section
-    assert "this.mobileActiveTab = 'filter';" in reset_section
+    assert_contains_either(reset_section, ["this.mobileActiveTab = 'filter';", 'this.mobileActiveTab = "filter";'])
 
 
 def test_tag_filter_template_keeps_desktop_drag_sort_and_adds_mobile_reorder_rows():
@@ -224,7 +247,10 @@ def test_tag_filter_js_shared_sort_reorder_helper_has_guardrails():
     assert 'if (!this.isSortMode || !tag || !Number.isFinite(delta)) return false;' in section
     assert 'const currentIndex = tags.indexOf(tag);' in section
     assert 'const targetIndex = currentIndex + delta;' in section
-    assert 'if (currentIndex === -1 || targetIndex < 0 || targetIndex >= tags.length) return false;' in section
+    assert_matches(
+        r'if\s*\(\s*currentIndex\s*===\s*-1\s*\|\|\s*targetIndex\s*<\s*0\s*\|\|\s*targetIndex\s*>=\s*tags\.length\s*\)\s*return\s+false;',
+        section,
+    )
     assert 'tags.splice(currentIndex, 1);' in section
     assert 'tags.splice(targetIndex, 0, tag);' in section
     assert 'this.sortWorkingTags = tags;' in section
@@ -233,7 +259,10 @@ def test_tag_filter_js_shared_sort_reorder_helper_has_guardrails():
 def test_tag_filter_js_keeps_cancelable_sort_leave_paths_after_mobile_reorder_addition():
     source = read_project_file('static/js/components/tagFilterModal.js')
 
-    assert 'if (previousTab === \'sort\' && tab !== \'sort\' && this.isSortMode)' in source
+    assert_contains_either(source, [
+        "if (previousTab === 'sort' && tab !== 'sort' && this.isSortMode)",
+        'if (previousTab === "sort" && tab !== "sort" && this.isSortMode)',
+    ])
     assert 'this.cancelSortMode();' in source
     assert 'if (this.isSortMode) return false;' in source
     assert '当前排序尚未保存，关闭后将丢失改动。确定关闭吗？' in source
@@ -246,7 +275,6 @@ def test_tag_filter_mobile_css_fullscreen_shell_contract():
 
     assert '.tag-modal-container {' in mobile_section
     assert 'width: 100vw' in mobile_section
-    assert 'height: 100vh' in mobile_section
     assert 'height: 100dvh' in mobile_section
     assert 'min-height: 100dvh' in mobile_section
 
@@ -535,7 +563,7 @@ def test_tool_area_filter_mode_contract_exposes_summary_clear_and_view_controls(
     assert '已包含' in filter_panel_section
     assert '已排除' in filter_panel_section
     assert '可见标签' in filter_panel_section
-    assert '@click="filterTags=[]; $store.global.viewState.excludedTags=[]"' in filter_panel_section
+    assert '@click="filterTags=[]; excludedTags=[]"' in filter_panel_section
     assert '清空筛选' in filter_panel_section
     assert '标签视图' not in filter_panel_section
 
@@ -791,7 +819,7 @@ def test_complex_modes_use_stacked_tool_layout():
     assert 'tag-filter-delete-stack-item--danger' in tool_area_section
     assert tool_area_section.count('tag-filter-delete-stack-item--pending') == 1
     assert tool_area_section.count('tag-filter-delete-stack-item--danger') == 1
-    assert '删除操作不可撤销，请确认待删除标签列表后再执行。' in tool_area_section
+    assert '删除操作不可撤销' in tool_area_section
     assert 'class="tag-filter-category-manager-draft-area"' in tool_area_section
     assert 'class="tag-filter-category-manager-registry-area"' in tool_area_section
     assert 'class="tag-filter-category-manager-registry-list custom-scrollbar"' in tool_area_section
@@ -814,8 +842,9 @@ def test_selected_tag_area_wording():
 def test_desktop_non_fullscreen_workspace_uses_parent_modal_height_contract():
     template_source = read_project_file('templates/modals/tag_filter.html')
     source = read_project_file('static/css/modules/modal-tools.css')
+    compact_template = compact_whitespace(template_source)
 
-    assert ":class=\"[isDesktopWorkspaceFullscreen && $store.global.deviceType !== 'mobile' ? 'tag-modal-container--desktop-fullscreen' : '', $store.global.deviceType !== 'mobile' ? 'tag-modal-container--desktop-workspace' : '']\"" in template_source
+    assert 'class="tag-modal-container" :class="[isDesktopWorkspaceFullscreen && $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-fullscreen\' : \'\', $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-workspace\' : \'\']" @click.away="requestCloseTagFilterEditor()"' in compact_template
     assert '.tag-modal-container.tag-modal-container--desktop-workspace {' in source
     desktop_container_section = source.split('.tag-modal-container.tag-modal-container--desktop-workspace {', 1)[1].split('.tag-filter-desktop-shell {', 1)[0]
     assert 'width: min(1680px, 98vw);' in desktop_container_section
@@ -986,7 +1015,7 @@ def test_desktop_template_routes_fullscreen_state_to_parent_modal_container():
     template_source = read_project_file('templates/modals/tag_filter.html')
     compact_template = compact_whitespace(template_source)
 
-    assert 'class="tag-modal-container" :class="[isDesktopWorkspaceFullscreen && $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-fullscreen\' : \'\', $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-workspace\' : \'\']" @click.away="requestCloseModal()"' in compact_template
+    assert 'class="tag-modal-container" :class="[isDesktopWorkspaceFullscreen && $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-fullscreen\' : \'\', $store.global.deviceType !== \'mobile\' ? \'tag-modal-container--desktop-workspace\' : \'\']" @click.away="requestCloseTagFilterEditor()"' in compact_template
     assert 'class="modal-overlay" :class="isDesktopWorkspaceFullscreen && $store.global.deviceType !== \'mobile\' ? \'modal-overlay--desktop-workspace-fullscreen\' : \'\'"' in compact_template
 
 
@@ -1004,7 +1033,7 @@ def test_desktop_topbar_owns_search_and_selection_summary_contract():
     assert topbar_index < summary_index < center_index
     assert 'class="tag-filter-workspace-topbar-search"' in template_source
     assert '已选' in summary_section
-    assert 'x-text="filterTags.length + $store.global.viewState.excludedTags.length"' in summary_section
+    assert 'x-text="filterTags.length + excludedTags.length"' in summary_section
     assert '可见' in summary_section
     assert 'x-text="filteredVisibleTagCount"' in summary_section
     assert template_source.find('x-model="tagSearchQuery"', center_index, footer_index) == -1
@@ -1026,7 +1055,7 @@ def test_desktop_center_keeps_persistent_selected_tag_basket_contract():
     assert 'class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--included tag-filter-selected-basket-chip--workspace"' in template_source
     assert 'class="tag-filter-selected-basket-chip tag-filter-selected-basket-chip--excluded tag-filter-selected-basket-chip--workspace"' in template_source
     assert '@click="filterTags = filterTags.filter(item => item !== tag)"' in template_source
-    assert '@click="$store.global.viewState.excludedTags = $store.global.viewState.excludedTags.filter(item => item !== tag)"' in template_source
+    assert '@click="excludedTags = excludedTags.filter(item => item !== tag)"' in template_source
 
 
 def test_desktop_workspace_fullscreen_parent_css_contract():

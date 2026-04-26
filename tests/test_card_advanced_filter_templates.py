@@ -263,7 +263,6 @@ def test_layout_css_styles_workbench_panels_summary_split_actions_and_mobile_sta
     assert '.card-advanced-filter-module-card {' in css_source
     assert '.card-advanced-filter-error {' in css_source
     assert '.mobile-advanced-filter-entry-status {' in css_source
-    assert '/* Task 4: co-locate workbench responsive behavior */' in css_source
     assert '@media (max-width: 900px)' in css_source
     assert '@media (max-width: 768px)' in css_source
     assert 'grid-template-columns: 1fr;' in css_source

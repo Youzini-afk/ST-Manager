@@ -67,13 +67,28 @@ def extract_exact_js_method_block(source, signature):
     return source[brace_start + 1:index - 1]
 
 
+def assert_contains_either(source, candidates):
+    assert any(candidate in source for candidate in candidates), (
+        f'Expected one of {candidates!r} in source block'
+    )
+
+
+def assert_matches(pattern, source):
+    assert re.search(pattern, source, re.MULTILINE | re.DOTALL), (
+        f'Missing regex contract: {pattern}'
+    )
+
+
 def test_chat_reader_semi_auto_anchor_mode_contract_is_defined_in_source():
     chat_grid_source = read_project_file('static/js/components/chatGrid.js')
     anchor_modes_block = extract_js_block(chat_grid_source, 'const READER_ANCHOR_MODES =')
     normalize_anchor_mode_block = extract_js_block(chat_grid_source, 'function normalizeReaderAnchorMode(mode)')
     anchor_status_block = extract_js_block(chat_grid_source, 'get readerAnchorStatusText()')
 
-    assert "SEMI_AUTO: 'semi_auto'" in anchor_modes_block
+    assert_contains_either(anchor_modes_block, [
+        "SEMI_AUTO: 'semi_auto'",
+        'SEMI_AUTO: "semi_auto"',
+    ])
     assert 'semi_auto' in normalize_anchor_mode_block
     assert 'READER_ANCHOR_MODES.SEMI_AUTO' in normalize_anchor_mode_block
     assert '半自动迁移' in anchor_status_block
@@ -121,15 +136,18 @@ def test_chat_reader_anchor_promotion_policy_hooks_exist_in_source():
 
 def test_chat_reader_scroll_to_floor_uses_anchor_policy_helpers_and_explicit_sources():
     chat_grid_source = read_project_file('static/js/components/chatGrid.js')
-    scroll_to_floor_block = extract_js_block(
-        chat_grid_source,
-        'async scrollToFloor(floor, persist = true, behavior = \'smooth\', anchorSource = READER_ANCHOR_SOURCES.JUMP)'
-    )
+    scroll_to_floor_block = extract_js_block(chat_grid_source, 'async scrollToFloor')
 
     assert 'shouldPromoteReaderAnchorForSource(' in scroll_to_floor_block
     assert 'shouldResetReaderWindowForAnchorTarget(' in scroll_to_floor_block
-    assert 'const shouldPromoteAnchor = shouldPromoteReaderAnchorForSource(this.readerAnchorMode, anchorSource);' in scroll_to_floor_block
-    assert 'const shouldResetWindow = shouldResetReaderWindowForAnchorTarget({' in scroll_to_floor_block
+    assert_matches(
+        r'const\s+shouldPromoteAnchor\s*=\s*shouldPromoteReaderAnchorForSource\(\s*this\.readerAnchorMode,\s*anchorSource,?\s*\)',
+        scroll_to_floor_block,
+    )
+    assert_matches(
+        r'const\s+shouldResetWindow\s*=\s*shouldResetReaderWindowForAnchorTarget\(\s*\{[\s\S]*?targetFloor\s*,[\s\S]*?windowStartFloor:\s*this\.readerWindowStartFloor\s*,[\s\S]*?windowEndFloor:\s*this\.readerWindowEndFloor\s*,[\s\S]*?totalMessages:\s*[\s\S]*?this\.readerTotalMessages[\s\S]*?\}\s*\)',
+        scroll_to_floor_block,
+    )
     assert 'if (shouldPromoteAnchor) {' in scroll_to_floor_block
     assert 'if (shouldResetWindow) {' in scroll_to_floor_block
 
@@ -140,23 +158,56 @@ def test_chat_reader_navigation_entry_points_use_approved_anchor_sources():
     set_reader_app_floor_block = extract_js_block(chat_grid_source, 'setReaderAppFloor(floor)')
     open_message_as_app_stage_block = extract_js_block(chat_grid_source, 'openMessageAsAppStage(message)')
 
-    assert "scrollToFloor(matches[0], true, 'smooth', READER_ANCHOR_SOURCES.SEARCH)" in chat_grid_source
-    assert 'scrollToFloor(this.detailSearchResults[this.detailSearchIndex], true, \'smooth\', READER_ANCHOR_SOURCES.SEARCH)' in chat_grid_source
-    assert 'scrollToFloor(floor, true, \'smooth\', READER_ANCHOR_SOURCES.BOOKMARK)' in chat_grid_source
-    assert 'scrollToFloor(floor, true, \'smooth\', READER_ANCHOR_SOURCES.JUMP)' in chat_grid_source
-    assert 'scrollToFloor(messages[0].floor, true, \'smooth\', READER_ANCHOR_SOURCES.JUMP)' in chat_grid_source
-    assert 'scrollToFloor(messages[messages.length - 1].floor, true, \'smooth\', READER_ANCHOR_SOURCES.JUMP)' in chat_grid_source
-    assert 'scrollToFloor(floor, true, \'smooth\', READER_ANCHOR_SOURCES.NAVIGATOR)' in chat_grid_source
+    assert_matches(
+        r"scrollToFloor\(\s*matches\[0\],\s*true,\s*['\"]smooth['\"],\s*READER_ANCHOR_SOURCES\.SEARCH\s*,?\s*\)",
+        chat_grid_source,
+    )
+    assert_matches(
+        r"scrollToFloor\(\s*this\.detailSearchResults\[this\.detailSearchIndex\],\s*true,\s*['\"]smooth['\"],\s*READER_ANCHOR_SOURCES\.SEARCH\s*,?\s*\)",
+        chat_grid_source,
+    )
+    assert_matches(
+        r"scrollToFloor\(\s*floor,\s*true,\s*['\"]smooth['\"],\s*READER_ANCHOR_SOURCES\.BOOKMARK\s*,?\s*\)",
+        chat_grid_source,
+    )
+    assert_matches(
+        r"scrollToFloor\(\s*floor,\s*true,\s*['\"]smooth['\"],\s*READER_ANCHOR_SOURCES\.JUMP\s*,?\s*\)",
+        chat_grid_source,
+    )
+    assert_matches(
+        r"scrollToFloor\(\s*messages\[0\]\.floor,\s*true,\s*['\"]smooth['\"],\s*READER_ANCHOR_SOURCES\.JUMP\s*,?\s*\)",
+        chat_grid_source,
+    )
+    assert_matches(
+        r"scrollToFloor\(\s*messages\[messages\.length\s*-\s*1\]\.floor,\s*true,\s*['\"]smooth['\"],\s*READER_ANCHOR_SOURCES\.JUMP\s*,?\s*\)",
+        chat_grid_source,
+    )
+    assert_matches(
+        r"scrollToFloor\(\s*floor,\s*true,\s*['\"]smooth['\"],\s*READER_ANCHOR_SOURCES\.NAVIGATOR\s*,?\s*\)",
+        chat_grid_source,
+    )
     assert 'syncReaderPageGroupForFloor(targetFloor, {' in chat_grid_source
     assert 'source: anchorSource,' in chat_grid_source
-    assert 'this.$nextTick(() => this.scrollToFloor(previousStart, false, \'auto\', READER_ANCHOR_SOURCES.NAVIGATOR));' in chat_grid_source
-    assert 'this.$nextTick(() => this.scrollToFloor(previousEnd, false, \'auto\', READER_ANCHOR_SOURCES.NAVIGATOR));' in chat_grid_source
+    assert_matches(
+        r"this\.\$nextTick\(\(\)\s*=>\s*this\.scrollToFloor\(\s*previousStart,\s*false,\s*['\"]auto['\"],\s*READER_ANCHOR_SOURCES\.NAVIGATOR\s*,?\s*\)\s*,?\s*\);",
+        chat_grid_source,
+    )
+    assert_matches(
+        r"this\.\$nextTick\(\(\)\s*=>\s*this\.scrollToFloor\(\s*previousEnd,\s*false,\s*['\"]auto['\"],\s*READER_ANCHOR_SOURCES\.NAVIGATOR\s*,?\s*\)\s*,?\s*\);",
+        chat_grid_source,
+    )
     assert '@click="jumpToBookmarkFloor(bookmark.floor)"' in reader_template
     assert '@click="jumpToNavigatorFloor(message.floor)"' in reader_template
     assert "@click=\"scrollToFloor(bookmark.floor, true, 'smooth', 'bookmark')\"" not in reader_template
     assert "@click=\"scrollToFloor(message.floor, true, 'smooth', 'jump')\"" not in reader_template
-    assert 'const shouldPromoteAnchor = shouldPromoteReaderAnchorForSource(this.readerAnchorMode, READER_ANCHOR_SOURCES.APP_STAGE);' in set_reader_app_floor_block
-    assert 'this.updateReaderAnchorFloor(targetFloor, READER_ANCHOR_SOURCES.APP_STAGE);' in set_reader_app_floor_block
+    assert_matches(
+        r'const\s+shouldPromoteAnchor\s*=\s*shouldPromoteReaderAnchorForSource\(\s*this\.readerAnchorMode,\s*READER_ANCHOR_SOURCES\.APP_STAGE,?\s*\)',
+        set_reader_app_floor_block,
+    )
+    assert_matches(
+        r'this\.updateReaderAnchorFloor\(\s*targetFloor,\s*READER_ANCHOR_SOURCES\.APP_STAGE,?\s*\);',
+        set_reader_app_floor_block,
+    )
     assert 'this.updateReaderAnchorFloor(floor, READER_ANCHOR_SOURCES.APP_STAGE);' not in open_message_as_app_stage_block
 
 
@@ -164,9 +215,15 @@ def test_chat_reader_rebuild_extracts_enhancement_metadata():
     chat_grid_source = read_project_file('static/js/components/chatGrid.js')
     rebuild_block = extract_js_block(chat_grid_source, 'rebuildActiveChatMessages(config = null)')
 
-    assert 'extractReaderEnhancementMetadata(rawMessage, parsedMessage)' in rebuild_block
+    assert_matches(
+        r'extractReaderEnhancementMetadata\(\s*rawMessage,\s*parsedMessage\s*,?\s*\)',
+        rebuild_block,
+    )
     assert '__readerEnhancementMeta' in rebuild_block
-    assert "reasoningState: 'missing'" in rebuild_block
+    assert_contains_either(rebuild_block, [
+        "reasoningState: 'missing'",
+        'reasoningState: "missing"',
+    ])
 
 
 def test_chat_reader_visible_messages_build_per_tier_enhancement_policy():
@@ -250,7 +307,7 @@ def test_render_message_display_html_passes_full_tier_policy_into_decorator():
     display_block = extract_exact_js_method_block(chat_grid_source, 'renderMessageDisplayHtml(message)')
 
     assert 'buildReaderEnhancementPolicy(' in display_block
-    assert "'full'" in display_block
+    assert_contains_either(display_block, ["'full'", '"full"'])
     assert 'render_tier' not in display_block.split('buildReaderEnhancementPolicy(', 1)[1].split(')', 1)[0]
     assert 'decorateReaderRenderedHtml(' in display_block
 
@@ -270,7 +327,7 @@ def test_render_message_simple_html_uses_simple_tier_markers_or_previews_instead
     simple_block = extract_exact_js_method_block(chat_grid_source, 'renderMessageSimpleHtml(message)')
 
     assert 'buildReaderEnhancementPolicy(' in simple_block
-    assert "'simple'" in simple_block
+    assert_contains_either(simple_block, ["'simple'", '"simple"'])
     assert 'render_tier' not in simple_block.split('buildReaderEnhancementPolicy(', 1)[1].split(')', 1)[0]
     assert 'decorateReaderRenderedHtml(' in simple_block
     assert 'previewedHtml' in simple_block
@@ -278,7 +335,10 @@ def test_render_message_simple_html_uses_simple_tier_markers_or_previews_instead
     assert 'chat-message-reasoning-summary' not in simple_block
     assert 'metaFlagsHtml' not in simple_block
     assert "renderMode: 'literal'" not in simple_block
-    assert "renderMode: this.resolveSimpleReaderRenderMode(message, source, enhancementMeta)" in simple_block
+    assert_matches(
+        r'renderMode:\s*this\.resolveSimpleReaderRenderMode\(\s*message,\s*source,\s*enhancementMeta,\s*\)',
+        simple_block,
+    )
 
 
 def test_build_reader_enhancement_policy_uses_shorter_simple_code_preview_than_full():
@@ -375,7 +435,10 @@ def test_runtime_wrapper_contract_collapses_long_inline_runtime_source_in_scroll
     assert 'wrapper.appendChild(host);' in wrap_block
     assert 'wrapper.appendChild(disclosure);' in wrap_block
     assert wrap_block.index('wrapper.appendChild(host);') < wrap_block.index('wrapper.appendChild(disclosure);')
-    assert "preNode.classList.add('chat-inline-runtime-source', 'is-collapsible');" in wrap_block
+    assert_contains_either(wrap_block, [
+        "preNode.classList.add('chat-inline-runtime-source', 'is-collapsible');",
+        'preNode.classList.add("chat-inline-runtime-source", "is-collapsible");',
+    ])
     assert 'chat-inline-runtime-wrap.is-active .chat-inline-runtime-disclosure' in css_source
     assert '.chat-inline-runtime-source.is-collapsible' in css_source
 
@@ -384,7 +447,10 @@ def test_runtime_wrapper_contract_detects_existing_wrappers_via_ancestor_lookup_
     chat_grid_source = read_project_file('static/js/components/chatGrid.js')
     wrap_block = extract_js_block(chat_grid_source, 'function wrapRuntimeHostsInContainer(container, floor)')
 
-    assert "preNode.closest('.chat-inline-runtime-wrap')" in wrap_block
+    assert_contains_either(wrap_block, [
+        "preNode.closest('.chat-inline-runtime-wrap')",
+        'preNode.closest(".chat-inline-runtime-wrap")',
+    ])
     assert "preNode.parentElement?.classList.contains('chat-inline-runtime-wrap')" not in wrap_block
 
 
@@ -400,7 +466,10 @@ def test_deferred_runtime_placeholder_contract_keeps_runtime_host_reserved_for_r
     assert 'chat-inline-runtime-placeholder-chip' in placeholder_block
     assert 'host.innerHTML = buildDeferredInstancePlaceholder(message, this.readerViewSettings);' not in mount_block
     assert 'host.insertAdjacentHTML(' not in mount_block
-    assert 'setDeferredRuntimePlaceholder(host, message, this.readerViewSettings);' in mount_block
+    assert_matches(
+        r'setDeferredRuntimePlaceholder\(\s*host,\s*message,\s*this\.readerViewSettings,\s*\)',
+        mount_block,
+    )
 
 
 def test_deferred_runtime_placeholder_contract_uses_separate_indicator_outside_runtime_host_and_source_disclosure():
@@ -413,10 +482,19 @@ def test_deferred_runtime_placeholder_contract_uses_separate_indicator_outside_r
     assert 'wrapper.appendChild(placeholder);' in wrap_block
     assert wrap_block.index('wrapper.appendChild(host);') < wrap_block.index('wrapper.appendChild(placeholder);')
     assert wrap_block.index('wrapper.appendChild(placeholder);') < wrap_block.index('wrapper.appendChild(disclosure);')
-    assert "placeholder.className = 'chat-inline-runtime-placeholder';" in wrap_block
-    assert 'placeholderHost.innerHTML = buildDeferredInstancePlaceholder(message, viewSettings);' in placeholder_mount_block
+    assert_contains_either(wrap_block, [
+        "placeholder.className = 'chat-inline-runtime-placeholder';",
+        'placeholder.className = "chat-inline-runtime-placeholder";',
+    ])
+    assert_matches(
+        r'placeholderHost\.innerHTML\s*=\s*buildDeferredInstancePlaceholder\(\s*message,\s*viewSettings,?\s*\);',
+        placeholder_mount_block,
+    )
     assert 'host.innerHTML = ' not in placeholder_mount_block
-    assert 'placeholderHost.innerHTML = \'\';' in clear_placeholder_block
+    assert_contains_either(clear_placeholder_block, [
+        "placeholderHost.innerHTML = '';",
+        'placeholderHost.innerHTML = "";',
+    ])
 
 
 def test_active_runtime_contract_hides_source_disclosure_but_keeps_runtime_host_visible():
@@ -424,7 +502,10 @@ def test_active_runtime_contract_hides_source_disclosure_but_keeps_runtime_host_
     css_source = read_project_file('static/css/modules/view-chats.css')
     active_block = extract_js_block(chat_grid_source, 'function setRuntimeWrapperActive(host, active)')
 
-    assert "wrapper.classList.toggle('is-active', Boolean(active));" in active_block
+    assert_contains_either(active_block, [
+        "wrapper.classList.toggle('is-active', Boolean(active));",
+        'wrapper.classList.toggle("is-active", Boolean(active));',
+    ])
     assert '.chat-inline-runtime-wrap.is-active .chat-inline-runtime-disclosure' in css_source
     assert '.chat-inline-runtime-wrap.is-active > .chat-inline-runtime-host' not in css_source
     assert '.chat-inline-runtime-wrap.is-active > .chat-inline-runtime-source' not in css_source
@@ -435,12 +516,24 @@ def test_simple_tier_render_contract_uses_plain_text_path_for_normal_messages_an
     render_mode_block = extract_js_block(chat_grid_source, 'resolveSimpleReaderRenderMode(message, source, enhancementMeta)')
     simple_block = extract_exact_js_method_block(chat_grid_source, 'renderMessageSimpleHtml(message)')
 
-    assert 'resolveSimpleReaderRenderMode(message, source, enhancementMeta)' in simple_block
+    assert_matches(
+        r'resolveSimpleReaderRenderMode\(\s*message,\s*source,\s*enhancementMeta\s*,?\s*\)',
+        simple_block,
+    )
     assert 'enhancementMeta?.hasLongCode' in render_mode_block
     assert 'source.includes("```")' in render_mode_block
-    assert "return 'literal';" in render_mode_block
-    assert "return 'plain';" in render_mode_block
-    assert 'decorateReaderRenderedHtml(baseHtml, enhancementMeta, enhancementPolicy' in simple_block
+    assert_contains_either(render_mode_block, [
+        "return 'literal';",
+        'return "literal";',
+    ])
+    assert_contains_either(render_mode_block, [
+        "return 'plain';",
+        'return "plain";',
+    ])
+    assert_matches(
+        r'decorateReaderRenderedHtml\(\s*baseHtml,\s*enhancementMeta,\s*enhancementPolicy',
+        simple_block,
+    )
     assert 'autoCollapseLongCode: this.readerViewSettings?.autoCollapseLongCode' in simple_block
 
 

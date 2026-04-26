@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import re
 import subprocess
 
 
@@ -40,6 +41,10 @@ def test_chat_grid_uses_floor_variable_snapshot_pipeline_for_mvu_context():
     assert 'createFloorVariableSnapshotResolver' in source
     assert 'getActiveMessageVariables' in source
     assert 'resolveReaderFloorVariables(' in source
-    assert 'const floorVariables = resolveReaderFloorVariables(rawMessages, floor, chat, activeCardDetail);' in source
+    assert re.search(
+        r'const\s+floorVariables\s*=\s*resolveReaderFloorVariables\(\s*rawMessages,\s*floor,\s*chat,\s*activeCardDetail,\s*\);',
+        source,
+        re.MULTILINE | re.DOTALL,
+    )
     assert 'merged_variables: cloneValue(floorVariables),' in source
     assert 'active_variables: activeVariables,' in source
