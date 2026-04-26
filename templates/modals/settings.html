@@ -1337,6 +1337,39 @@
               </button>
             </div>
 
+            <!-- 用户 DB 数据 -->
+            <div
+              class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between"
+            >
+              <div>
+                <div class="font-bold mb-1">🗄️ 用户 DB 数据</div>
+                <div class="text-xs text-[var(--text-dim)] mb-3">
+                  备份或恢复仅保存在用户数据库中的状态，不影响 ui_data.json。
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button
+                  @click="exportUserDbData()"
+                  class="btn-secondary flex-1 py-2"
+                >
+                  导出备份
+                </button>
+                <button
+                  @click="triggerUserDbImport()"
+                  class="btn-secondary flex-1 py-2"
+                >
+                  导入恢复
+                </button>
+              </div>
+              <input
+                x-ref="userDbImportInput"
+                type="file"
+                class="hidden"
+                accept=".json,application/json"
+                @change="handleUserDbImport($event)"
+              />
+            </div>
+
             <!-- 回收站 -->
             <div
               class="p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)] flex flex-col justify-between"

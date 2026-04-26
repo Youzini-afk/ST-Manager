@@ -225,6 +225,21 @@ export async function smartAutoSnapshot(payload) {
   return res.json();
 }
 
+export async function exportUserDbBackup() {
+  const res = await fetch("/api/user-db-backup/export", {
+    method: "POST",
+  });
+  return res.json();
+}
+
+export async function importUserDbBackup(formData) {
+  const res = await fetch("/api/user-db-backup/import", {
+    method: "POST",
+    body: formData,
+  });
+  return res.json();
+}
+
 // 读取文件内容 (用于 Diff)
 export async function readFileContent(payload) {
   // payload: { path }

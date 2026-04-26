@@ -35,6 +35,7 @@ from core.services.index_service import get_index_status, request_index_rebuild
 from core.services.shared_wallpaper_service import SharedWallpaperService
 from core.services.st_client import refresh_st_client
 from core.services.st_auth import STAuthError, build_st_http_client
+from core.services.user_db_backup_service import UserDbBackupService
 
 # === 工具函数 ===
 from core.utils.filesystem import (
@@ -49,6 +50,7 @@ bp = Blueprint('system', __name__)
 logger = logging.getLogger(__name__)
 
 _shared_wallpaper_service = None
+_user_db_backup_service = None
 
 
 def get_shared_wallpaper_service():
@@ -56,6 +58,13 @@ def get_shared_wallpaper_service():
     if _shared_wallpaper_service is None:
         _shared_wallpaper_service = SharedWallpaperService()
     return _shared_wallpaper_service
+
+
+def get_user_db_backup_service():
+    global _user_db_backup_service
+    if _user_db_backup_service is None:
+        _user_db_backup_service = UserDbBackupService()
+    return _user_db_backup_service
 
 
 def _serialize_shared_wallpaper_items(items):
@@ -353,6 +362,43 @@ def api_import_shared_wallpaper():
         return jsonify({'success': True, 'item': item})
     except ValueError as exc:
         return jsonify({'success': False, 'msg': str(exc)}), 400
+    finally:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+
+
+@bp.route('/api/user-db-backup/export', methods=['POST'])
+def api_export_user_db_backup():
+    try:
+        result = get_user_db_backup_service().export_backup()
+        return jsonify({'success': True, 'msg': '已备份用户 DB 数据', **result})
+    except ValueError as exc:
+        return jsonify({'success': False, 'msg': str(exc)}), 400
+    except Exception as exc:
+        logger.exception('导出用户 DB 备份失败: %s', exc)
+        return jsonify({'success': False, 'msg': str(exc)}), 500
+
+
+@bp.route('/api/user-db-backup/import', methods=['POST'])
+def api_import_user_db_backup():
+    upload = request.files.get('file')
+    if not upload or not (upload.filename or '').lower().endswith('.json'):
+        return jsonify({'success': False, 'msg': '请上传 JSON 备份文件'}), 400
+
+    temp_path = _save_upload_to_temp(upload)
+    try:
+        result = get_user_db_backup_service().import_backup(
+            temp_path,
+            source_name=upload.filename,
+        )
+        return jsonify({'success': True, 'msg': '用户 DB 数据导入完成', **result})
+    except ValueError as exc:
+        return jsonify({'success': False, 'msg': str(exc)}), 400
+    except Exception as exc:
+        logger.exception('导入用户 DB 备份失败: %s', exc)
+        return jsonify({'success': False, 'msg': str(exc)}), 500
     finally:
         try:
             os.remove(temp_path)

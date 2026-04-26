@@ -98,6 +98,21 @@ def run_settings_modal_runtime_check(script_body):
         const emptyTrash = async () => ({ success: true });
         const performSystemAction = async () => ({ success: true });
         const triggerScan = async () => ({ success: true });
+        const exportUserDbBackup = (...args) => {
+          const fn = globalThis.__exportUserDbBackupStub;
+          return typeof fn === 'function' ? fn(...args) : Promise.resolve({ success: true, file_name: 'user-db-backup.json' });
+        };
+        const importUserDbBackup = (...args) => {
+          const fn = globalThis.__importUserDbBackupStub;
+          return typeof fn === 'function' ? fn(...args) : Promise.resolve({
+            success: true,
+            stats: {
+              favorites: { imported: 0 },
+              wi_clipboard: { imported: 0 },
+              wi_entry_history: { imported: 0 },
+            },
+          });
+        };
         const updateCssVariable = () => {};
         const applyFontDom = () => {};
         globalThis.alert = () => {};
@@ -241,6 +256,17 @@ def test_settings_template_exposes_shared_wallpaper_picker_ui():
     assert "x-text=\"item.source_type || 'imported'\"" in source
 
 
+def test_settings_template_exposes_user_db_backup_controls():
+    source = read_project_file('templates/modals/settings.html')
+
+    assert '用户 DB 数据' in source
+    assert '@click="exportUserDbData()"' in source
+    assert '@click="triggerUserDbImport()"' in source
+    assert 'x-ref="userDbImportInput"' in source
+    assert 'accept=".json,application/json"' in source
+    assert '@change="handleUserDbImport($event)"' in source
+
+
 def test_resource_api_exposes_shared_wallpaper_import_and_select_helpers():
     source = read_project_file('static/js/api/resource.js')
 
@@ -250,6 +276,15 @@ def test_resource_api_exposes_shared_wallpaper_import_and_select_helpers():
     assert 'export async function selectSharedWallpaper(payload)' in source
     assert "fetch('/api/shared-wallpapers/select'" in source
     assert "selection_target: payload.selection_target || 'manager'" in source
+
+
+def test_system_api_exposes_user_db_backup_helpers():
+    source = read_project_file('static/js/api/system.js')
+
+    assert 'export async function exportUserDbBackup()' in source
+    assert 'fetch("/api/user-db-backup/export", {' in source
+    assert 'export async function importUserDbBackup(formData)' in source
+    assert 'fetch("/api/user-db-backup/import", {' in source
 
 
 def test_resolve_manager_background_url_prefers_selected_shared_wallpaper():
@@ -387,6 +422,104 @@ def test_settings_modal_upload_flow_clears_manager_wallpaper_selection():
         }
         if (button.innerText !== 'Upload') {
           throw new Error(`expected button text restore, got: ${button.innerText}`);
+        }
+        """
+    )
+
+
+def test_settings_modal_export_user_db_data_alerts_success_with_filename():
+    run_settings_modal_runtime_check(
+        """
+        const alerts = [];
+        globalThis.alert = (message) => alerts.push(message);
+        globalThis.__exportUserDbBackupStub = async () => ({
+          success: true,
+          file_name: 'user-db-backup-20260426.json',
+        });
+
+        await component.exportUserDbData();
+
+        if (alerts.length !== 1) {
+          throw new Error(`expected one alert, got: ${JSON.stringify(alerts)}`);
+        }
+        if (!String(alerts[0]).includes('user-db-backup-20260426.json')) {
+          throw new Error(`expected success alert with filename, got: ${alerts[0]}`);
+        }
+        """
+    )
+
+
+def test_settings_modal_user_db_import_triggers_upload_resets_input_and_alerts_summary():
+    run_settings_modal_runtime_check(
+        """
+        const alerts = [];
+        const confirms = [];
+        const importCalls = [];
+        globalThis.alert = (message) => alerts.push(message);
+        globalThis.confirm = (message) => {
+          confirms.push(message);
+          return true;
+        };
+        globalThis.__importUserDbBackupStub = async (formData) => {
+          importCalls.push(formData.entries);
+          return {
+            success: true,
+            stats: {
+              favorites: { imported: 2 },
+              wi_clipboard: { imported: 1 },
+              wi_entry_history: { imported: 3 },
+            },
+          };
+        };
+
+        let clickCount = 0;
+        component.$refs = {
+          userDbImportInput: {
+            click() {
+              clickCount += 1;
+            },
+          },
+        };
+
+        component.triggerUserDbImport();
+
+        if (clickCount !== 1) {
+          throw new Error(`expected triggerUserDbImport() to click once, got: ${clickCount}`);
+        }
+
+        const file = { name: 'user-db-backup.json' };
+        const event = {
+          target: {
+            files: [file],
+            value: 'filled',
+          },
+        };
+
+        await component.handleUserDbImport(event);
+
+        if (confirms.length !== 1 || !String(confirms[0]).includes('ui_data.json')) {
+          throw new Error(`expected confirm warning about ui_data.json, got: ${JSON.stringify(confirms)}`);
+        }
+        if (importCalls.length !== 1) {
+          throw new Error(`expected one import call, got: ${JSON.stringify(importCalls)}`);
+        }
+        if (!importCalls[0].some(([key, value]) => key === 'file' && value === file)) {
+          throw new Error(`expected FormData file append, got: ${JSON.stringify(importCalls[0])}`);
+        }
+        if (event.target.value !== '') {
+          throw new Error('expected import input reset after upload');
+        }
+        if (alerts.length !== 1) {
+          throw new Error(`expected one import success alert, got: ${JSON.stringify(alerts)}`);
+        }
+        if (!String(alerts[0]).includes('收藏: 导入 2')) {
+          throw new Error(`expected favorites import summary in alert, got: ${alerts[0]}`);
+        }
+        if (!String(alerts[0]).includes('剪贴板: 导入 1')) {
+          throw new Error(`expected clipboard import summary in alert, got: ${alerts[0]}`);
+        }
+        if (!String(alerts[0]).includes('历史记录: 导入 3')) {
+          throw new Error(`expected history import summary in alert, got: ${alerts[0]}`);
         }
         """
     )

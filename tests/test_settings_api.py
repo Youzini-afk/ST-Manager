@@ -70,6 +70,19 @@ class FakeSharedWallpaperService:
         }
 
 
+class FakeUserDbBackupService:
+    def __init__(self):
+        self.calls = []
+
+    def export_backup(self):
+        self.calls.append(('export_backup',))
+        return {'backup_path': 'data/backups/user-db.json'}
+
+    def import_backup(self, source_path, source_name=''):
+        self.calls.append(('import_backup', source_path, source_name))
+        return {'imported': True, 'source_name': source_name}
+
+
 def test_build_default_config_includes_profile_specific_preset_directories():
     cfg = build_default_config()
 
@@ -357,3 +370,59 @@ def test_select_shared_wallpaper_endpoint_delegates_to_service(monkeypatch):
     assert payload['wallpaper_id'] == 'builtin:space/stars.png'
     assert payload['selection_target'] == 'manager'
     assert fake_service.calls == [('select_wallpaper', 'builtin:space/stars.png', 'manager')]
+
+
+def test_user_db_backup_export_endpoint_delegates_to_service(monkeypatch):
+    fake_service = FakeUserDbBackupService()
+    monkeypatch.setattr(system_api, 'get_user_db_backup_service', lambda: fake_service, raising=False)
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/user-db-backup/export')
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload == {
+        'success': True,
+        'msg': '已备份用户 DB 数据',
+        'backup_path': 'data/backups/user-db.json',
+    }
+    assert fake_service.calls == [('export_backup',)]
+
+
+def test_user_db_backup_import_endpoint_rejects_missing_json_file(monkeypatch):
+    fake_service = FakeUserDbBackupService()
+    monkeypatch.setattr(system_api, 'get_user_db_backup_service', lambda: fake_service, raising=False)
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/user-db-backup/import', data={}, content_type='multipart/form-data')
+    payload = res.get_json()
+
+    assert res.status_code == 400
+    assert payload == {'success': False, 'msg': '请上传 JSON 备份文件'}
+    assert fake_service.calls == []
+
+
+def test_user_db_backup_import_endpoint_delegates_to_service_with_original_filename(monkeypatch):
+    fake_service = FakeUserDbBackupService()
+    monkeypatch.setattr(system_api, 'get_user_db_backup_service', lambda: fake_service, raising=False)
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/user-db-backup/import',
+        data={
+            'file': (io.BytesIO(b'{"schema_version": 1}'), 'user-backup.json'),
+        },
+        content_type='multipart/form-data',
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload == {
+        'success': True,
+        'msg': '用户 DB 数据导入完成',
+        'imported': True,
+        'source_name': 'user-backup.json',
+    }
+    assert fake_service.calls
+    assert fake_service.calls[0][0] == 'import_backup'
+    assert fake_service.calls[0][2] == 'user-backup.json'

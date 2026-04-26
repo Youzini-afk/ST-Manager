@@ -9,6 +9,8 @@ import {
   emptyTrash,
   performSystemAction,
   triggerScan,
+  exportUserDbBackup,
+  importUserDbBackup,
 } from "../api/system.js";
 import { updateCssVariable, applyFont as applyFontDom } from "../utils/dom.js";
 import sharedWallpaperPicker from "./sharedWallpaperPicker.js";
@@ -243,6 +245,61 @@ export default function settingsModal() {
         if (res.success) alert(res.msg);
         else alert("清空失败: " + res.msg);
       });
+    },
+
+    async exportUserDbData() {
+      try {
+        const res = await exportUserDbBackup();
+        if (!res.success) {
+          alert("导出失败: " + (res.msg || "unknown"));
+          return;
+        }
+        alert("导出成功: " + (res.file_name || "unknown"));
+      } catch (err) {
+        alert("导出失败: " + (err.message || err));
+      }
+    },
+
+    triggerUserDbImport() {
+      this.$refs.userDbImportInput?.click();
+    },
+
+    async handleUserDbImport(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        const confirmed = confirm(
+          "确定要导入该备份吗？\n这会恢复仅存储在用户 DB 中的状态（如收藏、剪贴板、历史记录），不会影响 ui_data.json。",
+        );
+        if (!confirmed) return;
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await importUserDbBackup(formData);
+        if (!res.success) {
+          alert("导入失败: " + (res.msg || "unknown"));
+          return;
+        }
+
+        const stats = res.stats || {};
+        const favorites = stats.favorites?.imported || 0;
+        const clipboard = stats.wi_clipboard?.imported || 0;
+        const history = stats.wi_entry_history?.imported || 0;
+        alert(
+          [
+            "导入成功",
+            `收藏: 导入 ${favorites}`,
+            `剪贴板: 导入 ${clipboard}`,
+            `历史记录: 导入 ${history}`,
+          ].join("\n"),
+        );
+      } catch (err) {
+        alert("导入失败: " + (err.message || err));
+      } finally {
+        e.target.value = "";
+      }
     },
 
     // === SillyTavern 同步功能 ===
