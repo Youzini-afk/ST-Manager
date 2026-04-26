@@ -99,6 +99,10 @@
   justify-content: space-between;
 }
 
+.beautify-toolbar-actions {
+  justify-content: center;
+}
+
 .beautify-workspace-switcher {
   padding: 0.2rem;
   border: 1px solid var(--border-light);

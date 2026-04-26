@@ -75,6 +75,26 @@ def test_sidebar_template_adds_beautify_workspace_switcher_and_screenshot_import
     assert ':disabled="!selectedPackageId"' in template or ":disabled='!selectedPackageId'" in template
 
 
+def test_beautify_toolbar_actions_center_button_group_on_desktop_and_keep_mobile_stack():
+    css = read_project_file('static/css/modules/view-beautify.css')
+
+    desktop_block = extract_css_block(css, r'\.beautify-toolbar-actions')
+    assert_has_css_declaration(desktop_block, 'justify-content', 'center')
+
+    mobile_media_match = re.search(
+        r'@media \(max-width: 900px\)\s*\{(?P<body>[\s\S]*?)\n\}',
+        css,
+    )
+    assert mobile_media_match, 'Expected beautify mobile media query block'
+
+    mobile_block = extract_css_block_for_selector(
+        mobile_media_match.group('body'),
+        '.beautify-toolbar-actions',
+    )
+    assert_has_css_declaration(mobile_block, 'flex-direction', 'column')
+    assert_has_css_declaration(mobile_block, 'align-items', 'stretch')
+
+
 def test_index_template_includes_dedicated_beautify_grid_view():
     template = read_project_file('templates/index.html')
     assert '{% include "components/grid_beautify.html" %}' in template
