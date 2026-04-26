@@ -257,6 +257,55 @@ export default function beautifyGrid() {
       this.$store.global.sharedWallpapers = current;
     },
 
+    prunePackageSharedWallpapersFromStore(packageId) {
+      const resolvedPackageId = String(packageId || "").trim();
+      if (!resolvedPackageId) return;
+
+      const globalStore = this.$store.global;
+      const current = Array.isArray(globalStore.sharedWallpapers)
+        ? globalStore.sharedWallpapers
+        : [];
+      const removedIds = current
+        .filter(
+          (item) =>
+            item?.source_type === "package_embedded" &&
+            String(item?.origin_package_id || "").trim() === resolvedPackageId,
+        )
+        .map((item) => item.id)
+        .filter(Boolean);
+      if (!removedIds.length) return;
+
+      globalStore.sharedWallpapers = current.filter(
+        (item) => !removedIds.includes(item?.id),
+      );
+
+      if (
+        globalStore.settingsForm &&
+        removedIds.includes(globalStore.settingsForm.manager_wallpaper_id)
+      ) {
+        globalStore.settingsForm.manager_wallpaper_id = "";
+        if (
+          typeof globalStore.updateBackgroundImage === "function" &&
+          typeof globalStore.resolveManagerBackgroundUrl === "function"
+        ) {
+          globalStore.updateBackgroundImage(
+            globalStore.resolveManagerBackgroundUrl(),
+          );
+        }
+      }
+
+      if (
+        globalStore.beautifyGlobalSettings &&
+        removedIds.includes(globalStore.beautifyGlobalSettings.preview_wallpaper_id)
+      ) {
+        globalStore.beautifyGlobalSettings = {
+          ...globalStore.beautifyGlobalSettings,
+          preview_wallpaper_id: "",
+          wallpaper: null,
+        };
+      }
+    },
+
     init() {
       this.$watch("$store.global.currentMode", (mode) => {
         if (mode === "beautify") {
@@ -743,6 +792,7 @@ export default function beautifyGrid() {
         if (!res?.success) {
           throw new Error(res?.error || "导入壁纸失败");
         }
+        this.mergeSharedWallpaperIntoStore(res.wallpaper || null);
         await this.selectPackage(this.selectedPackageId, {
           preserveSelection: true,
         });
@@ -1013,12 +1063,14 @@ export default function beautifyGrid() {
     async removeCurrentPackage() {
       if (!this.selectedPackageId) return;
       if (!confirm("确定删除当前美化包吗？库内主题和壁纸会一起移除。")) return;
+      const removedPackageId = this.selectedPackageId;
       this.isActionLoading = true;
       try {
-        const res = await deleteBeautifyPackage(this.selectedPackageId);
+        const res = await deleteBeautifyPackage(removedPackageId);
         if (!res?.success) {
           throw new Error(res?.error || "删除失败");
         }
+        this.prunePackageSharedWallpapersFromStore(removedPackageId);
         if (this.mobileFullscreenOpen) {
           this.closeMobilePreviewAndReset();
         } else {

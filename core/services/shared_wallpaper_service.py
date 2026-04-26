@@ -150,6 +150,9 @@ class SharedWallpaperService:
         library = self.load_library()
         manager_wallpaper_id = library.get('manager_wallpaper_id', '')
         manager_item = (library.get('items') or {}).get(manager_wallpaper_id) or {}
+        if manager_item:
+            return library
+
         if manager_item.get('source_type') == 'imported':
             manager_file = os.path.join(self.project_root, str(manager_item.get('file') or '').replace('/', os.sep))
             if self._files_match(manager_file, legacy_path):

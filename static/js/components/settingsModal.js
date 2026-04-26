@@ -162,6 +162,8 @@ export default function settingsModal() {
     },
 
     applySharedWallpaperSelection(detail = {}) {
+      if (String(detail.selectionTarget || "").trim() !== "manager") return;
+
       const wallpaper = detail.wallpaper || null;
       if (!wallpaper?.id) return;
 

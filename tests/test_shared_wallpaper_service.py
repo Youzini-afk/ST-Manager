@@ -431,6 +431,41 @@ def test_migrate_legacy_backgrounds_reads_nested_settings_bg_url_and_preserves_p
     assert payload['items'][payload['manager_wallpaper_id']]['filename'] == 'legacy-bg.png'
 
 
+def test_migrate_legacy_backgrounds_does_not_override_existing_manager_selection(tmp_path):
+    legacy_path = tmp_path / 'data' / 'assets' / 'backgrounds' / 'legacy-bg.png'
+    _write_image(legacy_path, size=(1024, 768))
+
+    builtin_path = tmp_path / 'static' / 'assets' / 'wallpapers' / 'builtin' / 'space' / 'stars.png'
+    _write_image(builtin_path, size=(640, 360))
+
+    ui_data = {
+        'bg_url': '/assets/backgrounds/legacy-bg.png',
+        '_shared_wallpaper_library_v1': {
+            'items': {},
+            'manager_wallpaper_id': 'builtin:space/stars.png',
+            'preview_wallpaper_id': '',
+        },
+    }
+
+    service = SharedWallpaperService(
+        project_root=str(tmp_path),
+        ui_data_loader=lambda: ui_data,
+        ui_data_saver=lambda data: True,
+    )
+
+    migrated = service.migrate_legacy_backgrounds(ui_data)
+    payload = service.load_library()
+
+    assert migrated['manager_wallpaper_id'] == 'builtin:space/stars.png'
+    assert payload['manager_wallpaper_id'] == 'builtin:space/stars.png'
+    imported_items = [
+        item
+        for item in payload['items'].values()
+        if item['source_type'] == 'imported' and item['filename'] == 'legacy-bg.png'
+    ]
+    assert imported_items == []
+
+
 def test_migrate_legacy_backgrounds_is_idempotent_for_same_legacy_file(tmp_path):
     legacy_path = tmp_path / 'data' / 'assets' / 'backgrounds' / 'legacy-bg.png'
     _write_image(legacy_path, size=(1024, 768))

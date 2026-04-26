@@ -150,8 +150,8 @@ def run_shared_wallpaper_picker_runtime_check(script_body):
         const importSharedWallpaper = (...args) => {
           const fn = globalThis.__importSharedWallpaperStub;
           const formData = args[0];
-          const selectionTarget = args[1] || 'manager';
-          if (formData && typeof formData.append === 'function') {
+          const selectionTarget = args.length > 1 ? args[1] : 'manager';
+          if (selectionTarget && formData && typeof formData.append === 'function') {
             formData.append('selection_target', selectionTarget);
           }
           return typeof fn === 'function' ? fn(formData, selectionTarget) : Promise.resolve({ success: true, item: null, items: [] });
@@ -232,6 +232,8 @@ def test_settings_template_exposes_shared_wallpaper_picker_ui():
 
     assert 'x-data="sharedWallpaperPicker({' in source
     assert "sourceFilter: 'all'" in source
+    assert "selectionTarget: 'manager'" in source
+    assert 'persistSelection: false' in source
     assert '@shared-wallpaper-selected.window="applySharedWallpaperSelection($event.detail)"' in source
     assert "setSourceFilter('builtin')" in source
     assert "setSourceFilter('imported')" in source
@@ -244,12 +246,14 @@ def test_settings_template_exposes_shared_wallpaper_picker_ui():
 def test_resource_api_exposes_shared_wallpaper_import_and_select_helpers():
     source = read_project_file('static/js/api/resource.js')
 
-    assert "export async function importSharedWallpaper(formData, selectionTarget = 'manager')" in source
-    assert "fetch('/api/shared-wallpapers/import'" in source
-    assert "formData.append('selection_target', selectionTarget)" in source
+    assert 'export async function importSharedWallpaper(' in source
+    assert 'selectionTarget = "manager"' in source or "selectionTarget = 'manager'" in source
+    assert 'fetch("/api/shared-wallpapers/import"' in source or "fetch('/api/shared-wallpapers/import'" in source
+    assert 'if (selectionTarget)' in source
+    assert 'formData.append("selection_target", selectionTarget)' in source or "formData.append('selection_target', selectionTarget)" in source
     assert 'export async function selectSharedWallpaper(payload)' in source
-    assert "fetch('/api/shared-wallpapers/select'" in source
-    assert "selection_target: payload.selection_target || 'manager'" in source
+    assert 'fetch("/api/shared-wallpapers/select"' in source or "fetch('/api/shared-wallpapers/select'" in source
+    assert 'selection_target: payload.selection_target || "manager"' in source or "selection_target: payload.selection_target || 'manager'" in source
 
 
 def test_resolve_manager_background_url_prefers_selected_shared_wallpaper():
@@ -451,19 +455,12 @@ def test_shared_wallpaper_picker_selection_updates_manager_wallpaper_context():
             this.detail = options.detail;
           }
         };
-        globalThis.__selectSharedWallpaperStub = async (payload) => {
-          selectCalls.push(payload);
-          return ({
-          success: true,
-          wallpaper: {
-            id: payload.wallpaper_id,
-            file: 'static/assets/wallpapers/builtin/space/stars.png',
-            source_type: 'builtin',
-          },
-          });
-        };
+        const managerComponent = module.default({
+          selectionTarget: 'manager',
+          persistSelection: false,
+        });
 
-        component.$store = {
+        managerComponent.$store = {
           global: {
             settingsForm: {
               manager_wallpaper_id: '',
@@ -480,22 +477,26 @@ def test_shared_wallpaper_picker_selection_updates_manager_wallpaper_context():
           },
         };
 
-        await component.selectWallpaper({ id: 'builtin:space/stars.png' });
+        await managerComponent.selectWallpaper({
+          id: 'builtin:space/stars.png',
+          file: 'static/assets/wallpapers/builtin/space/stars.png',
+          source_type: 'builtin',
+        });
 
-        if (selectCalls.length !== 1 || selectCalls[0].selection_target !== 'manager') {
-          throw new Error(`unexpected select payloads: ${JSON.stringify(selectCalls)}`);
+        if (selectCalls.length !== 0) {
+          throw new Error(`manager draft selection should not call select api: ${JSON.stringify(selectCalls)}`);
         }
 
-        if (component.$store.global.settingsForm.manager_wallpaper_id !== 'builtin:space/stars.png') {
-          throw new Error(`unexpected selected wallpaper id: ${component.$store.global.settingsForm.manager_wallpaper_id}`);
+        if (managerComponent.$store.global.settingsForm.manager_wallpaper_id !== 'builtin:space/stars.png') {
+          throw new Error(`unexpected selected wallpaper id: ${managerComponent.$store.global.settingsForm.manager_wallpaper_id}`);
         }
-        if (component.$store.global.settingsForm.bg_url !== '') {
-          throw new Error(`expected bg_url cleared, got: ${component.$store.global.settingsForm.bg_url}`);
+        if (managerComponent.$store.global.settingsForm.bg_url !== '') {
+          throw new Error(`expected bg_url cleared, got: ${managerComponent.$store.global.settingsForm.bg_url}`);
         }
         if (globalThis.__selectedBackgroundUrl !== '/static/assets/wallpapers/builtin/space/stars.png') {
           throw new Error(`unexpected background url: ${globalThis.__selectedBackgroundUrl}`);
         }
-        if (!dispatched.some((event) => event.type === 'shared-wallpaper-selected' && event.detail?.wallpaper?.id === 'builtin:space/stars.png')) {
+        if (!dispatched.some((event) => event.type === 'shared-wallpaper-selected' && event.detail?.wallpaper?.id === 'builtin:space/stars.png' && event.detail?.selectionTarget === 'manager')) {
           throw new Error(`expected shared-wallpaper-selected event, got: ${JSON.stringify(dispatched)}`);
         }
         """
@@ -530,7 +531,12 @@ def test_shared_wallpaper_picker_import_merges_single_item_into_existing_list():
           };
         };
 
-        component.$store = {
+        const managerComponent = module.default({
+          selectionTarget: 'manager',
+          persistSelection: false,
+        });
+
+        managerComponent.$store = {
           global: {
             settingsForm: {
               manager_wallpaper_id: '',
@@ -553,7 +559,7 @@ def test_shared_wallpaper_picker_import_merges_single_item_into_existing_list():
           },
         };
 
-        await component.handleImport({
+        await managerComponent.handleImport({
           target: {
             files: [{ name: 'new-wallpaper.png' }],
             value: 'filled',
@@ -563,27 +569,27 @@ def test_shared_wallpaper_picker_import_merges_single_item_into_existing_list():
         if (importCalls.length !== 1) {
           throw new Error(`expected one import call, got: ${JSON.stringify(importCalls)}`);
         }
-        if (importCalls[0].selectionTarget !== 'manager') {
-          throw new Error(`expected manager selectionTarget, got: ${JSON.stringify(importCalls)}`);
+        if (importCalls[0].selectionTarget !== '') {
+          throw new Error(`manager draft import should omit immediate selection target, got: ${JSON.stringify(importCalls)}`);
         }
         const entries = importCalls[0].entries;
-        if (!entries.some(([key, value]) => key === 'selection_target' && value === 'manager')) {
-          throw new Error(`expected selection_target append, got: ${JSON.stringify(entries)}`);
+        if (entries.some(([key]) => key === 'selection_target')) {
+          throw new Error(`draft manager import should not append selection_target, got: ${JSON.stringify(entries)}`);
         }
-        const ids = component.$store.global.sharedWallpapers.map((item) => item.id).sort();
+        const ids = managerComponent.$store.global.sharedWallpapers.map((item) => item.id).sort();
         if (ids.length !== 2 || ids[0] !== 'builtin:space/stars.png' || ids[1] !== 'imported:new-wallpaper.png') {
           throw new Error(`unexpected merged wallpaper ids: ${JSON.stringify(ids)}`);
         }
-        if (component.$store.global.settingsForm.manager_wallpaper_id !== 'imported:new-wallpaper.png') {
-          throw new Error(`expected imported wallpaper selected immediately, got: ${component.$store.global.settingsForm.manager_wallpaper_id}`);
+        if (managerComponent.$store.global.settingsForm.manager_wallpaper_id !== 'imported:new-wallpaper.png') {
+          throw new Error(`expected imported wallpaper selected locally, got: ${managerComponent.$store.global.settingsForm.manager_wallpaper_id}`);
         }
-        if (component.$store.global.settingsForm.bg_url !== '') {
-          throw new Error(`expected bg_url cleared after import, got: ${component.$store.global.settingsForm.bg_url}`);
+        if (managerComponent.$store.global.settingsForm.bg_url !== '') {
+          throw new Error(`expected bg_url cleared after import, got: ${managerComponent.$store.global.settingsForm.bg_url}`);
         }
         if (globalThis.__importedBackgroundUrl !== '/data/library/wallpapers/imported/new-wallpaper.png') {
           throw new Error(`unexpected imported background url: ${globalThis.__importedBackgroundUrl}`);
         }
-        if (!dispatched.some((event) => event.type === 'shared-wallpaper-selected' && event.detail?.wallpaper?.id === 'imported:new-wallpaper.png')) {
+        if (!dispatched.some((event) => event.type === 'shared-wallpaper-selected' && event.detail?.wallpaper?.id === 'imported:new-wallpaper.png' && event.detail?.selectionTarget === 'manager')) {
           throw new Error(`expected import to dispatch shared-wallpaper-selected, got: ${JSON.stringify(dispatched)}`);
         }
         """
@@ -659,6 +665,7 @@ def test_settings_modal_applies_shared_wallpaper_selection_detail():
         };
 
         component.applySharedWallpaperSelection({
+          selectionTarget: 'manager',
           wallpaper: {
             id: 'builtin:space/stars.png',
             file: 'static/assets/wallpapers/builtin/space/stars.png',
@@ -674,6 +681,54 @@ def test_settings_modal_applies_shared_wallpaper_selection_detail():
         }
         if (backgroundUpdates.length !== 1 || backgroundUpdates[0] !== '/static/assets/wallpapers/builtin/space/stars.png') {
           throw new Error(`unexpected background updates: ${JSON.stringify(backgroundUpdates)}`);
+        }
+        """
+    )
+
+
+def test_settings_modal_ignores_preview_shared_wallpaper_selection_detail():
+    run_settings_modal_runtime_check(
+        """
+        component.$store = {
+          global: {
+            settingsForm: {
+              manager_wallpaper_id: '',
+              bg_url: '/legacy/background.png',
+            },
+            sharedWallpapers: [
+              {
+                id: 'builtin:space/stars.png',
+                file: 'static/assets/wallpapers/builtin/space/stars.png',
+                source: 'builtin',
+              },
+            ],
+            resolveManagerBackgroundUrl() {
+              const item = this.sharedWallpapers.find((entry) => entry.id === this.settingsForm.manager_wallpaper_id);
+              return item ? `/${item.file}` : this.settingsForm.bg_url || '';
+            },
+            updateBackgroundImage(url) {
+              backgroundUpdates.push(url);
+            },
+          },
+        };
+
+        component.applySharedWallpaperSelection({
+          selectionTarget: 'preview',
+          wallpaper: {
+            id: 'builtin:space/stars.png',
+            file: 'static/assets/wallpapers/builtin/space/stars.png',
+            source: 'builtin',
+          },
+        });
+
+        if (component.$store.global.settingsForm.manager_wallpaper_id !== '') {
+          throw new Error('preview selection detail should not set manager_wallpaper_id');
+        }
+        if (component.$store.global.settingsForm.bg_url !== '/legacy/background.png') {
+          throw new Error('preview selection detail should preserve legacy bg_url');
+        }
+        if (backgroundUpdates.length !== 0) {
+          throw new Error(`preview selection detail should not trigger background updates: ${JSON.stringify(backgroundUpdates)}`);
         }
         """
     )
@@ -699,6 +754,7 @@ def test_settings_modal_ignores_stale_shared_wallpaper_selection_detail_without_
         };
 
         component.applySharedWallpaperSelection({
+          selectionTarget: 'manager',
           wallpaper: {
             id: '',
             file: 'static/assets/wallpapers/builtin/space/stars.png',

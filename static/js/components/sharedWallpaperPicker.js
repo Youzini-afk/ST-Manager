@@ -16,6 +16,10 @@ export default function sharedWallpaperPicker(options = {}) {
   return {
     sourceFilter: options.sourceFilter || "all",
     selectionTarget: options.selectionTarget || "manager",
+    persistSelection:
+      typeof options.persistSelection === "boolean"
+        ? options.persistSelection
+        : (options.selectionTarget || "manager") === "preview",
 
     get wallpapers() {
       const items = this.$store?.global?.sharedWallpapers;
@@ -103,7 +107,10 @@ export default function sharedWallpaperPicker(options = {}) {
       ) {
         window.dispatchEvent(
           new CustomEvent("shared-wallpaper-selected", {
-            detail: { wallpaper },
+            detail: {
+              wallpaper,
+              selectionTarget: this.selectionTarget,
+            },
           }),
         );
       }
@@ -112,6 +119,15 @@ export default function sharedWallpaperPicker(options = {}) {
     async selectWallpaper(item) {
       const wallpaperId = String(item?.id || "").trim();
       if (!wallpaperId) return null;
+
+      if (!this.persistSelection) {
+        this.applySelectedWallpaper(item);
+        return {
+          success: true,
+          wallpaper: item,
+          selection_target: this.selectionTarget,
+        };
+      }
 
       const res = await selectSharedWallpaper({
         wallpaper_id: wallpaperId,
@@ -136,7 +152,10 @@ export default function sharedWallpaperPicker(options = {}) {
       formData.append("file", file);
 
       try {
-        const res = await importSharedWallpaper(formData, this.selectionTarget);
+        const res = await importSharedWallpaper(
+          formData,
+          this.persistSelection ? this.selectionTarget : "",
+        );
         if (!res?.success) {
           alert("导入共享壁纸失败: " + (res?.msg || "unknown"));
           return res;

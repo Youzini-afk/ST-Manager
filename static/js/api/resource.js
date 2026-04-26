@@ -27,7 +27,9 @@ export async function importSharedWallpaper(
   formData,
   selectionTarget = "manager",
 ) {
-  formData.append("selection_target", selectionTarget);
+  if (selectionTarget) {
+    formData.append("selection_target", selectionTarget);
+  }
   const res = await fetch("/api/shared-wallpapers/import", {
     method: "POST",
     body: formData,

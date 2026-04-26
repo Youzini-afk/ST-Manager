@@ -543,7 +543,7 @@
             </div>
 
             <div
-              x-data="sharedWallpaperPicker({ sourceFilter: 'all' })"
+              x-data="sharedWallpaperPicker({ sourceFilter: 'all', selectionTarget: 'manager', persistSelection: false })"
               @shared-wallpaper-selected.window="applySharedWallpaperSelection($event.detail)"
               class="bg-[var(--bg-sub)] p-3 rounded border border-[var(--border-light)] mt-3"
             >
