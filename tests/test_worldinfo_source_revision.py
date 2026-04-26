@@ -88,6 +88,38 @@ def test_worldinfo_save_returns_updated_source_revision(monkeypatch, tmp_path):
     assert payload['source_revision'] != detail_payload['source_revision']
 
 
+def test_worldinfo_save_succeeds_when_refresh_enqueue_fails(monkeypatch, tmp_path):
+    lore_dir = tmp_path / 'lorebooks'
+    lore_dir.mkdir()
+    book = lore_dir / 'main.json'
+    book.write_text(json.dumps({'name': 'Main', 'entries': {}}, ensure_ascii=False), encoding='utf-8')
+
+    monkeypatch.setattr(world_info_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(world_info_api, 'load_config', lambda: {'world_info_dir': str(lore_dir), 'resources_dir': str(tmp_path / 'resources')})
+    monkeypatch.setattr(
+        world_info_api,
+        '_enqueue_worldinfo_file_refresh',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError('no such table: index_jobs')),
+    )
+
+    client = _make_app().test_client()
+    detail_res = client.post('/api/world_info/detail', json={'source_type': 'global', 'file_path': str(book)})
+    detail_payload = detail_res.get_json()
+
+    save_res = client.post('/api/world_info/save', json={
+        'save_mode': 'overwrite',
+        'file_path': str(book),
+        'content': {'name': 'Main Updated', 'entries': {}},
+        'source_revision': detail_payload['source_revision'],
+    })
+
+    assert save_res.status_code == 200
+    payload = save_res.get_json()
+    assert payload['success'] is True
+    assert payload['source_revision']
+    assert payload['source_revision'] != detail_payload['source_revision']
+
+
 def test_worldinfo_save_requires_source_revision_for_overwrite(monkeypatch, tmp_path):
     lore_dir = tmp_path / 'lorebooks'
     lore_dir.mkdir()

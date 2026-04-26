@@ -98,6 +98,15 @@ export async function saveWorldInfoNote(payload) {
   return res.json();
 }
 
+export async function sendWorldInfoToSillyTavern(payload) {
+  const res = await fetch("/api/world_info/send_to_st", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+  return res.json();
+}
+
 // 迁移散乱 Lorebooks
 export async function migrateLorebooks() {
   const res = await fetch("/api/tools/migrate_lorebooks", { method: "POST" });

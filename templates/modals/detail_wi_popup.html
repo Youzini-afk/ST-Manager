@@ -401,6 +401,16 @@
 
           <div class="grid grid-cols-3 gap-1.5">
             <button
+              @click="sendActiveWorldInfoToST()"
+              x-show="canSendActiveWorldInfoToST()"
+              class="btn-secondary py-1.5 text-xs flex flex-col items-center justify-center gap-0.5"
+              :title="getActiveWorldInfoSendToSTTitle()"
+              :disabled="isSendingWorldInfoToST"
+            >
+              <span class="text-base">🚀</span
+              ><span class="scale-90">发送到 ST</span>
+            </button>
+            <button
               @click="exportActiveWorldInfo()"
               class="btn-secondary py-1.5 text-xs flex flex-col items-center justify-center gap-0.5"
               title="导出 JSON"

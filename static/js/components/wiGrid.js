@@ -8,6 +8,7 @@ import {
   uploadWorldInfo,
   createWorldInfo,
   deleteWorldInfo,
+  sendWorldInfoToSillyTavern,
 } from "../api/wi.js";
 import { downloadFileFromApi } from "../utils/download.js";
 import { buildWindowedGridState } from "../utils/windowing.js";
@@ -29,6 +30,7 @@ export default function wiGrid() {
     _fetchWorldInfoAbort: new AbortController(),
     _fetchWorldInfoTimer: null,
     _syncWiWindowRangeHandler: null,
+    sendingWorldInfoToStIds: {},
 
     // === Store 代理 ===
     get wiList() {
@@ -244,6 +246,80 @@ export default function wiGrid() {
     openWorldInfoLocalNote(item) {
       if (!this.worldInfoHasLocalNote(item)) return;
       this.openMarkdownView(item.ui_summary);
+    },
+
+    canSendWorldInfoToST(item) {
+      const sourceType = item?.source_type || item?.type;
+      return sourceType === "global" || sourceType === "resource";
+    },
+
+    isSendingWorldInfoToST(itemId) {
+      return !!this.sendingWorldInfoToStIds[String(itemId)];
+    },
+
+    getWorldInfoSendToSTTitle(item) {
+      if (!this.canSendWorldInfoToST(item)) return "仅全局/资源世界书可发送到 ST";
+      if (this.isSendingWorldInfoToST(item?.id)) return "正在发送到 ST";
+      if (Number(item?.last_sent_to_st || 0) > 0) {
+        return `已发送到 ST：${new Date(item.last_sent_to_st * 1000).toLocaleString()}`;
+      }
+      return "发送到 ST";
+    },
+
+    applyWorldInfoSentState(detail) {
+      if (!detail?.id) return;
+      const currentItems = Array.isArray(this.wiList) ? [...this.wiList] : [];
+      let changed = false;
+      currentItems.forEach((item, index) => {
+        if (!item || item.id !== detail.id) return;
+        currentItems[index] = {
+          ...item,
+          last_sent_to_st: Number(detail.last_sent_to_st || 0),
+        };
+        changed = true;
+      });
+      if (changed) {
+        this.wiList = currentItems;
+      }
+    },
+
+    async sendWorldInfoToST(item) {
+      if (!item || !item.id) return;
+      if (!this.canSendWorldInfoToST(item)) return;
+      if (this.isSendingWorldInfoToST(item.id)) return;
+
+      const key = String(item.id);
+      this.sendingWorldInfoToStIds = {
+        ...this.sendingWorldInfoToStIds,
+        [key]: true,
+      };
+
+      try {
+        const res = await sendWorldInfoToSillyTavern({
+          id: item.id,
+          source_type: item.source_type || item.type,
+          file_path: item.path,
+        });
+        if (res?.success) {
+          const sentDetail = {
+            id: item.id,
+            last_sent_to_st: Number(res.last_sent_to_st || Date.now() / 1000),
+          };
+          this.applyWorldInfoSentState(sentDetail);
+          window.dispatchEvent(new CustomEvent("wi-sent-to-st", {
+            detail: sentDetail,
+          }));
+          this.$store.global.showToast("🚀 已发送到 ST", 1800);
+        } else {
+          this.$store.global.showToast(`❌ ${res?.msg || "发送失败"}`, 2600);
+        }
+      } catch (error) {
+        this.$store.global.showToast(`❌ ${error?.message || "发送失败"}`, 2600);
+      } finally {
+        const next = { ...this.sendingWorldInfoToStIds };
+        delete next[key];
+        this.sendingWorldInfoToStIds = next;
+      }
     },
 
     isWorldInfoFlipped(itemId) {
@@ -641,6 +717,13 @@ export default function wiGrid() {
           this.wiList = currentItems;
         }
         this.syncWorldInfoUiState();
+      });
+
+      window.addEventListener("wi-sent-to-st", (e) => {
+        const detail = e.detail || {};
+        if (!detail.id) return;
+        if (!detail.last_sent_to_st) return;
+        this.applyWorldInfoSentState(detail);
       });
 
       // 监听搜索框输入
