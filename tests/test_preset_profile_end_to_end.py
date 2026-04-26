@@ -9,7 +9,21 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
+SAMPLE_PRESET_FILENAMES = (
+    'Ny-Gemini-1.3.9-pro_Sigon.json',
+    '双人成行 V3.5 光头强—PrismFox.json',
+)
+
+
+def _resolve_workspace_root():
+    for candidate in (ROOT, *ROOT.parents):
+        sample_dir = candidate / 'data' / 'library' / 'presets'
+        if all((sample_dir / filename).exists() for filename in SAMPLE_PRESET_FILENAMES):
+            return candidate
+    return ROOT
+
+
+WORKSPACE_ROOT = _resolve_workspace_root()
 
 
 from core.api.v1 import presets as presets_api
