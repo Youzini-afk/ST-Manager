@@ -282,13 +282,21 @@ def update_variant():
     package_id = str(payload.get('package_id') or '').strip()
     variant_id = str(payload.get('variant_id') or '').strip()
     platform = str(payload.get('platform') or '').strip().lower()
+    selected_wallpaper_id = str(payload.get('selected_wallpaper_id') or '').strip()
     if not package_id or not variant_id:
         return _error('缺少 package_id 或 variant_id')
-    if platform not in ('pc', 'mobile', 'dual'):
+    if platform and platform not in ('pc', 'mobile', 'dual'):
         return _error('无效的端类型')
+    if not platform and 'selected_wallpaper_id' not in payload:
+        return _error('缺少更新内容')
 
     try:
-        item = get_beautify_service().update_variant(package_id, variant_id, platform)
+        item = get_beautify_service().update_variant(
+            package_id,
+            variant_id,
+            platform=platform or None,
+            selected_wallpaper_id=selected_wallpaper_id,
+        )
         return jsonify({'success': True, 'item': item})
     except ValueError as exc:
         return _error(str(exc))

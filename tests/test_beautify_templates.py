@@ -117,6 +117,14 @@ def test_beautify_grid_template_supports_screenshot_stage_and_global_settings_fo
     assert 'beautifyWorkspace === "settings"' in template or "beautifyWorkspace === 'settings'" in template
 
 
+def test_beautify_grid_template_exposes_shared_wallpaper_picker_for_global_preview_selection():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert '共享壁纸库' in template
+    assert 'selectGlobalWallpaper(item.id)' in template
+    assert 'preview_wallpaper_id' in template
+
+
 def test_beautify_grid_template_adds_screenshot_picker_package_identity_bindings_and_avatar_actions():
     template = read_project_file('templates/components/grid_beautify.html')
 

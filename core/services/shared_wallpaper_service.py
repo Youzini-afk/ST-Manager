@@ -29,6 +29,7 @@ class SharedWallpaperService:
         persisted = get_shared_wallpaper_library(ui_data)
         raw_persisted = ui_data.get('_shared_wallpaper_library_v1') if isinstance(ui_data, dict) else {}
         items = dict(persisted.get('items') or {})
+        items.update(self._load_package_embedded_items())
         builtin_items = self._load_builtin_items()
         items.update(builtin_items)
 
@@ -173,6 +174,32 @@ class SharedWallpaperService:
                 rel_path = os.path.relpath(path, builtin_root).replace('\\', '/')
                 wallpaper_id = f'builtin:{rel_path}'
                 item = self._build_item(path, source_type='builtin', wallpaper_id=wallpaper_id)
+                if item:
+                    items[wallpaper_id] = item
+        return items
+
+    def _load_package_embedded_items(self):
+        embedded_root = os.path.join(self.project_root, 'data', 'library', 'wallpapers', 'package_embedded')
+        if not os.path.isdir(embedded_root):
+            return {}
+
+        items = {}
+        for current_root, _, filenames in os.walk(embedded_root):
+            for filename in sorted(filenames):
+                path = os.path.join(current_root, filename)
+                rel_dir = os.path.relpath(current_root, embedded_root).replace('\\', '/')
+                path_parts = [part for part in rel_dir.split('/') if part and part != '.']
+                if len(path_parts) < 2:
+                    continue
+                package_id, variant_id = path_parts[0], path_parts[1]
+                wallpaper_id = self._wallpaper_id_for_path(path, prefix='package_embedded')
+                item = self._build_item(
+                    path,
+                    source_type='package_embedded',
+                    wallpaper_id=wallpaper_id,
+                    package_id=package_id,
+                    variant_id=variant_id,
+                )
                 if item:
                     items[wallpaper_id] = item
         return items

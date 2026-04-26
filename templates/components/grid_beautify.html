@@ -27,6 +27,89 @@
               清除全局壁纸
             </button>
           </div>
+
+          <div
+            x-data="sharedWallpaperPicker({ sourceFilter: 'all', selectionTarget: 'preview' })"
+            class="mt-4"
+          >
+            <div class="beautify-detail-heading">共享壁纸库</div>
+            <div class="beautify-stage-actions">
+              <button
+                type="button"
+                class="beautify-soft-btn"
+                :class="sourceFilter === 'all' ? 'is-active' : ''"
+                @click="setSourceFilter('all')"
+              >
+                全部
+              </button>
+              <button
+                type="button"
+                class="beautify-soft-btn"
+                :class="sourceFilter === 'builtin' ? 'is-active' : ''"
+                @click="setSourceFilter('builtin')"
+              >
+                内置
+              </button>
+              <button
+                type="button"
+                class="beautify-soft-btn"
+                :class="sourceFilter === 'imported' ? 'is-active' : ''"
+                @click="setSourceFilter('imported')"
+              >
+                用户导入
+              </button>
+              <button
+                type="button"
+                class="beautify-soft-btn"
+                :class="sourceFilter === 'beautify' ? 'is-active' : ''"
+                @click="setSourceFilter('beautify')"
+              >
+                Beautify 导入
+              </button>
+            </div>
+            <div
+              class="beautify-wallpaper-list mt-3"
+              x-show="filteredWallpapers.length > 0"
+            >
+              <template x-for="item in filteredWallpapers" :key="item.id">
+                <button
+                  type="button"
+                  class="beautify-wallpaper-item cursor-pointer"
+                  :class="isSelected(item) ? 'is-active' : ''"
+                  @click="selectGlobalWallpaper(item.id)"
+                >
+                  <span
+                    class="beautify-wallpaper-thumb"
+                    :style="`background-image:url('${wallpaperPreviewUrl(item.file)}')`"
+                  ></span>
+                  <span class="beautify-wallpaper-info">
+                    <span
+                      class="beautify-wallpaper-name"
+                      x-text="item.filename || item.id"
+                    ></span>
+                    <span
+                      class="beautify-wallpaper-size"
+                      x-text="item.source_type || 'imported'"
+                    ></span>
+                  </span>
+                </button>
+              </template>
+            </div>
+            <div
+              class="beautify-empty-inline mt-3"
+              x-show="filteredWallpapers.length === 0"
+            >
+              当前筛选下还没有可用共享壁纸。
+            </div>
+            <div
+              class="beautify-empty-copy mt-2"
+              x-show="$store.global.beautifyGlobalSettings?.preview_wallpaper_id"
+            >
+              当前预览壁纸 ID：<span
+                x-text="$store.global.beautifyGlobalSettings?.preview_wallpaper_id"
+              ></span>
+            </div>
+          </div>
         </div>
 
         <div class="beautify-detail-card">

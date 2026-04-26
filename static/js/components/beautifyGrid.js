@@ -16,6 +16,11 @@ import {
   updateBeautifySettings,
   updateBeautifyVariant,
 } from "../api/beautify.js";
+import sharedWallpaperPicker from "./sharedWallpaperPicker.js";
+
+if (typeof window !== "undefined") {
+  window.sharedWallpaperPicker = sharedWallpaperPicker;
+}
 
 function filterPackages(items, search, platformFilter) {
   const keyword = String(search || "")
@@ -239,6 +244,17 @@ export default function beautifyGrid() {
       return (variant.wallpaper_ids || [])
         .map((id) => detail.wallpapers?.[id])
         .filter(Boolean);
+    },
+
+    mergeSharedWallpaperIntoStore(wallpaper) {
+      if (!wallpaper?.id) return;
+      const current = Array.isArray(this.$store.global.sharedWallpapers)
+        ? this.$store.global.sharedWallpapers.filter(
+            (entry) => entry?.id !== wallpaper.id,
+          )
+        : [];
+      current.push(wallpaper);
+      this.$store.global.sharedWallpapers = current;
     },
 
     init() {
@@ -570,8 +586,38 @@ export default function beautifyGrid() {
       }
     },
 
-    selectWallpaper(wallpaperId) {
+    async selectWallpaper(wallpaperId) {
+      if (!this.selectedPackageId || !this.selectedVariantId) return;
       const wallpaper = this.activeDetail?.wallpapers?.[wallpaperId] || null;
+      if (!wallpaper) return;
+
+      this.isActionLoading = true;
+      try {
+        const res = await updateBeautifyVariant({
+          package_id: this.selectedPackageId,
+          variant_id: this.selectedVariantId,
+          selected_wallpaper_id: wallpaper.id,
+        });
+        if (!res?.success) {
+          throw new Error(res?.error || "更新壁纸失败");
+        }
+
+        const nextVariant = {
+          ...(this.activeVariant || {}),
+          ...(res.item || {}),
+          selected_wallpaper_id: wallpaper.id,
+        };
+        this.$store.global.beautifyActiveVariant = nextVariant;
+        if (this.activeDetail?.variants?.[this.selectedVariantId]) {
+          this.activeDetail.variants[this.selectedVariantId] = nextVariant;
+        }
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+        return;
+      } finally {
+        this.isActionLoading = false;
+      }
+
       this.$store.global.beautifyActiveWallpaper = wallpaper;
       this.selectedWallpaperId = wallpaper?.id || "";
     },
@@ -721,6 +767,7 @@ export default function beautifyGrid() {
         if (!res?.success) {
           throw new Error(res?.msg || res?.error || "上传全局壁纸失败");
         }
+        this.mergeSharedWallpaperIntoStore(res.item || null);
         await this.fetchGlobalSettings();
         this.globalCharacterName = draftCharacterName;
         this.globalUserName = draftUserName;

@@ -606,8 +606,12 @@
                     @click="selectWallpaper(item)"
                   >
                     <div
+                      class="w-full h-24 rounded bg-[var(--bg-sub)] bg-cover bg-center mb-2 border border-[var(--border-light)]"
+                      :style="`background-image:url('${sharedWallpaperPreviewUrl(item.file)}')`"
+                    ></div>
+                    <div
                       class="text-sm font-medium truncate"
-                      x-text="item.name || item.id"
+                      x-text="item.filename || item.name || item.id"
                     ></div>
                     <div
                       class="text-xs text-gray-400 mt-1"

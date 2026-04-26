@@ -671,6 +671,90 @@ def test_beautify_grid_restores_persisted_variant_selected_wallpaper_after_packa
     )
 
 
+def test_beautify_grid_select_wallpaper_persists_variant_selection_and_updates_active_preview():
+    run_beautify_grid_runtime_check(
+        '''
+        const updateCalls = [];
+        globalThis.__gridStubs = {
+          updateBeautifyVariant: async (payload) => {
+            updateCalls.push(payload);
+            return {
+              success: true,
+              item: {
+                id: payload.variant_id,
+                platform: 'pc',
+                wallpaper_ids: ['wall_old', 'wall_new'],
+                selected_wallpaper_id: payload.selected_wallpaper_id,
+                preview_hint: {
+                  needs_platform_review: false,
+                  preview_accuracy: 'approx',
+                },
+              },
+            };
+          },
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifySelectedPackageId: 'pkg_demo',
+            beautifySelectedVariantId: 'var_pc',
+            beautifySelectedWallpaperId: 'wall_old',
+            beautifyActiveDetail: {
+              id: 'pkg_demo',
+              variants: {
+                var_pc: {
+                  id: 'var_pc',
+                  platform: 'pc',
+                  wallpaper_ids: ['wall_old', 'wall_new'],
+                  selected_wallpaper_id: 'wall_old',
+                },
+              },
+              wallpapers: {
+                wall_old: { id: 'wall_old', file: 'old.png' },
+                wall_new: { id: 'wall_new', file: 'new.png' },
+              },
+              screenshots: {},
+              identity_overrides: {},
+            },
+            beautifyActiveVariant: {
+              id: 'var_pc',
+              platform: 'pc',
+              wallpaper_ids: ['wall_old', 'wall_new'],
+              selected_wallpaper_id: 'wall_old',
+            },
+            beautifyActiveWallpaper: { id: 'wall_old', file: 'old.png' },
+            showToast: () => {},
+          },
+        };
+
+        await component.selectWallpaper('wall_new');
+
+        if (updateCalls.length !== 1) {
+          throw new Error(`expected one variant update call, got ${updateCalls.length}`);
+        }
+        if (updateCalls[0].package_id !== 'pkg_demo' || updateCalls[0].variant_id !== 'var_pc') {
+          throw new Error(`unexpected variant update payload: ${JSON.stringify(updateCalls[0])}`);
+        }
+        if (updateCalls[0].selected_wallpaper_id !== 'wall_new') {
+          throw new Error(`expected selected_wallpaper_id update, got ${JSON.stringify(updateCalls[0])}`);
+        }
+        if (component.selectedWallpaperId !== 'wall_new') {
+          throw new Error(`expected selectedWallpaperId to update, got ${component.selectedWallpaperId}`);
+        }
+        if (component.$store.global.beautifyActiveWallpaper?.id !== 'wall_new') {
+          throw new Error(`expected active wallpaper to switch, got ${component.$store.global.beautifyActiveWallpaper?.id}`);
+        }
+        if (component.$store.global.beautifyActiveVariant?.selected_wallpaper_id !== 'wall_new') {
+          throw new Error(`expected active variant selected_wallpaper_id to update, got ${component.$store.global.beautifyActiveVariant?.selected_wallpaper_id}`);
+        }
+        if (component.$store.global.beautifyActiveDetail?.variants?.var_pc?.selected_wallpaper_id !== 'wall_new') {
+          throw new Error(`expected active detail variant selection to update, got ${component.$store.global.beautifyActiveDetail?.variants?.var_pc?.selected_wallpaper_id}`);
+        }
+        '''
+    )
+
+
 def test_beautify_grid_preserves_existing_screenshot_selection_when_importing_more_images():
     run_beautify_grid_runtime_check(
         '''
@@ -959,6 +1043,14 @@ def test_beautify_grid_imported_global_wallpaper_uses_shared_preview_selection_f
         const component = module.default();
         component.$store = {
           global: {
+            sharedWallpapers: [
+              {
+                id: 'builtin:space/stars.png',
+                file: 'static/assets/wallpapers/builtin/space/stars.png',
+                filename: 'stars.png',
+                source_type: 'builtin',
+              },
+            ],
             beautifyGlobalSettings: {
               identities: {
                 character: { name: '', avatar_file: '' },
@@ -984,6 +1076,10 @@ def test_beautify_grid_imported_global_wallpaper_uses_shared_preview_selection_f
         }
         if (component.$store.global.beautifyGlobalSettings?.wallpaper?.id !== 'imported:preview') {
           throw new Error('expected refreshed settings to expose resolved shared wallpaper object');
+        }
+        const sharedIds = (component.$store.global.sharedWallpapers || []).map((item) => item.id).sort();
+        if (sharedIds.length !== 2 || sharedIds[0] !== 'builtin:space/stars.png' || sharedIds[1] !== 'imported:preview') {
+          throw new Error(`expected imported shared wallpaper to merge into store, got ${JSON.stringify(sharedIds)}`);
         }
         if (component.globalCharacterName !== '草稿角色' || component.globalUserName !== '草稿用户') {
           throw new Error('global draft names should survive shared preview wallpaper imports');

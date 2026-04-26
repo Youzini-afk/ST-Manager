@@ -573,6 +573,98 @@ def test_load_library_drops_stale_shared_wallpaper_ids_from_variant_state(tmp_pa
     assert persisted_variant['selected_wallpaper_id'] == ''
 
 
+def test_load_library_recovers_package_embedded_shared_wallpaper_ids_from_disk(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+    imported_theme = _import_theme_for_package(service, tmp_path, name='Recovered Shared Demo', platform='pc')
+
+    variant_id = imported_theme['variant']['id']
+    package_id = imported_theme['package']['id']
+    shared_wallpaper = (
+        tmp_path
+        / 'data'
+        / 'library'
+        / 'wallpapers'
+        / 'package_embedded'
+        / package_id
+        / variant_id
+        / 'recovered.png'
+    )
+    shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)
+    Image.new('RGB', (1440, 900), '#2468ac').save(shared_wallpaper)
+
+    shared_service = SharedWallpaperService(
+        project_root=str(tmp_path),
+        ui_data_loader=lambda: ui_data,
+        ui_data_saver=lambda data: True,
+    )
+    recovered_wallpaper_id = shared_service._wallpaper_id_for_path(
+        str(shared_wallpaper),
+        prefix='package_embedded',
+    )
+
+    ui_data['_beautify_library_v1']['packages'][package_id]['variants'][variant_id]['wallpaper_ids'] = [
+        recovered_wallpaper_id,
+    ]
+    ui_data['_beautify_library_v1']['packages'][package_id]['variants'][variant_id]['selected_wallpaper_id'] = recovered_wallpaper_id
+    ui_data['_shared_wallpaper_library_v1'] = {
+        'items': {},
+        'manager_wallpaper_id': '',
+        'preview_wallpaper_id': '',
+    }
+
+    library = service.load_library()
+    variant_info = library['packages'][package_id]['variants'][variant_id]
+    package_info = service.get_package(package_id)
+
+    assert variant_info['wallpaper_ids'] == [recovered_wallpaper_id]
+    assert variant_info['selected_wallpaper_id'] == recovered_wallpaper_id
+    assert package_info['wallpapers'][recovered_wallpaper_id] == {
+        'id': recovered_wallpaper_id,
+        'source_type': 'package_embedded',
+        'file': f'data/library/wallpapers/package_embedded/{package_id}/{variant_id}/recovered.png',
+        'filename': 'recovered.png',
+        'width': 1440,
+        'height': 900,
+        'mtime': int(shared_wallpaper.stat().st_mtime),
+        'created_at': int(shared_wallpaper.stat().st_mtime),
+        'origin_package_id': package_id,
+        'origin_variant_id': variant_id,
+    }
+
+
+def test_update_variant_can_switch_selected_wallpaper_without_changing_platform(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+    imported_theme = _import_theme_for_package(service, tmp_path, name='Wallpaper Switch Demo', platform='pc')
+
+    package_id = imported_theme['package']['id']
+    variant_id = imported_theme['variant']['id']
+
+    first_wallpaper = tmp_path / 'first.png'
+    second_wallpaper = tmp_path / 'second.png'
+    Image.new('RGB', (1280, 720), '#334455').save(first_wallpaper)
+    Image.new('RGB', (1280, 720), '#556677').save(second_wallpaper)
+
+    first_result = service.import_wallpaper(package_id, variant_id, str(first_wallpaper))
+    second_result = service.import_wallpaper(package_id, variant_id, str(second_wallpaper))
+
+    updated_variant = service.update_variant(
+        package_id,
+        variant_id,
+        selected_wallpaper_id=first_result['wallpaper']['id'],
+    )
+    persisted_variant = ui_data['_beautify_library_v1']['packages'][package_id]['variants'][variant_id]
+
+    assert updated_variant['platform'] == 'pc'
+    assert updated_variant['selected_wallpaper_id'] == first_result['wallpaper']['id']
+    assert updated_variant['wallpaper_ids'] == [
+        first_result['wallpaper']['id'],
+        second_result['wallpaper']['id'],
+    ]
+    assert persisted_variant['selected_wallpaper_id'] == first_result['wallpaper']['id']
+
+
 def test_get_global_settings_reads_preview_wallpaper_id_from_shared_library_even_when_beautify_state_has_stale_value(tmp_path):
     shared_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
     shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)

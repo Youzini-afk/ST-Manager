@@ -239,14 +239,14 @@ class BeautifyService:
             'theme': theme_payload,
         }
 
-    def update_variant(self, package_id: str, variant_id: str, platform: str):
-        resolved_platform = self._normalize_platform(platform)
-        if not resolved_platform:
+    def update_variant(self, package_id: str, variant_id: str, platform: Optional[str] = None, selected_wallpaper_id: str = ''):
+        resolved_platform = self._normalize_platform(platform) if platform is not None else ''
+        if platform is not None and not resolved_platform:
             raise ValueError('无效的端类型')
 
         ui_data = self._load_ui_data()
         library, package_info, variant = self._load_package_variant(ui_data, package_id, variant_id)
-        if variant.get('platform') != resolved_platform:
+        if resolved_platform and variant.get('platform') != resolved_platform:
             conflict = self._find_variant_by_platform(package_info, resolved_platform)
             if conflict and conflict.get('id') != variant_id:
                 raise ValueError('目标端类型已存在，请先调整或替换现有变体')
@@ -260,6 +260,11 @@ class BeautifyService:
                 shutil.move(old_theme_path, new_theme_path)
             variant['platform'] = resolved_platform
             variant['theme_file'] = os.path.relpath(new_theme_path, self._project_root_for_library()).replace('\\', '/')
+
+        normalized_wallpaper_id = str(selected_wallpaper_id or '').strip()
+        if normalized_wallpaper_id and normalized_wallpaper_id not in list(variant.get('wallpaper_ids', [])):
+            raise ValueError('壁纸不存在或未绑定到当前变体')
+        variant['selected_wallpaper_id'] = normalized_wallpaper_id
 
         preview_hint = copy.deepcopy(variant.get('preview_hint') or {})
         preview_hint['needs_platform_review'] = False

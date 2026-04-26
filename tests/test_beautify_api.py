@@ -131,9 +131,13 @@ class FakeBeautifyService:
             'wallpaper': {'id': 'wp_demo', 'variant_id': variant_id},
         }
 
-    def update_variant(self, package_id, variant_id, platform):
-        self.calls.append(('update_variant', package_id, variant_id, platform))
-        return {'id': variant_id, 'platform': platform}
+    def update_variant(self, package_id, variant_id, platform=None, selected_wallpaper_id=''):
+        self.calls.append(('update_variant', package_id, variant_id, platform, selected_wallpaper_id))
+        return {
+            'id': variant_id,
+            'platform': platform or 'pc',
+            'selected_wallpaper_id': selected_wallpaper_id,
+        }
 
     def delete_package(self, package_id):
         self.calls.append(('delete_package', package_id))
@@ -910,6 +914,34 @@ def test_update_variant_endpoint_rejects_invalid_platform(monkeypatch):
 
     assert response.status_code == 400
     assert payload['success'] is False
+
+
+def test_update_variant_endpoint_forwards_selected_wallpaper_id_without_requiring_platform(monkeypatch):
+    app = _make_test_app()
+    client = app.test_client()
+    fake_service = FakeBeautifyService()
+    monkeypatch.setattr(beautify_api, 'get_beautify_service', lambda: fake_service)
+
+    response = client.post(
+        '/api/beautify/update-variant',
+        json={
+            'package_id': 'pkg_demo',
+            'variant_id': 'var_demo',
+            'selected_wallpaper_id': 'package_embedded:wall_new',
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload['success'] is True
+    assert payload['item']['selected_wallpaper_id'] == 'package_embedded:wall_new'
+    assert fake_service.calls[-1] == (
+        'update_variant',
+        'pkg_demo',
+        'var_demo',
+        None,
+        'package_embedded:wall_new',
+    )
 
 
 def test_install_and_apply_endpoints_are_removed(monkeypatch):

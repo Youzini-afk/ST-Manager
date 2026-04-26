@@ -236,6 +236,8 @@ def test_settings_template_exposes_shared_wallpaper_picker_ui():
     assert "setSourceFilter('builtin')" in source
     assert "setSourceFilter('imported')" in source
     assert "setSourceFilter('beautify')" in source
+    assert 'sharedWallpaperPreviewUrl(item.file)' in source
+    assert 'background-image:url(' in source
     assert "x-text=\"item.source_type || 'imported'\"" in source
 
 
@@ -417,6 +419,22 @@ def test_shared_wallpaper_picker_groups_sources_for_settings_usage():
     )
 
 
+def test_shared_wallpaper_picker_exposes_preview_asset_url_helper():
+    run_shared_wallpaper_picker_runtime_check(
+        """
+        const resolvedBuiltin = component.sharedWallpaperPreviewUrl('static/assets/wallpapers/builtin/space/stars.png');
+        if (resolvedBuiltin !== '/api/beautify/preview-asset/static/assets/wallpapers/builtin/space/stars.png') {
+          throw new Error(`unexpected builtin preview url: ${resolvedBuiltin}`);
+        }
+
+        const resolvedImported = component.sharedWallpaperPreviewUrl('data/library/wallpapers/imported/demo.png');
+        if (resolvedImported !== '/api/beautify/preview-asset/data/library/wallpapers/imported/demo.png') {
+          throw new Error(`unexpected imported preview url: ${resolvedImported}`);
+        }
+      """
+    )
+
+
 def test_shared_wallpaper_picker_selection_updates_manager_wallpaper_context():
     run_shared_wallpaper_picker_runtime_check(
         """
@@ -569,6 +587,48 @@ def test_shared_wallpaper_picker_import_merges_single_item_into_existing_list():
           throw new Error(`expected import to dispatch shared-wallpaper-selected, got: ${JSON.stringify(dispatched)}`);
         }
         """
+    )
+
+
+def test_shared_wallpaper_picker_selection_updates_preview_wallpaper_context():
+    run_shared_wallpaper_picker_runtime_check(
+        """
+        const selectCalls = [];
+        globalThis.__selectSharedWallpaperStub = async (payload) => {
+          selectCalls.push(payload);
+          return ({
+            success: true,
+            wallpaper: {
+              id: payload.wallpaper_id,
+              file: 'data/library/wallpapers/imported/preview.png',
+              source_type: 'imported',
+            },
+          });
+        };
+
+        const previewComponent = module.default({ selectionTarget: 'preview' });
+        previewComponent.$store = {
+          global: {
+            beautifyGlobalSettings: {
+              preview_wallpaper_id: '',
+              wallpaper: null,
+            },
+            sharedWallpapers: [],
+          },
+        };
+
+        await previewComponent.selectWallpaper({ id: 'imported:preview' });
+
+        if (selectCalls.length !== 1 || selectCalls[0].selection_target !== 'preview') {
+          throw new Error(`unexpected preview select payloads: ${JSON.stringify(selectCalls)}`);
+        }
+        if (previewComponent.$store.global.beautifyGlobalSettings.preview_wallpaper_id !== 'imported:preview') {
+          throw new Error(`expected preview wallpaper id update, got: ${previewComponent.$store.global.beautifyGlobalSettings.preview_wallpaper_id}`);
+        }
+        if (previewComponent.$store.global.beautifyGlobalSettings.wallpaper?.id !== 'imported:preview') {
+          throw new Error(`expected preview wallpaper object update, got: ${JSON.stringify(previewComponent.$store.global.beautifyGlobalSettings.wallpaper)}`);
+        }
+      """
     )
 
 

@@ -15,6 +15,7 @@ function normalizeSource(value) {
 export default function sharedWallpaperPicker(options = {}) {
   return {
     sourceFilter: options.sourceFilter || "all",
+    selectionTarget: options.selectionTarget || "manager",
 
     get wallpapers() {
       const items = this.$store?.global?.sharedWallpapers;
@@ -42,9 +43,20 @@ export default function sharedWallpaperPicker(options = {}) {
       this.sourceFilter = source || "all";
     },
 
+    sharedWallpaperPreviewUrl(relativePath) {
+      if (!relativePath) return "";
+      return `/api/beautify/preview-asset/${String(relativePath)
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/")}`;
+    },
+
     isSelected(item) {
+      const globalStore = this.$store?.global;
       const selectedId =
-        this.$store?.global?.settingsForm?.manager_wallpaper_id || "";
+        this.selectionTarget === "preview"
+          ? globalStore?.beautifyGlobalSettings?.preview_wallpaper_id || ""
+          : globalStore?.settingsForm?.manager_wallpaper_id || "";
       return String(item?.id || "") === String(selectedId);
     },
 
@@ -60,12 +72,22 @@ export default function sharedWallpaperPicker(options = {}) {
       current.push(wallpaper);
       globalStore.sharedWallpapers = current;
 
-      if (globalStore.settingsForm) {
+      if (
+        this.selectionTarget === "preview" &&
+        globalStore.beautifyGlobalSettings
+      ) {
+        globalStore.beautifyGlobalSettings = {
+          ...globalStore.beautifyGlobalSettings,
+          preview_wallpaper_id: wallpaper.id || "",
+          wallpaper,
+        };
+      } else if (globalStore.settingsForm) {
         globalStore.settingsForm.manager_wallpaper_id = wallpaper.id || "";
         globalStore.settingsForm.bg_url = "";
       }
 
       if (
+        this.selectionTarget !== "preview" &&
         typeof globalStore.updateBackgroundImage === "function" &&
         typeof globalStore.resolveManagerBackgroundUrl === "function"
       ) {
@@ -93,7 +115,7 @@ export default function sharedWallpaperPicker(options = {}) {
 
       const res = await selectSharedWallpaper({
         wallpaper_id: wallpaperId,
-        selection_target: "manager",
+        selection_target: this.selectionTarget,
       });
       if (!res?.success) {
         alert("选择共享壁纸失败: " + (res?.msg || "unknown"));
@@ -114,7 +136,7 @@ export default function sharedWallpaperPicker(options = {}) {
       formData.append("file", file);
 
       try {
-        const res = await importSharedWallpaper(formData, "manager");
+        const res = await importSharedWallpaper(formData, this.selectionTarget);
         if (!res?.success) {
           alert("导入共享壁纸失败: " + (res?.msg || "unknown"));
           return res;
