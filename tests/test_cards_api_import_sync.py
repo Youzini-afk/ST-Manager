@@ -23,6 +23,8 @@ from core.data import cache as cache_module
 from core.data import ui_store as ui_store_module
 from core.data.cache import GlobalMetadataCache
 from core.data.index_runtime_store import ensure_index_runtime_schema
+from core.services import automation_service
+from core.services import card_service
 from core.services import cache_service
 from core.services import index_build_service
 from core.services import index_job_worker
@@ -100,6 +102,307 @@ def _write_png_card(path: Path, *, name: str, tags):
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new('RGBA', (1, 1), (255, 0, 0, 255)).save(path, format='PNG')
     assert write_card_metadata(str(path), payload) is True
+
+
+def _setup_update_card_content_test(monkeypatch, tmp_path, *, ui_state=None):
+    cards_root = tmp_path / 'cards'
+    cards_root.mkdir(parents=True, exist_ok=True)
+    metadata_db = tmp_path / 'cards_metadata.db'
+
+    class _FakeImage:
+        def save(self, path, _fmt):
+            Path(path).write_bytes(b'png-data')
+
+    class _FakeCache:
+        def __init__(self):
+            self.id_map = {}
+            self.cards = []
+            self.bundle_map = {}
+
+        def reload_from_db(self):
+            return None
+
+        def delete_card_update(self, card_id):
+            self.id_map.pop(card_id, None)
+
+        def add_card_update(self, payload):
+            self.id_map[payload['id']] = dict(payload)
+            return self.id_map[payload['id']]
+
+        def update_card_data(self, card_id, payload):
+            current = self.id_map.setdefault(
+                card_id,
+                {
+                    'image_url': f'/cards_file/{card_id}',
+                    'thumb_url': f'/api/thumbnail/{card_id}',
+                },
+            )
+            current.update(payload)
+            return self.id_map[card_id]
+
+    ui_payload = ui_state if ui_state is not None else {}
+    real_sqlite_connect = sqlite3.connect
+
+    monkeypatch.setattr(card_service, 'CARDS_FOLDER', str(cards_root))
+    monkeypatch.setattr(card_service, 'DEFAULT_DB_PATH', str(metadata_db))
+    monkeypatch.setattr(card_service, 'THUMB_FOLDER', str(tmp_path / 'thumbs'))
+    monkeypatch.setattr(card_service, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(card_service, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(card_service, 'load_config', lambda: {'resources_dir': 'resources'})
+    monkeypatch.setattr(card_service, 'write_card_metadata', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(card_service, 'resize_image_if_needed', lambda image: image)
+    monkeypatch.setattr(card_service, 'clean_sidecar_images', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(card_service, 'clean_thumbnail_cache', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(card_service, 'load_ui_data', lambda: ui_payload)
+    monkeypatch.setattr(card_service, 'save_ui_data', lambda _payload: None)
+    monkeypatch.setattr(card_service, 'resolve_ui_key', lambda card_id: card_id)
+    monkeypatch.setattr(card_service, 'ensure_import_time', lambda *_args, **_kwargs: (False, 123.0))
+    monkeypatch.setattr(card_service, 'get_import_time', lambda *_args, **_kwargs: 123.0)
+    monkeypatch.setattr(card_service, 'calculate_token_count', lambda _payload: 42)
+    monkeypatch.setattr(card_service, 'get_file_hash_and_size', lambda _path: ('new-hash', 11))
+    monkeypatch.setattr(card_service, 'update_card_cache', lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(card_service, 'sync_card_index_jobs', lambda **_kwargs: {})
+    monkeypatch.setattr(
+        card_service.sqlite3,
+        'connect',
+        lambda *_args, **_kwargs: real_sqlite_connect(metadata_db, timeout=30, check_same_thread=False),
+    )
+    monkeypatch.setattr(card_service.ctx, 'cache', _FakeCache())
+    monkeypatch.setattr(card_service.Image, 'open', lambda _path: _FakeImage())
+
+    with _open_row_db(metadata_db) as conn:
+        _create_card_metadata_table(conn)
+        conn.commit()
+
+    return cards_root
+
+
+def test_update_card_content_archive_old_keeps_original_filename(monkeypatch, tmp_path):
+    ui_state = {'hero.png': {'resource_folder': 'hero-assets'}}
+    cards_root = _setup_update_card_content_test(monkeypatch, tmp_path, ui_state=ui_state)
+    card_path = cards_root / 'hero.png'
+    temp_path = tmp_path / 'upload.png'
+    resource_dir = tmp_path / 'resources' / 'hero-assets'
+    resource_dir.mkdir(parents=True, exist_ok=True)
+    card_path.write_bytes(b'old-png')
+    temp_path.write_bytes(b'new-png')
+
+    monkeypatch.setattr(
+        card_service,
+        'extract_card_info',
+        lambda path: {'data': {'name': 'Hero', 'tags': ['new' if str(path).endswith('upload.png') else 'old']}},
+    )
+
+    result = card_service.update_card_content(
+        'hero.png',
+        str(temp_path),
+        is_bundle_update=False,
+        keep_ui_data={'resource_folder': 'hero-assets'},
+        new_upload_ext='.png',
+        image_policy='archive_old',
+    )
+
+    assert result['success'] is True
+    assert sorted(path.name for path in resource_dir.iterdir()) == ['hero.png']
+
+
+def test_update_card_content_archive_old_uses_suffix_on_collision(monkeypatch, tmp_path):
+    ui_state = {'hero.png': {'resource_folder': 'hero-assets'}}
+    cards_root = _setup_update_card_content_test(monkeypatch, tmp_path, ui_state=ui_state)
+    card_path = cards_root / 'hero.png'
+    temp_path = tmp_path / 'upload.png'
+    resource_dir = tmp_path / 'resources' / 'hero-assets'
+    resource_dir.mkdir(parents=True, exist_ok=True)
+    (resource_dir / 'hero.png').write_bytes(b'existing-archive')
+    card_path.write_bytes(b'old-png')
+    temp_path.write_bytes(b'new-png')
+
+    monkeypatch.setattr(
+        card_service,
+        'extract_card_info',
+        lambda path: {'data': {'name': 'Hero', 'tags': ['new' if str(path).endswith('upload.png') else 'old']}},
+    )
+
+    result = card_service.update_card_content(
+        'hero.png',
+        str(temp_path),
+        is_bundle_update=False,
+        keep_ui_data={'resource_folder': 'hero-assets'},
+        new_upload_ext='.png',
+        image_policy='archive_old',
+    )
+
+    assert result['success'] is True
+    assert sorted(path.name for path in resource_dir.iterdir()) == ['hero.png', 'hero_1.png']
+
+
+def test_update_card_content_archive_old_failure_aborts_overwrite(monkeypatch, tmp_path):
+    ui_state = {'hero.json': {'resource_folder': 'hero-assets'}}
+    cards_root = _setup_update_card_content_test(monkeypatch, tmp_path, ui_state=ui_state)
+    card_path = cards_root / 'hero.json'
+    sidecar_path = cards_root / 'hero.png'
+    temp_path = tmp_path / 'upload.json'
+    card_path.write_text(json.dumps({'data': {'name': 'Hero', 'tags': ['old']}}, ensure_ascii=False), encoding='utf-8')
+    sidecar_path.write_bytes(b'old-sidecar')
+    temp_path.write_text(json.dumps({'data': {'name': 'Hero', 'tags': ['new']}}, ensure_ascii=False), encoding='utf-8')
+
+    monkeypatch.setattr(
+        card_service,
+        'extract_card_info',
+        lambda path: {'data': {'name': 'Hero', 'tags': ['new' if str(path).endswith('upload.json') else 'old']}},
+    )
+    monkeypatch.setattr(card_service, 'find_sidecar_image', lambda _path: str(sidecar_path))
+    monkeypatch.setattr(card_service.shutil, 'copy2', lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError('copy failed')))
+
+    result = card_service.update_card_content(
+        'hero.json',
+        str(temp_path),
+        is_bundle_update=False,
+        keep_ui_data={'resource_folder': 'hero-assets'},
+        new_upload_ext='.json',
+        image_policy='archive_old',
+    )
+
+    assert result['success'] is False
+    assert '归档' in result['msg'] or 'archive' in result['msg'].lower()
+    assert card_path.read_text(encoding='utf-8') == json.dumps({'data': {'name': 'Hero', 'tags': ['old']}}, ensure_ascii=False)
+
+
+def test_update_card_content_overwrite_runs_card_update_automation(monkeypatch, tmp_path):
+    cards_root = _setup_update_card_content_test(monkeypatch, tmp_path)
+    card_path = cards_root / 'hero.png'
+    temp_path = tmp_path / 'upload.png'
+    card_path.write_bytes(b'old-png')
+    temp_path.write_bytes(b'new-png')
+
+    monkeypatch.setattr(
+        card_service,
+        'extract_card_info',
+        lambda path: {'data': {'name': 'Hero', 'tags': ['new' if str(path).endswith('upload.png') else 'old']}},
+    )
+
+    automation_calls = []
+
+    def fake_auto_run_rules_for_trigger(card_id, trigger_context):
+        automation_calls.append((card_id, trigger_context))
+        updated = {'id': 'hero-automated.png', 'filename': 'hero-automated.png', 'image_url': '/cards_file/hero-automated.png'}
+        card_service.ctx.cache.id_map['hero-automated.png'] = updated
+        return {'run': True, 'result': {'final_id': 'hero-automated.png'}}
+
+    monkeypatch.setattr(automation_service, 'auto_run_rules_for_trigger', fake_auto_run_rules_for_trigger)
+
+    result = card_service.update_card_content(
+        'hero.png',
+        str(temp_path),
+        is_bundle_update=False,
+        keep_ui_data={},
+        new_upload_ext='.png',
+        image_policy='overwrite',
+    )
+
+    assert result['success'] is True
+    assert automation_calls == [('hero.png', 'card_update')]
+    assert result['new_id'] == 'hero-automated.png'
+    assert result['new_filename'] == 'hero-automated.png'
+    assert result['updated_card']['id'] == 'hero-automated.png'
+
+
+def test_update_card_content_bundle_update_skips_card_update_automation(monkeypatch, tmp_path):
+    cards_root = _setup_update_card_content_test(monkeypatch, tmp_path)
+    card_path = cards_root / 'hero.png'
+    temp_path = tmp_path / 'upload.png'
+    card_path.write_bytes(b'old-png')
+    temp_path.write_bytes(b'new-png')
+
+    monkeypatch.setattr(
+        card_service,
+        'extract_card_info',
+        lambda path: {'data': {'name': 'Hero', 'tags': ['new' if str(path).endswith('upload.png') else 'old']}},
+    )
+
+    def fail_auto_run_rules_for_trigger(card_id, trigger_context):
+        raise AssertionError(f'automation should be skipped, got {(card_id, trigger_context)}')
+
+    monkeypatch.setattr(automation_service, 'auto_run_rules_for_trigger', fail_auto_run_rules_for_trigger)
+
+    result = card_service.update_card_content(
+        'hero.png',
+        str(temp_path),
+        is_bundle_update=True,
+        keep_ui_data={},
+        new_upload_ext='.png',
+        image_policy='overwrite',
+    )
+
+    assert result['success'] is True
+
+
+def test_update_card_content_automation_failure_payload_returns_warning(monkeypatch, tmp_path):
+    cards_root = _setup_update_card_content_test(monkeypatch, tmp_path)
+    card_path = cards_root / 'hero.png'
+    temp_path = tmp_path / 'upload.png'
+    card_path.write_bytes(b'old-png')
+    temp_path.write_bytes(b'new-png')
+
+    monkeypatch.setattr(
+        card_service,
+        'extract_card_info',
+        lambda path: {'data': {'name': 'Hero', 'tags': ['new' if str(path).endswith('upload.png') else 'old']}},
+    )
+    monkeypatch.setattr(
+        automation_service,
+        'auto_run_rules_for_trigger',
+        lambda _card_id, _trigger_context: {'run': False, 'error': 'automation failed'},
+    )
+
+    result = card_service.update_card_content(
+        'hero.png',
+        str(temp_path),
+        is_bundle_update=False,
+        keep_ui_data={},
+        new_upload_ext='.png',
+        image_policy='overwrite',
+    )
+
+    assert result['success'] is True
+    assert 'warning' in result
+    assert '自动化' in result['warning']
+
+
+def test_update_card_content_automation_exception_returns_warning(monkeypatch, tmp_path):
+    cards_root = _setup_update_card_content_test(monkeypatch, tmp_path)
+    card_path = cards_root / 'hero.png'
+    temp_path = tmp_path / 'upload.png'
+    card_path.write_bytes(b'old-png')
+    temp_path.write_bytes(b'new-png')
+
+    monkeypatch.setattr(
+        card_service,
+        'extract_card_info',
+        lambda path: {'data': {'name': 'Hero', 'tags': ['new' if str(path).endswith('upload.png') else 'old']}},
+    )
+
+    def raise_auto_run_rules_for_trigger(_card_id, _trigger_context):
+        raise RuntimeError('automation exploded')
+
+    monkeypatch.setattr(
+        automation_service,
+        'auto_run_rules_for_trigger',
+        raise_auto_run_rules_for_trigger,
+    )
+
+    result = card_service.update_card_content(
+        'hero.png',
+        str(temp_path),
+        is_bundle_update=False,
+        keep_ui_data={},
+        new_upload_ext='.png',
+        image_policy='overwrite',
+    )
+
+    assert result['success'] is True
+    assert 'warning' in result
+    assert '自动化' in result['warning']
 
 
 def test_import_from_url_enqueues_card_and_world_sync_jobs(monkeypatch, tmp_path):

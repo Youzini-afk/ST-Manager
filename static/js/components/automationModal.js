@@ -7,6 +7,34 @@ import { listRuleSets, getRuleSet, saveRuleSet, deleteRuleSet, setGlobalRuleset,
 import { splitTagTokens } from '../state.js';
 
 const TEMPLATE_ACTION_TYPES = ['rename_file_by_template', 'split_category_to_tags'];
+const DEFAULT_RULE_TRIGGER_CONTEXTS = ['manual_run', 'auto_import'];
+const SUPPORTED_RULE_TRIGGER_CONTEXTS = [
+    'manual_run',
+    'auto_import',
+    'card_update',
+    'link_update',
+    'tag_edit'
+];
+
+
+function deriveLegacyRuleTriggerContexts(rule) {
+    const normalized = [...DEFAULT_RULE_TRIGGER_CONTEXTS];
+    const actions = Array.isArray(rule?.actions) ? rule.actions : [];
+
+    actions.forEach(action => {
+        if (!action || typeof action !== 'object') return;
+
+        if (action.type === 'fetch_forum_tags' && !normalized.includes('link_update')) {
+            normalized.push('link_update');
+        }
+
+        if (action.type === 'merge_tags' && !normalized.includes('tag_edit')) {
+            normalized.push('tag_edit');
+        }
+    });
+
+    return normalized;
+}
 
 function createFetchForumTagsConfig(value = {}) {
     return {
@@ -28,7 +56,9 @@ function createRenameTemplateConfig(value = {}) {
 
 function createSplitCategoryTagsConfig(value = {}) {
     return {
-        exclude_category_tags: typeof value.exclude_category_tags === 'string' ? value.exclude_category_tags : ''
+        exclude_category_tags: typeof value.exclude_category_tags === 'string'
+            ? value.exclude_category_tags
+            : (Array.isArray(value.exclude_segments) ? value.exclude_segments.join('|') : '')
     };
 }
 
@@ -247,6 +277,8 @@ export default function automationModal() {
                                 }
                             });
                         }
+
+                        rule.trigger_contexts = this.normalizeRuleTriggerContexts(rule);
                     });
                     
                     this.editingRules = rules;
@@ -290,6 +322,8 @@ export default function automationModal() {
             
             // 处理 fetch_forum_tags 动作的配置
             rulesToSave.forEach(rule => {
+                rule.trigger_contexts = this.normalizeRuleTriggerContexts(rule);
+
                 if (rule.actions) {
                     rule.actions.forEach(action => {
                         if (action.type === 'fetch_forum_tags' && action.config) {
@@ -327,7 +361,7 @@ export default function automationModal() {
                                     max_length: config.max_length,
                                 }
                                 : {
-                                    exclude_category_tags: config.exclude_category_tags
+                                    exclude_segments: splitTagTokens(config.exclude_category_tags, { slashIsSeparator: slashAsSeparator })
                                 };
                             delete action.config;
                         }
@@ -388,12 +422,53 @@ export default function automationModal() {
 
         // === 规则编辑器逻辑 ===
 
+        normalizeRuleTriggerContexts(rule) {
+            const trigger_contexts = Array.isArray(rule?.trigger_contexts) ? rule.trigger_contexts : null;
+
+            if (!trigger_contexts || trigger_contexts.length === 0) {
+                return deriveLegacyRuleTriggerContexts(rule);
+            }
+
+            const normalized = [];
+            trigger_contexts.filter(trigger => {
+                return typeof trigger === 'string' && trigger.trim();
+            }).map(trigger => trigger.trim()).filter(trigger => {
+                return SUPPORTED_RULE_TRIGGER_CONTEXTS.includes(trigger);
+            }).forEach(trigger => {
+                if (!normalized.includes(trigger)) {
+                    normalized.push(trigger);
+                }
+            });
+
+            return normalized.length ? normalized : deriveLegacyRuleTriggerContexts(rule);
+        },
+
+        toggleRuleTrigger(rule, trigger) {
+            if (!rule || typeof trigger !== 'string' || !trigger.trim()) return;
+
+            const currentTriggers = this.normalizeRuleTriggerContexts(rule);
+            const normalizedTrigger = trigger.trim();
+            if (currentTriggers.length === 1 && currentTriggers[0] === normalizedTrigger) return;
+
+            const nextTriggers = currentTriggers.includes(normalizedTrigger)
+                ? currentTriggers.filter(item => item !== normalizedTrigger)
+                : [...currentTriggers, normalizedTrigger];
+
+            rule.trigger_contexts = nextTriggers;
+            this.editingRules = [...this.editingRules];
+        },
+
+        ruleHasTrigger(rule, trigger) {
+            return this.normalizeRuleTriggerContexts(rule).includes(trigger);
+        },
+
         addRule() {
             this.editingRules.push({
                 id: crypto.randomUUID(),
                 name: "新规则",
                 enabled: true,
                 stop_on_match: false,
+                trigger_contexts: ['manual_run', 'auto_import'],
                 logic: "OR", // 规则内各组之间默认 OR
                 groups: [    // 默认带一个组
                     {

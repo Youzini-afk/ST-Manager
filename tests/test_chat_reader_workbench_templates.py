@@ -300,6 +300,62 @@ def test_preset_grid_template_places_selection_left_and_actions_right():
     assert 'absolute top-0 left-7 w-6 h-6' not in preset_template
 
 
+def test_automation_modal_template_exposes_rule_trigger_chip_controls_contract():
+    template = read_project_file('templates/modals/automation.html')
+
+    expected_trigger_chips = [
+        ('manual_run', '手动执行'),
+        ('auto_import', '导入后'),
+        ('card_update', '更新角色卡后'),
+        ('link_update', '更新来源链接后'),
+        ('tag_edit', '手动打标后'),
+    ]
+
+    trigger_chip_matches = re.findall(
+        r'<button type="button" class="automation-preset-chip"[\s\S]*?</button>',
+        template,
+    )
+    trigger_chip_blocks = [
+        block for block in trigger_chip_matches if 'toggleRuleTrigger(rule,' in block
+    ]
+
+    assert len(trigger_chip_blocks) == len(expected_trigger_chips)
+
+    for trigger_name, trigger_label in expected_trigger_chips:
+        expected_block = f'''
+        <button type="button" class="automation-preset-chip"
+            :class="ruleHasTrigger(rule, '{trigger_name}') ? 'border-[var(--accent-main)] text-[var(--accent-main)]' : 'text-[var(--text-dim)]'"
+            @click="toggleRuleTrigger(rule, '{trigger_name}')">
+            {trigger_label}
+        </button>
+        '''
+        assert js_contains(template, expected_block)
+
+    assert '仅勾选的触发场景会参与该规则。' in template
+
+
+def test_automation_modal_template_updates_trigger_and_rename_help_copy_contract():
+    template = read_project_file('templates/modals/automation.html')
+
+    assert '当前状态：全局默认规则' in template
+    assert '按规则触发时机和动作类型在不同场景执行' in template
+    assert '仅在 upload-file 或 update-from-URL' in template
+    assert '用新角色卡内容覆盖已有角色卡时触发' in template
+    assert '普通保存详情' in template
+    assert '单独更换封面' in template
+    assert '修改本地备注' in template
+    assert '修改来源链接' in template
+    assert '都不会触发' in template
+    assert '若想在覆盖更新后重命名' in template
+    assert '请在规则上启用“更新角色卡后”' in template
+    assert '如果文件名要体现本次更新时间' in template
+    assert '优先使用 modified_date' in template
+    assert '{% raw %}{{char_name}} - {{char_version|version}} - {{modified_date|date:%Y-%m-%d}}{% endraw %}' in template
+    assert 'import_date' in template
+    assert '首次导入时命名' in template
+    assert 'modified_date 更适合覆盖更新后命名' in template
+
+
 def test_preset_grid_css_reveals_selection_and_actions_on_hover():
     preset_template = read_project_file('templates/components/grid_presets.html')
     cards_css = read_project_file('static/css/modules/view-cards.css')
@@ -1990,7 +2046,7 @@ def test_automation_help_modal_uses_four_tab_structure_with_new_guidance():
     assert '导入时会跳过抓取论坛标签与标签合并' in automation_template
     assert '更新链接时只执行抓取论坛标签' in automation_template
     assert '手动打标时只执行标签合并' in automation_template
-    assert '{% raw %}{{char_name}} - {{char_version|version}} - {{import_date|date:%Y-%m-%d}}{% endraw %}' in automation_template
+    assert '{% raw %}{{char_name}} - {{char_version|version}} - {{modified_date|date:%Y-%m-%d}}{% endraw %}' in automation_template
     assert '支持字段：char_name、char_version、filename、filename_stem、category、import_time、import_date、modified_time、modified_date' in automation_template
     assert '日期字段支持 date 过滤器' in automation_template
     assert 'date:%Y-%m-%d' in automation_template
@@ -2066,7 +2122,7 @@ def test_automation_help_modal_template_examples_are_jinja_safe_literals():
     assert '<div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">{{char_name}} - {{creator}}</div>' not in automation_template
     assert '<div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">{{tags}}</div>' not in automation_template
     assert '{% raw %}{{...}}{% endraw %}' in automation_template
-    assert '{% raw %}{{char_name}} - {{char_version|version}} - {{import_date|date:%Y-%m-%d}}{% endraw %}' in automation_template
+    assert '{% raw %}{{char_name}} - {{char_version|version}} - {{modified_date|date:%Y-%m-%d}}{% endraw %}' in automation_template
     assert 'category = a/b/c  ->  tags += [a, b, c]' in automation_template
 
 
