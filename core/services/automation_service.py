@@ -2,6 +2,8 @@ import logging
 import os
 from core.automation.normalizer import (
     TRIGGER_CONTEXT_AUTO_IMPORT,
+    TRIGGER_CONTEXT_MANUAL_RUN,
+    TRIGGER_CONTEXT_CARD_UPDATE,
     TRIGGER_CONTEXT_LINK_UPDATE,
     TRIGGER_CONTEXT_TAG_EDIT,
     normalize_actions_for_context,
@@ -148,6 +150,55 @@ def _build_runtime_from_active_ruleset():
     }
 
 
+def _normalize_rule_trigger_contexts(rule):
+    trigger_contexts = rule.get('trigger_contexts') if isinstance(rule, dict) else None
+    if not trigger_contexts:
+        legacy_contexts = [TRIGGER_CONTEXT_MANUAL_RUN, TRIGGER_CONTEXT_AUTO_IMPORT]
+        actions = rule.get('actions', []) if isinstance(rule, dict) else []
+
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+
+            action_type = action.get('type')
+            if action_type == ACT_FETCH_FORUM_TAGS and TRIGGER_CONTEXT_LINK_UPDATE not in legacy_contexts:
+                legacy_contexts.append(TRIGGER_CONTEXT_LINK_UPDATE)
+            elif action_type == ACT_MERGE_TAGS and TRIGGER_CONTEXT_TAG_EDIT not in legacy_contexts:
+                legacy_contexts.append(TRIGGER_CONTEXT_TAG_EDIT)
+
+        return legacy_contexts
+
+    if isinstance(trigger_contexts, str):
+        trigger_contexts = [trigger_contexts.strip()]
+
+    normalized = []
+    for trigger_context in trigger_contexts:
+        if not isinstance(trigger_context, str):
+            continue
+
+        trigger_context = trigger_context.strip()
+        if trigger_context and trigger_context not in normalized:
+            normalized.append(trigger_context)
+
+    return normalized or [TRIGGER_CONTEXT_MANUAL_RUN, TRIGGER_CONTEXT_AUTO_IMPORT]
+
+
+def _filter_ruleset_by_trigger_context(ruleset, trigger_context):
+    if not isinstance(ruleset, dict):
+        return {'rules': []}
+
+    filtered_rules = []
+    for rule in ruleset.get('rules', []):
+        if not isinstance(rule, dict) or not rule.get('enabled', True):
+            continue
+        if trigger_context in _normalize_rule_trigger_contexts(rule):
+            filtered_rules.append(rule)
+
+    filtered_ruleset = dict(ruleset)
+    filtered_ruleset['rules'] = filtered_rules
+    return filtered_ruleset
+
+
 def _empty_exec_plan():
     return {
         'move': None,
@@ -228,6 +279,7 @@ def auto_run_tag_merge_on_tagging(card_id, tags, ui_data=None, runtime=None):
             return None
 
         slash_as_separator = bool(rt.get('slash_as_separator', False))
+        filtered_ruleset = _filter_ruleset_by_trigger_context(ruleset, TRIGGER_CONTEXT_TAG_EDIT)
 
         card_obj = ctx.cache.id_map.get(card_id)
         if not card_obj:
@@ -240,9 +292,15 @@ def auto_run_tag_merge_on_tagging(card_id, tags, ui_data=None, runtime=None):
             logger.debug(f"Tag merge skipped, card not found in cache: {card_id}")
             return None
 
-        context_data, ui_data = _build_rule_context(card_id, card_obj, ruleset, ui_data=ui_data, tags=tags)
+        context_data, ui_data = _build_rule_context(
+            card_id,
+            card_obj,
+            filtered_ruleset,
+            ui_data=ui_data,
+            tags=tags,
+        )
 
-        plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
+        plan_raw = engine.evaluate(context_data, filtered_ruleset, match_if_no_conditions=True)
         normalized_plan = normalize_actions_for_context(
             plan_raw.get('actions', []),
             TRIGGER_CONTEXT_TAG_EDIT,
@@ -282,48 +340,55 @@ def auto_run_rules_on_card(card_id):
     检查是否有全局激活的规则集，如果有，对指定卡片运行。
     用于上传/导入后的钩子。
     """
+    return auto_run_rules_for_trigger(card_id, TRIGGER_CONTEXT_AUTO_IMPORT)
+
+
+def auto_run_rules_for_trigger(card_id, trigger_context):
+    """对指定卡片按触发上下文执行自动化规则。"""
     try:
         cfg = load_config()
         active_id = cfg.get('active_automation_ruleset')
-        
+
         if not active_id:
-            return None # 未开启自动化
-            
+            return None  # 未开启自动化
+
         ruleset = rule_manager.get_ruleset(active_id)
         if not ruleset:
             return None
 
         slash_as_separator = bool(cfg.get('automation_slash_is_tag_separator', False))
-            
+
         # 获取卡片数据
         # 刚上传的卡片可能还没进缓存（如果是并发情况），但通常 API 也就是串行的
         # 我们尝试从缓存拿，如果没有，尝试等待一下或者重新读 DB (略重)
         # 这里假设调用时，update_card_cache 已经执行，缓存已更新
-        
+
         card_obj = ctx.cache.id_map.get(card_id)
         if not card_obj:
             logger.warning(f"Auto-run: Card {card_id} not found in cache immediately.")
             return None
-            
+
+        filtered_ruleset = _filter_ruleset_by_trigger_context(ruleset, trigger_context)
+
         # 准备数据
-        context_data, ui_data = _build_rule_context(card_id, card_obj, ruleset)
-        
+        context_data, ui_data = _build_rule_context(card_id, card_obj, filtered_ruleset)
+
         # 评估（自动执行时，无条件的规则也应执行）
-        plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
+        plan_raw = engine.evaluate(context_data, filtered_ruleset, match_if_no_conditions=True)
         normalized_plan = normalize_actions_for_context(
             plan_raw.get('actions', []),
-            TRIGGER_CONTEXT_AUTO_IMPORT,
+            trigger_context,
             card_snapshot=context_data,
         )
-        
+
         if not normalized_plan['actions']:
             return {"run": True, "actions": 0}
-        
+
         exec_plan = _build_exec_plan_from_actions(
             normalized_plan.get('actions', []),
             slash_as_separator=slash_as_separator,
         )
-            
+
         # 执行
         res = executor.apply_plan(card_id, exec_plan, ui_data)
 
@@ -332,7 +397,7 @@ def auto_run_rules_on_card(card_id):
 
     except Exception as e:
         logger.error(f"Auto-run error: {e}")
-        return None
+        return {'run': False, 'error': str(e)}
 
 
 def auto_run_forum_tags_on_link_update(card_id):
@@ -351,6 +416,8 @@ def auto_run_forum_tags_on_link_update(card_id):
         if not ruleset:
             return None
 
+        filtered_ruleset = _filter_ruleset_by_trigger_context(ruleset, TRIGGER_CONTEXT_LINK_UPDATE)
+
         # 获取卡片数据
         card_obj = ctx.cache.id_map.get(card_id)
         if not card_obj:
@@ -358,10 +425,10 @@ def auto_run_forum_tags_on_link_update(card_id):
             return None
 
         # 准备数据
-        context_data, ui_data = _build_rule_context(card_id, card_obj, ruleset)
+        context_data, ui_data = _build_rule_context(card_id, card_obj, filtered_ruleset)
 
         # 评估（自动执行时，无条件的规则也应执行）
-        plan_raw = engine.evaluate(context_data, ruleset, match_if_no_conditions=True)
+        plan_raw = engine.evaluate(context_data, filtered_ruleset, match_if_no_conditions=True)
         normalized_plan = normalize_actions_for_context(
             plan_raw.get('actions', []),
             TRIGGER_CONTEXT_LINK_UPDATE,
@@ -381,7 +448,10 @@ def auto_run_forum_tags_on_link_update(card_id):
 
         # 抓取论坛标签后，联动执行标签合并（如果全局规则中配置了 merge_tags）
         current_card = ctx.cache.id_map.get(card_id)
-        final_tags = list((current_card or {}).get('tags') or res.get('tags_added') or [])
+        fetch_payload = res.get('forum_tags_fetched') or {}
+        has_fetched_tags = 'tags' in fetch_payload
+        fetched_tags = fetch_payload.get('tags') or []
+        final_tags = list(fetched_tags if has_fetched_tags else ((current_card or {}).get('tags') or []))
         tag_merge = None
 
         if final_tags:

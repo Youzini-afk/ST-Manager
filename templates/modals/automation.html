@@ -106,7 +106,7 @@
                         class="bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2 flex justify-between items-center transition-all duration-300">
                         <div class="flex items-center gap-2 text-yellow-600 font-bold text-xs">
                             <span class="text-lg">🤖</span>
-                            <span>当前状态：全局默认规则 (按动作类型在不同场景触发)</span>
+                            <span>当前状态：全局默认规则 (按规则触发时机和动作类型在不同场景执行)</span>
                         </div>
                         <button x-show="$store.global.deviceType !== 'mobile'" @click="toggleGlobalActive(activeRuleSet?.id)"
                             class="text-xs underline hover:text-yellow-500 cursor-pointer">
@@ -169,12 +169,44 @@
                         <div class="rule-card">
                             <!-- 规则头 -->
                             <div class="rule-header">
-                                <div class="flex items-center gap-2">
-                                    <span class="drag-handle cursor-grab">☰</span>
-                                    <input type="checkbox" x-model="rule.enabled" class="cursor-pointer" title="启用/禁用">
-                                    <input type="text" x-model="rule.name"
-                                        class="bg-transparent font-bold text-sm outline-none border-b border-transparent hover:border-gray-500 focus:border-blue-500 w-64"
-                                        placeholder="规则名称...">
+                                <div class="flex flex-col gap-2 flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <span class="drag-handle cursor-grab">☰</span>
+                                        <input type="checkbox" x-model="rule.enabled" class="cursor-pointer" title="启用/禁用">
+                                        <input type="text" x-model="rule.name"
+                                            class="bg-transparent font-bold text-sm outline-none border-b border-transparent hover:border-gray-500 focus:border-blue-500 w-64"
+                                            placeholder="规则名称...">
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <button type="button" class="automation-preset-chip"
+                                            :class="ruleHasTrigger(rule, 'manual_run') ? 'border-[var(--accent-main)] text-[var(--accent-main)]' : 'text-[var(--text-dim)]'"
+                                            @click="toggleRuleTrigger(rule, 'manual_run')">
+                                            手动执行
+                                        </button>
+                                        <button type="button" class="automation-preset-chip"
+                                            :class="ruleHasTrigger(rule, 'auto_import') ? 'border-[var(--accent-main)] text-[var(--accent-main)]' : 'text-[var(--text-dim)]'"
+                                            @click="toggleRuleTrigger(rule, 'auto_import')">
+                                            导入后
+                                        </button>
+                                        <button type="button" class="automation-preset-chip"
+                                            :class="ruleHasTrigger(rule, 'card_update') ? 'border-[var(--accent-main)] text-[var(--accent-main)]' : 'text-[var(--text-dim)]'"
+                                            @click="toggleRuleTrigger(rule, 'card_update')">
+                                            更新角色卡后
+                                        </button>
+                                        <button type="button" class="automation-preset-chip"
+                                            :class="ruleHasTrigger(rule, 'link_update') ? 'border-[var(--accent-main)] text-[var(--accent-main)]' : 'text-[var(--text-dim)]'"
+                                            @click="toggleRuleTrigger(rule, 'link_update')">
+                                            更新来源链接后
+                                        </button>
+                                        <button type="button" class="automation-preset-chip"
+                                            :class="ruleHasTrigger(rule, 'tag_edit') ? 'border-[var(--accent-main)] text-[var(--accent-main)]' : 'text-[var(--text-dim)]'"
+                                            @click="toggleRuleTrigger(rule, 'tag_edit')">
+                                            手动打标后
+                                        </button>
+                                    </div>
+                                    <div class="text-[10px] text-[var(--text-dim)]">
+                                        仅勾选的触发场景会参与该规则。
+                                    </div>
                                 </div>
                                 <div class="automation-inline-actions">
                                     <label class="flex items-center gap-1 text-xs cursor-pointer select-none"
@@ -454,16 +486,19 @@
                                                                      class="auto-input flex-1 text-xs"
                                                                      placeholder="当主模板为空时使用，可留空">
                                                              </div>
-                                                              <div class="flex items-center gap-2">
-                                                                  <span class="text-xs text-[var(--text-dim)] w-20">最大长度:</span>
-                                                                  <input type="number"
-                                                                      x-model.number="cfg.max_length"
-                                                                      min="1"
-                                                                      class="auto-input flex-1 text-xs"
-                                                                      placeholder="120">
-                                                              </div>
-                                                          </div>
-                                                      </template>
+                                                               <div class="flex items-center gap-2">
+                                                                   <span class="text-xs text-[var(--text-dim)] w-20">最大长度:</span>
+                                                                   <input type="number"
+                                                                       x-model.number="cfg.max_length"
+                                                                       min="1"
+                                                                       class="auto-input flex-1 text-xs"
+                                                                       placeholder="120">
+                                                               </div>
+                                                               <div class="text-[10px] text-[var(--text-dim)] mt-1">
+                                                                   💡 若想在覆盖更新后重命名，请在规则上启用“更新角色卡后”；如果文件名要体现本次更新时间，优先使用 modified_date。
+                                                               </div>
+                                                           </div>
+                                                       </template>
 
                                                      <template x-if="action.type === 'split_category_to_tags'">
                                                           <div x-data="{ cfg: initActionConfig(action) }"
@@ -657,7 +692,7 @@
                                             <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
                                                 <li><strong>fetch_forum_tags</strong>：自动从来源链接抓取论坛标签，可配置排除标签、标签替换、合并模式。</li>
                                                 <li><strong>merge_tags</strong>：将多个旧标签统一替换为同一个目标标签，适合做同义词归并。</li>
-                                                <li><strong>rename_file_by_template</strong>：按模板重命名文件，适合把角色名、版本、导入日期等字段拼成规范文件名。</li>
+                                                <li><strong>rename_file_by_template</strong>：按模板重命名文件，适合把角色名、版本、导入日期或修改日期等字段拼成规范文件名。</li>
                                                 <li><strong>split_category_to_tags</strong>：把当前分类路径按 <code class="font-mono">/</code> 拆成多个标签，例如 <code class="font-mono">a/b/c</code> 会追加 <code class="font-mono">a</code>、<code class="font-mono">b</code>、<code class="font-mono">c</code>。</li>
                                             </ul>
                                         </div>
@@ -695,11 +730,12 @@
                                         全局规则不是每个入口都执行全部动作。不同触发场景只会运行对应的动作子集，避免在不合适的场景里改名或改标签。
                                     </p>
                                     <div class="p-3 bg-blue-500/10 border border-blue-500/30 rounded">
-                                        <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
-                                            <li><strong>导入时</strong>：会执行普通动作（移动文件夹、添加/移除标签、设置收藏、名称同步、rename_file_by_template、split_category_to_tags）；导入时会跳过抓取论坛标签与标签合并。</li>
-                                            <li><strong>更新链接时</strong>：在卡片详情页修改"来源链接"并保存时，更新链接时只执行抓取论坛标签。</li>
-                                            <li><strong>手动打标时</strong>：仅在"批量标签管理输入框"和"详情页自定义添加标签输入框"点击添加时触发；手动打标时只执行标签合并。</li>
-                                        </ul>
+                                            <ul class="list-disc list-inside space-y-1 text-xs text-[var(--text-dim)]">
+                                                <li><strong>导入时</strong>：会执行普通动作（移动文件夹、添加/移除标签、设置收藏、名称同步、rename_file_by_template、split_category_to_tags）；导入时会跳过抓取论坛标签与标签合并。</li>
+                                                <li><strong>更新角色卡后</strong>：仅在 upload-file 或 update-from-URL 用新角色卡内容覆盖已有角色卡时触发；普通保存详情、单独更换封面、修改本地备注、修改来源链接都不会触发。</li>
+                                                <li><strong>更新链接时</strong>：在卡片详情页修改"来源链接"并保存时，更新链接时只执行抓取论坛标签。</li>
+                                                <li><strong>手动打标时</strong>：仅在"批量标签管理输入框"和"详情页自定义添加标签输入框"点击添加时触发；手动打标时只执行标签合并。</li>
+                                            </ul>
                                     </div>
                                 </div>
 
@@ -774,11 +810,11 @@
                                                     </div>
                                                     <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)]">
                                                         <div class="font-bold text-blue-400">import_time / import_date</div>
-                                                        <div class="text-[var(--text-dim)] mt-1">导入时间戳 / 导入日期</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">导入时间戳 / 导入日期，更适合首次导入时命名</div>
                                                     </div>
                                                     <div class="p-2 border border-[var(--border-light)] rounded bg-[var(--bg-panel)] md:col-span-2">
                                                         <div class="font-bold text-blue-400">modified_time / modified_date</div>
-                                                        <div class="text-[var(--text-dim)] mt-1">文件修改时间戳 / 文件修改日期</div>
+                                                        <div class="text-[var(--text-dim)] mt-1">文件修改时间戳 / 文件修改日期，更适合覆盖更新后命名</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -821,8 +857,8 @@
                                         </div>
                                         <div>
                                             <div class="font-bold text-xs text-green-400 mb-1">文件重命名示例</div>
-                                            <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">{% raw %}{{char_name}} - {{char_version|version}} - {{import_date|date:%Y-%m-%d}}{% endraw %}</div>
-                                            <div class="text-xs text-[var(--text-dim)] mt-1">例如生成“角色名 - v1.2 - 2026-04-01”这种文件名。</div>
+                                            <div class="bg-[var(--bg-code)] p-2 rounded text-xs font-mono">{% raw %}{{char_name}} - {{char_version|version}} - {{modified_date|date:%Y-%m-%d}}{% endraw %}</div>
+                                            <div class="text-xs text-[var(--text-dim)] mt-1">例如生成“角色名 - v1.2 - 2026-04-01”这种文件名；import_date 更适合首次导入时命名，modified_date 更适合覆盖更新后命名。</div>
                                         </div>
                                         <div>
                                             <div class="font-bold text-xs text-green-400 mb-1">拆分类标签示例</div>

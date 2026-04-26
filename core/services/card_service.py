@@ -212,7 +212,7 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
         hint_name_for_folder = os.path.splitext(fallback_filename)[0]
     
     # --- 资源归档辅助函数 ---
-    def _archive_file(src_path, label):
+    def _archive_file(src_path, label, preserve_original_name=False):
         try:
             # 自动获取或创建目录
             res_name, res_full_path, is_new = _ensure_resource_folder_exists(card_id, hint_name_for_folder)
@@ -221,9 +221,19 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
             if is_new:
                 keep_ui_data['resource_folder'] = res_name
 
-            ext = os.path.splitext(src_path)[1]
-            timestamp = int(time.time())
-            dst_name = f"{label}_{timestamp}{ext}"
+            if preserve_original_name:
+                src_name = os.path.basename(src_path)
+                name_root, ext = os.path.splitext(src_name)
+                dst_name = src_name
+                counter = 1
+                while os.path.exists(os.path.join(res_full_path, dst_name)):
+                    dst_name = f'{name_root}_{counter}{ext}'
+                    counter += 1
+            else:
+                ext = os.path.splitext(src_path)[1]
+                timestamp = int(time.time())
+                dst_name = f"{label}_{timestamp}{ext}"
+
             shutil.copy2(src_path, os.path.join(res_full_path, dst_name))
             
             return res_name # 返回目录名供后续使用
@@ -291,9 +301,11 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
         if image_policy == 'archive_old' and os.path.exists(original_full_path):
             if old_ext == '.json':
                 sidecar = find_sidecar_image(original_full_path)
-                if sidecar: _archive_file(sidecar, "archived_cover")
+                if sidecar and not _archive_file(sidecar, 'archived_cover', preserve_original_name=True):
+                    return {'success': False, 'msg': '归档旧封面失败，已取消覆盖更新'}
             else:
-                _archive_file(original_full_path, "archived_cover")
+                if not _archive_file(original_full_path, 'archived_cover', preserve_original_name=True):
+                    return {'success': False, 'msg': '归档旧封面失败，已取消覆盖更新'}
         
         elif image_policy == 'archive_new':
             if new_upload_ext == '.png':
@@ -424,6 +436,7 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
     
     # 5. 内存缓存更新
     updated_card_obj = None
+    warning_message = None
     
     if is_bundle_update:
         # Bundle 更新会影响聚合卡的 versions 列表、封面选择和 bundle_map。
@@ -473,6 +486,30 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
         else:
             updated_card_obj = ctx.cache.update_card_data(card_id, update_payload)
 
+        try:
+            from core.services.automation_service import auto_run_rules_for_trigger
+
+            automation_result = auto_run_rules_for_trigger(final_rel_id, 'card_update')
+            automation_payload = automation_result if isinstance(automation_result, Mapping) else {}
+            if automation_payload.get('run') is False:
+                warning_message = '卡片已更新，但后置自动化执行失败，请稍后检查自动化规则。'
+
+            result_payload = automation_payload.get('result')
+            final_id_from_automation = None
+            if isinstance(result_payload, Mapping):
+                final_id_from_automation = result_payload.get('final_id')
+
+            if final_id_from_automation:
+                final_rel_id = final_id_from_automation
+                updated_card_obj = ctx.cache.id_map.get(final_rel_id) or updated_card_obj
+                if updated_card_obj:
+                    new_filename = updated_card_obj.get('filename') or os.path.basename(final_rel_id)
+                else:
+                    new_filename = os.path.basename(final_rel_id)
+        except Exception as exc:
+            logger.error(f'Card update automation failed for {final_rel_id}: {exc}')
+            warning_message = '卡片已更新，但后置自动化执行失败，请稍后检查自动化规则。'
+
     # 构造返回
     new_image_url = ""
     if updated_card_obj:
@@ -480,7 +517,7 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
         if '?t=' not in new_image_url:
             new_image_url += f"?t={int(new_mtime)}"
 
-    return {
+    result = {
         "success": True,
         "file_modified": True,
         "new_id": final_rel_id,
@@ -489,6 +526,11 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
         "updated_card": updated_card_obj,
         "import_time": get_import_time(load_ui_data(), final_rel_id, new_mtime)
     }
+
+    if warning_message:
+        result['warning'] = warning_message
+
+    return result
 
 # 皮肤换封服务
 def swap_skin_to_cover(card_id, skin_filename, save_old_to_resource=False):

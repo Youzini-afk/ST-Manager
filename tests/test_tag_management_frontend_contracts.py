@@ -38,6 +38,60 @@ def test_automation_modal_defines_shared_tag_splitter_contract_for_slash_separat
     assert 'splitTagTokens(' in save_section
 
 
+def test_automation_modal_trigger_contexts_contract_defaults_normalizes_and_persists():
+    source = read_project_file('static/js/components/automationModal.js')
+    select_section = extract_js_function_block(source, 'selectRuleSet(id) {')
+    add_rule_section = extract_js_function_block(source, 'addRule() {')
+    save_section = extract_js_function_block(source, 'saveCurrentRuleSet() {')
+    normalize_section = extract_js_function_block(source, 'normalizeRuleTriggerContexts(rule) {')
+    toggle_section = extract_js_function_block(source, 'toggleRuleTrigger(rule, trigger) {')
+    has_trigger_section = extract_js_function_block(source, 'ruleHasTrigger(rule, trigger) {')
+
+    assert 'normalizeRuleTriggerContexts(rule) {' in source
+    assert 'deriveLegacyRuleTriggerContexts(rule)' in source
+    assert 'DEFAULT_RULE_TRIGGER_CONTEXTS' in source
+    assert "['manual_run', 'auto_import']" in source
+    assert 'SUPPORTED_RULE_TRIGGER_CONTEXTS' in source
+    assert "'manual_run'" in source
+    assert "'auto_import'" in source
+    assert "'card_update'" in source
+    assert "'link_update'" in source
+    assert "'tag_edit'" in source
+    assert 'Array.isArray(rule?.trigger_contexts) ? rule.trigger_contexts : null' in normalize_section
+    assert 'trigger_contexts.filter' in normalize_section
+    assert 'deriveLegacyRuleTriggerContexts(rule)' in normalize_section
+    assert 'SUPPORTED_RULE_TRIGGER_CONTEXTS.includes(trigger)' in normalize_section
+    assert 'normalized.includes(trigger)' in normalize_section
+    assert 'return normalized.length ? normalized : deriveLegacyRuleTriggerContexts(rule);' in normalize_section
+    assert "action.type === 'fetch_forum_tags'" in source
+    assert "action.type === 'merge_tags'" in source
+
+    assert 'rule.trigger_contexts = this.normalizeRuleTriggerContexts(rule);' in select_section
+    assert "trigger_contexts: ['manual_run', 'auto_import']" in add_rule_section
+    assert 'rule.trigger_contexts = this.normalizeRuleTriggerContexts(rule);' in save_section
+
+    assert 'toggleRuleTrigger(rule, trigger) {' in source
+    assert 'this.normalizeRuleTriggerContexts(rule)' in toggle_section
+    assert 'if (currentTriggers.length === 1 && currentTriggers[0] === normalizedTrigger) return;' in toggle_section
+    assert 'rule.trigger_contexts = nextTriggers;' in toggle_section
+    assert 'this.editingRules = [...this.editingRules];' in toggle_section
+
+    assert 'ruleHasTrigger(rule, trigger) {' in source
+    assert 'return this.normalizeRuleTriggerContexts(rule).includes(trigger);' in has_trigger_section
+
+
+def test_automation_modal_split_category_tags_contract_uses_backend_exclude_segments_shape():
+    source = read_project_file('static/js/components/automationModal.js')
+    save_section = extract_js_function_block(source, 'saveCurrentRuleSet() {')
+
+    assert 'function createSplitCategoryTagsConfig(value = {}) {' in source
+    assert 'exclude_category_tags' in source
+    assert 'value.exclude_segments' in source
+    assert "join('|')" in source
+    assert 'exclude_segments: splitTagTokens(config.exclude_category_tags' in save_section
+    assert 'exclude_category_tags: config.exclude_category_tags' not in save_section
+
+
 def test_state_defines_localstorage_backed_tag_view_pref_contracts():
     source = read_project_file('static/js/state.js')
 
