@@ -85,6 +85,18 @@ export default function presetGrid() {
       return (this.items || []).find((item) => item.id === id) || null;
     },
 
+    getPresetOpenId(item) {
+      if (!item) return "";
+      if (item.entry_type === "family" && item.default_version_id) {
+        return item.default_version_id;
+      }
+      return item.id || "";
+    },
+
+    getPresetActionTargetId(item) {
+      return this.getPresetOpenId(item);
+    },
+
     selectedPresetItems() {
       return this.selectedIds
         .map((id) => this.getPresetItemById(id))
@@ -379,23 +391,30 @@ export default function presetGrid() {
 
     // 新三栏阅览界面方法
     openPresetDetail(item) {
+      const openId = this.getPresetOpenId(item);
+      if (!openId) return;
+
       // 触发事件让 presetDetailReader.js 处理详情显示
       window.dispatchEvent(
         new CustomEvent("open-preset-reader", {
-          detail: item,
+          detail: {
+            ...item,
+            id: openId,
+          },
         }),
       );
     },
 
     async exportPresetItem(item, event = null) {
       event?.stopPropagation?.();
-      if (!item?.id) return;
+      const targetId = this.getPresetActionTargetId(item);
+      if (!targetId) return;
 
       try {
         await downloadFileFromApi({
           url: "/api/presets/export",
           body: {
-            id: item.id,
+            id: targetId,
           },
           defaultFilename: item.filename || `${item.name || "preset"}.json`,
           showToast: this.$store?.global?.showToast,
@@ -407,6 +426,8 @@ export default function presetGrid() {
 
     async deletePreset(item, e) {
       e.stopPropagation();
+      const targetId = this.getPresetActionTargetId(item);
+      if (!targetId) return;
 
       if (!confirm(`确定要删除预设 "${item.name}" 吗？`)) {
         return;
@@ -416,7 +437,7 @@ export default function presetGrid() {
         const resp = await fetch("/api/presets/delete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: item.id }),
+          body: JSON.stringify({ id: targetId }),
         });
         const res = await resp.json();
 
@@ -439,10 +460,15 @@ export default function presetGrid() {
       if (!confirm(`确定要删除选中的 ${count} 个预设吗？`)) return;
 
       for (const item of items) {
+        const targetId = this.getPresetActionTargetId(item);
+        if (!targetId) {
+          this.$store.global.showToast("删除失败", "error");
+          return;
+        }
         const resp = await fetch("/api/presets/delete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: item.id }),
+          body: JSON.stringify({ id: targetId }),
         });
         const res = await resp.json();
         if (!res?.success) {
@@ -468,11 +494,16 @@ export default function presetGrid() {
       if (!confirm(`移动 ${count} 个预设到 "${label}"?`)) return;
 
       for (const item of items) {
+        const targetId = this.getPresetActionTargetId(item);
+        if (!targetId) {
+          alert("移动失败");
+          return;
+        }
         const resp = await fetch("/api/presets/category/move", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            id: item.id,
+            id: targetId,
             source_type: item.source_type || item.type,
             file_path: item.path,
             target_category: targetCategory,

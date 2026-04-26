@@ -27,3 +27,12 @@ export async function savePresetExtensions(payload) {
   });
   return res.json();
 }
+
+export async function setDefaultPresetVersion(payload) {
+  const res = await fetch("/api/presets/version/set-default", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}

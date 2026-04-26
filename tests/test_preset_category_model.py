@@ -26,6 +26,26 @@ def _write_json(path: Path, payload):
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
+def _write_versioned_global_family(presets_dir: Path, family_id: str, versions: list[dict]):
+    for version in versions:
+        meta = {
+            'preset_family_id': family_id,
+            'preset_family_name': version.get('family_name') or 'Companion Family',
+            'preset_version_label': version['label'],
+            'preset_version_order': version['order'],
+            'preset_is_default_version': bool(version.get('is_default', False)),
+        }
+        _write_json(
+            presets_dir / version['category'] / version['filename'],
+            {
+                'name': version['name'],
+                'description': version.get('description', ''),
+                'x_st_manager': meta,
+                **(version.get('content') or {}),
+            },
+        )
+
+
 class _FakeCache:
     def __init__(self, cards):
         self.cards = list(cards)
@@ -365,6 +385,179 @@ def test_list_presets_folder_metadata_ignores_search_narrowing(monkeypatch, tmp_
     assert payload['folder_capabilities']['角色分类']['has_virtual_items'] is True
 
 
+def test_list_presets_groups_versioned_global_files_into_family_entry(monkeypatch, tmp_path):
+    presets_dir, _ = _setup_preset_env(monkeypatch, tmp_path)
+    family_meta = {
+        'x_st_manager': {
+            'preset_family_id': 'family-alpha',
+            'preset_family_name': 'Companion Family',
+            'preset_version_order': 10,
+        }
+    }
+    _write_json(
+        presets_dir / '写作' / 'companion-v1.json',
+        {
+            'name': 'Companion V1',
+            'description': 'Legacy baseline',
+            **family_meta,
+            'x_st_manager': {
+                **family_meta['x_st_manager'],
+                'preset_version_label': 'v1',
+                'preset_is_default_version': True,
+            },
+        },
+    )
+    _write_json(
+        presets_dir / '写作' / 'companion-v2.json',
+        {
+            'name': 'Companion V2',
+            'description': 'Upgraded variant',
+            **family_meta,
+            'x_st_manager': {
+                **family_meta['x_st_manager'],
+                'preset_version_label': 'v2',
+                'preset_version_order': 20,
+            },
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/list?filter_type=global&search=v2')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['count'] == 1
+    assert payload['all_folders'] == ['写作']
+
+    item = payload['items'][0]
+    assert item['entry_type'] == 'family'
+    assert item['id'] == 'global::global::family-alpha'
+    assert item['family_id'] == 'family-alpha'
+    assert item['family_name'] == 'Companion Family'
+    assert item['name'] == 'Companion Family'
+    assert item['default_version_id'] == 'global::写作/companion-v1.json'
+    assert item['default_version_label'] == 'v1'
+    assert item['version_count'] == 2
+    assert [version['preset_version']['version_label'] for version in item['versions']] == ['v1', 'v2']
+    assert {version['id'] for version in item['versions']} == {
+        'global::写作/companion-v1.json',
+        'global::写作/companion-v2.json',
+    }
+
+
+def test_list_presets_does_not_group_same_family_id_across_global_and_resource_sources(monkeypatch, tmp_path):
+    presets_dir, resources_dir = _setup_preset_env(
+        monkeypatch,
+        tmp_path,
+        cards=[_make_card('cards/lucy.png', '角色分类')],
+        ui_payload={'cards/lucy.png': {'resource_folder': 'lucy'}},
+    )
+    version_meta = {
+        'x_st_manager': {
+            'preset_family_id': 'shared-family',
+            'preset_family_name': 'Shared Family',
+            'preset_version_label': 'v1',
+            'preset_version_order': 10,
+            'preset_is_default_version': True,
+        }
+    }
+    _write_json(presets_dir / '写作' / 'companion.json', {'name': 'Global Companion', **version_meta})
+    _write_json(
+        resources_dir / 'lucy' / 'presets' / 'companion.json',
+        {'name': 'Resource Companion', **version_meta},
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/list?filter_type=all&search=shared')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['count'] == 2
+    family_ids = {item['id'] for item in payload['items']}
+    assert family_ids == {
+        'global::global::shared-family',
+        'resource::resource::lucy::shared-family',
+    }
+    assert {item['entry_type'] for item in payload['items']} == {'family'}
+
+
+def test_list_presets_keeps_versioned_family_visible_under_category_filter(monkeypatch, tmp_path):
+    presets_dir, _ = _setup_preset_env(monkeypatch, tmp_path)
+    family_meta = {
+        'x_st_manager': {
+            'preset_family_id': 'family-category',
+            'preset_family_name': 'Writing Family',
+            'preset_version_label': 'v1',
+            'preset_version_order': 10,
+            'preset_is_default_version': True,
+        }
+    }
+    _write_json(presets_dir / '写作' / 'family-v1.json', {'name': 'Writing V1', **family_meta})
+    _write_json(
+        presets_dir / '写作' / 'family-v2.json',
+        {
+            'name': 'Writing V2',
+            'x_st_manager': {
+                **family_meta['x_st_manager'],
+                'preset_version_label': 'v2',
+                'preset_version_order': 20,
+                'preset_is_default_version': False,
+            },
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.get('/api/presets/list?filter_type=global&category=写作')
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['count'] == 1
+    assert payload['items'][0]['entry_type'] == 'family'
+    assert payload['items'][0]['id'] == 'global::global::family-category'
+    assert payload['items'][0]['display_category'] == '写作'
+
+
+def test_list_presets_keeps_mixed_category_family_visible_under_each_category_filter(monkeypatch, tmp_path):
+    presets_dir, _ = _setup_preset_env(monkeypatch, tmp_path)
+    family_meta = {
+        'x_st_manager': {
+            'preset_family_id': 'family-mixed-category',
+            'preset_family_name': 'Mixed Category Family',
+            'preset_version_label': 'v1',
+            'preset_version_order': 10,
+            'preset_is_default_version': True,
+        }
+    }
+    _write_json(presets_dir / '写作' / 'family-v1.json', {'name': 'Writing V1', **family_meta})
+    _write_json(
+        presets_dir / '工具' / 'family-v2.json',
+        {
+            'name': 'Tooling V2',
+            'x_st_manager': {
+                **family_meta['x_st_manager'],
+                'preset_version_label': 'v2',
+                'preset_version_order': 20,
+                'preset_is_default_version': False,
+            },
+        },
+    )
+
+    client = _make_test_app().test_client()
+    writing_res = client.get('/api/presets/list?filter_type=global&category=写作')
+    tooling_res = client.get('/api/presets/list?filter_type=global&category=工具')
+
+    assert writing_res.status_code == 200
+    assert tooling_res.status_code == 200
+
+    writing_payload = writing_res.get_json()
+    tooling_payload = tooling_res.get_json()
+
+    assert writing_payload['count'] == 1
+    assert tooling_payload['count'] == 1
+    assert writing_payload['items'][0]['id'] == 'global::global::family-mixed-category'
+    assert tooling_payload['items'][0]['id'] == 'global::global::family-mixed-category'
+
+
 def test_preset_detail_accepts_relative_path_global_id(monkeypatch, tmp_path):
     presets_dir, _ = _setup_preset_env(monkeypatch, tmp_path)
     _write_json(presets_dir / '写作' / '长文' / 'companion.json', {'name': 'Companion'})
@@ -434,6 +627,55 @@ def test_export_preset_returns_attachment_for_resource_id(monkeypatch, tmp_path)
     assert payload['top_p'] == 0.9
 
 
+def test_export_preset_supports_grouped_family_item_via_concrete_version_id(monkeypatch, tmp_path):
+    presets_dir, _ = _setup_preset_env(monkeypatch, tmp_path)
+    _write_versioned_global_family(
+        presets_dir,
+        'family-export',
+        [
+            {
+                'category': '写作',
+                'filename': 'companion-v1.json',
+                'name': 'Companion V1',
+                'label': 'v1',
+                'order': 10,
+                'is_default': True,
+                'content': {'temperature': 0.7},
+            },
+            {
+                'category': '写作',
+                'filename': 'companion-v2.json',
+                'name': 'Companion V2',
+                'label': 'v2',
+                'order': 20,
+                'content': {'temperature': 0.9},
+            },
+        ],
+    )
+
+    client = _make_test_app().test_client()
+    list_res = client.get('/api/presets/list?filter_type=global')
+
+    assert list_res.status_code == 200
+    payload = list_res.get_json()
+    assert payload['count'] == 1
+    family_item = payload['items'][0]
+    assert family_item['entry_type'] == 'family'
+    assert family_item['id'] == 'global::global::family-export'
+
+    export_res = client.post('/api/presets/export', json={'id': family_item['default_version_id']})
+
+    assert export_res.status_code == 200
+    assert 'application/json' in export_res.headers['Content-Type']
+    assert 'attachment' in export_res.headers['Content-Disposition']
+    assert 'companion-v1.json' in export_res.headers['Content-Disposition']
+
+    payload = json.loads(export_res.data.decode('utf-8'))
+    assert payload['name'] == 'Companion V1'
+    assert payload['temperature'] == 0.7
+    assert payload['x_st_manager']['preset_family_id'] == 'family-export'
+
+
 def test_export_preset_rejects_invalid_id(monkeypatch, tmp_path):
     _setup_preset_env(monkeypatch, tmp_path)
 
@@ -458,6 +700,62 @@ def test_delete_preset_uses_relative_path_global_id(monkeypatch, tmp_path):
     payload = res.get_json()
     assert payload['success'] is True
     assert preset_path.exists() is False
+
+
+def test_delete_preset_supports_grouped_family_item_via_legacy_route_and_promotes_next_default(monkeypatch, tmp_path):
+    presets_dir, _ = _setup_preset_env(monkeypatch, tmp_path)
+    default_path = presets_dir / '写作' / 'companion-v1.json'
+    sibling_path = presets_dir / '写作' / 'companion-v2.json'
+    _write_versioned_global_family(
+        presets_dir,
+        'family-delete',
+        [
+            {
+                'category': '写作',
+                'filename': default_path.name,
+                'name': 'Companion V1',
+                'label': 'v1',
+                'order': 10,
+                'is_default': True,
+            },
+            {
+                'category': '写作',
+                'filename': sibling_path.name,
+                'name': 'Companion V2',
+                'label': 'v2',
+                'order': 20,
+            },
+        ],
+    )
+
+    client = _make_test_app().test_client()
+    list_res = client.get('/api/presets/list?filter_type=global')
+
+    assert list_res.status_code == 200
+    payload = list_res.get_json()
+    assert payload['count'] == 1
+    family_item = payload['items'][0]
+    assert family_item['entry_type'] == 'family'
+    assert family_item['default_version_id'] == 'global::写作/companion-v1.json'
+
+    delete_res = client.post('/api/presets/delete', json={'id': family_item['default_version_id']})
+
+    assert delete_res.status_code == 200
+    assert delete_res.get_json()['success'] is True
+    assert default_path.exists() is False
+    assert sibling_path.exists() is True
+
+    sibling_payload = json.loads(sibling_path.read_text(encoding='utf-8'))
+    assert sibling_payload['x_st_manager']['preset_is_default_version'] is True
+
+    refreshed_list_res = client.get('/api/presets/list?filter_type=global')
+
+    assert refreshed_list_res.status_code == 200
+    refreshed_payload = refreshed_list_res.get_json()
+    assert refreshed_payload['count'] == 1
+    refreshed_family = refreshed_payload['items'][0]
+    assert refreshed_family['default_version_id'] == 'global::写作/companion-v2.json'
+    assert refreshed_family['version_count'] == 1
 
 
 def test_save_preset_uses_relative_path_global_id(monkeypatch, tmp_path):
@@ -561,6 +859,57 @@ def test_move_preset_global_item_moves_file_to_target_category(monkeypatch, tmp_
     assert payload['success'] is True
     assert source_path.exists() is False
     assert (presets_dir / '写作' / '长文' / 'companion.json').exists()
+
+
+def test_move_preset_supports_grouped_family_item_via_concrete_version_target(monkeypatch, tmp_path):
+    presets_dir, _ = _setup_preset_env(monkeypatch, tmp_path)
+    source_path = presets_dir / '写作' / 'companion-v2.json'
+    target_path = presets_dir / '归档' / 'companion-v2.json'
+    _write_versioned_global_family(
+        presets_dir,
+        'family-move',
+        [
+            {
+                'category': '写作',
+                'filename': 'companion-v1.json',
+                'name': 'Companion V1',
+                'label': 'v1',
+                'order': 10,
+                'is_default': True,
+            },
+            {
+                'category': '写作',
+                'filename': source_path.name,
+                'name': 'Companion V2',
+                'label': 'v2',
+                'order': 20,
+            },
+        ],
+    )
+
+    client = _make_test_app().test_client()
+    list_res = client.get('/api/presets/list?filter_type=global')
+
+    assert list_res.status_code == 200
+    payload = list_res.get_json()
+    assert payload['count'] == 1
+    family_item = payload['items'][0]
+    target_version = next(version for version in family_item['versions'] if version['id'].endswith('companion-v2.json'))
+
+    move_res = client.post(
+        '/api/presets/category/move',
+        json={
+            'id': target_version['id'],
+            'source_type': family_item['source_type'],
+            'target_category': '归档',
+        },
+    )
+
+    assert move_res.status_code == 200
+    payload = move_res.get_json()
+    assert payload['success'] is True
+    assert source_path.exists() is False
+    assert target_path.exists() is True
 
 
 def test_move_preset_resource_item_sets_override_without_moving_file(monkeypatch, tmp_path):

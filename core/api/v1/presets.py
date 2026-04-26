@@ -23,6 +23,10 @@ from core.services.preset_editor_schema import resolve_global_save_dir_config_ke
 from core.services.preset_model import build_preset_detail
 from core.services.preset_model import detect_preset_kind, merge_preset_content
 from core.services.preset_model import strip_managed_kind_marker
+from core.services.preset_versions import extract_preset_version_meta
+from core.services.preset_versions import generate_preset_family_id
+from core.services.preset_versions import group_preset_list_items
+from core.services.preset_versions import upsert_preset_version_meta
 from core.services.preset_storage import (
     PresetConflictError,
     build_renamed_path,
@@ -35,6 +39,7 @@ from core.services.preset_storage import (
 from core.services.scan_service import suppress_fs_events
 from core.utils.filesystem import sanitize_filename
 from core.utils.regex import extract_regex_from_preset_data
+from core.utils.source_revision import build_file_source_revision
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('presets', __name__)
@@ -179,6 +184,21 @@ def _is_in_category_subtree(display_category: str, selected_category: str) -> bo
     if not selected:
         return True
     return display == selected or display.startswith(selected + '/')
+
+
+def _item_matches_category(item: dict, selected_category: str) -> bool:
+    selected = _normalize_category_path(selected_category)
+    if not selected:
+        return True
+
+    display_categories = item.get('display_categories') or []
+    if display_categories:
+        for display_category in display_categories:
+            if _is_in_category_subtree(display_category, selected):
+                return True
+        return False
+
+    return _is_in_category_subtree(item.get('display_category', ''), selected)
 
 
 def _safe_join_category_path(base_dir: str, category: str, leaf_name: str = '') -> str:
@@ -450,6 +470,204 @@ def _build_saved_preset_response(file_path: str, preset_type: str, source_folder
     )
 
 
+def _resolve_existing_preset_target_dir(file_path: str, preset_type: str, source_folder, presets_root: str) -> str:
+    if preset_type == 'resource' and source_folder:
+        return os.path.dirname(file_path)
+    if preset_type == 'global' and source_folder:
+        return _get_alternate_global_roots().get(source_folder) or os.path.dirname(file_path)
+    return presets_root
+
+
+def _list_family_version_paths(file_path: str, preset_type: str, source_folder, presets_root: str, family_id: str):
+    if not family_id:
+        return []
+
+    version_paths = []
+    for item in _scan_preset_scope_items(preset_type, source_folder, presets_root):
+        version_meta = item.get('preset_version') or {}
+        if version_meta.get('family_id') != family_id:
+            continue
+        member_path, _member_type, _member_source_folder = _resolve_preset_file_path(item.get('id'), presets_root)
+        if member_path and os.path.exists(member_path):
+            version_paths.append(member_path)
+    return version_paths
+
+
+def _rewrite_family_default_flags(
+    file_path: str,
+    *,
+    preset_type: str,
+    source_folder,
+    presets_root: str,
+    target_default_path: str,
+):
+    raw_data = load_preset_json(file_path)
+    version_meta = extract_preset_version_meta(
+        raw_data,
+        fallback_name=raw_data.get('name', ''),
+        fallback_filename=os.path.basename(file_path),
+    )
+    family_id = version_meta.get('family_id') or ''
+    if not family_id:
+        return
+
+    target_default_norm = os.path.normcase(os.path.normpath(target_default_path))
+    for version_path in _list_family_version_paths(file_path, preset_type, source_folder, presets_root, family_id):
+        member_raw = load_preset_json(version_path)
+        member_meta = extract_preset_version_meta(
+            member_raw,
+            fallback_name=member_raw.get('name', ''),
+            fallback_filename=os.path.basename(version_path),
+        )
+        updated = upsert_preset_version_meta(
+            member_raw,
+            family_id=member_meta.get('family_id') or family_id,
+            family_name=member_meta.get('family_name') or version_meta.get('family_name') or member_raw.get('name', ''),
+            version_label=member_meta.get('version_label') or os.path.splitext(os.path.basename(version_path))[0],
+            version_order=member_meta.get('version_order'),
+            is_default_version=os.path.normcase(os.path.normpath(version_path)) == target_default_norm,
+        )
+        write_preset_json(version_path, updated)
+
+
+def _promote_next_family_default_if_needed(file_path: str, preset_type: str, source_folder, presets_root: str):
+    raw_data = load_preset_json(file_path)
+    version_meta = extract_preset_version_meta(
+        raw_data,
+        fallback_name=raw_data.get('name', ''),
+        fallback_filename=os.path.basename(file_path),
+    )
+    if not version_meta.get('is_versioned') or not version_meta.get('is_default_version'):
+        return
+
+    remaining_paths = [
+        path for path in _list_family_version_paths(file_path, preset_type, source_folder, presets_root, version_meta.get('family_id') or '')
+        if os.path.normcase(os.path.normpath(path)) != os.path.normcase(os.path.normpath(file_path))
+    ]
+    if not remaining_paths:
+        return
+
+    ranked_paths = []
+    for version_path in remaining_paths:
+        member_raw = load_preset_json(version_path)
+        member_meta = extract_preset_version_meta(
+            member_raw,
+            fallback_name=member_raw.get('name', ''),
+            fallback_filename=os.path.basename(version_path),
+        )
+        ranked_paths.append(
+            (
+                int(member_meta.get('version_order') or 100),
+                -float(os.path.getmtime(version_path)),
+                os.path.basename(version_path),
+                version_path,
+            )
+        )
+
+    ranked_paths.sort()
+    _rewrite_family_default_flags(
+        remaining_paths[0],
+        preset_type=preset_type,
+        source_folder=source_folder,
+        presets_root=presets_root,
+        target_default_path=ranked_paths[0][3],
+    )
+
+
+def _handle_preset_save_as_version(data):
+    preset_id = str(data.get('preset_id') or '').strip()
+    content = data.get('content')
+    requested_preset_kind = str(data.get('preset_kind') or '').strip()
+    version_label = str(data.get('version_label') or '').strip()
+    name = str(data.get('name') or (content or {}).get('name') or '').strip()
+    if not preset_id:
+        return jsonify({'success': False, 'msg': '缺少预设ID'}), 400
+    if not name:
+        return jsonify({'success': False, 'msg': '名称不能为空'}), 400
+    if not version_label:
+        return jsonify({'success': False, 'msg': '版本标记不能为空'}), 400
+
+    presets_root = _get_presets_path()
+    file_path, preset_type, source_folder = _resolve_preset_file_path(preset_id, presets_root)
+    if not file_path:
+        return jsonify({'success': False, 'msg': 'Invalid preset ID'}), 400
+    if not os.path.exists(file_path):
+        return jsonify({'success': False, 'msg': '预设文件不存在'}), 404
+
+    require_matching_revision(file_path, str(data.get('source_revision') or '').strip())
+    raw_data = load_preset_json(file_path)
+    preset_kind = _resolve_requested_preset_kind(
+        requested_preset_kind,
+        raw_data,
+        source_folder=source_folder,
+        file_path=file_path,
+    )
+
+    source_meta = extract_preset_version_meta(
+        raw_data,
+        fallback_name=raw_data.get('name', ''),
+        fallback_filename=os.path.basename(file_path),
+    )
+    family_id = source_meta.get('family_id') or generate_preset_family_id()
+    family_name = source_meta.get('family_name') or raw_data.get('name') or os.path.splitext(os.path.basename(file_path))[0]
+    source_version_label = source_meta.get('version_label') or os.path.splitext(os.path.basename(file_path))[0]
+    source_version_order = int(source_meta.get('version_order') or 100)
+
+    if not source_meta.get('is_versioned'):
+        raw_data = upsert_preset_version_meta(
+            raw_data,
+            family_id=family_id,
+            family_name=family_name,
+            version_label=source_version_label,
+            version_order=source_version_order,
+            is_default_version=True,
+        )
+
+    final_content = merge_preset_content(raw_data, preset_kind, content or {})
+    if isinstance(final_content, dict):
+        final_content['name'] = name
+
+    family_paths = _list_family_version_paths(file_path, preset_type, source_folder, presets_root, family_id)
+    next_version_order = source_version_order + 10
+    if family_paths:
+        next_version_order = max(
+            extract_preset_version_meta(
+                load_preset_json(path),
+                fallback_name='',
+                fallback_filename=os.path.basename(path),
+            ).get('version_order') or 100
+            for path in family_paths
+        ) + 10
+
+    final_content = upsert_preset_version_meta(
+        final_content,
+        family_id=family_id,
+        family_name=family_name,
+        version_label=version_label,
+        version_order=next_version_order,
+        is_default_version=False,
+    )
+
+    target_dir = _resolve_existing_preset_target_dir(file_path, preset_type, source_folder, presets_root)
+    clone_path = ensure_unique_path(build_save_as_path(target_dir, name))
+
+    suppress_fs_events(2.5)
+    if not source_meta.get('is_versioned'):
+        write_preset_json(file_path, raw_data)
+    new_revision = write_preset_json(clone_path, final_content)
+    detail = _build_saved_preset_response(clone_path, preset_type, source_folder, presets_root, preset_kind_hint=preset_kind)
+    family_info, current_version, available_versions = _build_family_context_for_detail(
+        clone_path,
+        preset_type,
+        source_folder,
+        presets_root,
+    )
+    detail['family_info'] = family_info
+    detail['current_version'] = current_version
+    detail['available_versions'] = available_versions or []
+    return jsonify({'success': True, 'source_revision': new_revision, 'preset': detail, 'preset_id': detail['id']})
+
+
 def _save_preset_legacy(data):
     preset_id = data.get('id')
     content = data.get('content')
@@ -505,6 +723,9 @@ def _handle_preset_overwrite(data):
 
 
 def _handle_preset_save_as(data):
+    if bool(data.get('create_as_version')):
+        return _handle_preset_save_as_version(data)
+
     content = data.get('content')
     name = str(data.get('name') or (content or {}).get('name') or '').strip()
     if not name:
@@ -555,7 +776,7 @@ def _handle_preset_rename(data):
 def _handle_preset_delete_via_save(data):
     preset_id = str(data.get('preset_id') or '').strip()
     presets_root = _get_presets_path()
-    file_path, _preset_type, _source_folder = _resolve_preset_file_path(preset_id, presets_root)
+    file_path, preset_type, source_folder = _resolve_preset_file_path(preset_id, presets_root)
     if not file_path:
         return jsonify({'success': False, 'msg': 'Invalid preset ID'}), 400
     if not os.path.exists(file_path):
@@ -563,6 +784,7 @@ def _handle_preset_delete_via_save(data):
 
     require_matching_revision(file_path, str(data.get('source_revision') or '').strip())
     suppress_fs_events(2.5)
+    _promote_next_family_default_if_needed(file_path, preset_type, source_folder, presets_root)
     os.remove(file_path)
     return jsonify({'success': True, 'msg': '预设已删除'})
 
@@ -750,6 +972,166 @@ def _parse_preset_file(file_path, filename):
         return None
 
 
+def _match_preset_search(item: dict, search: str) -> bool:
+    if not search:
+        return True
+
+    search = str(search or '').lower().strip()
+    if not search:
+        return True
+
+    for field in ('name', 'description', 'family_name', 'default_version_label'):
+        if search in str(item.get(field, '')).lower():
+            return True
+
+    for version in item.get('versions') or []:
+        if search in str(version.get('name', '')).lower():
+            return True
+        version_meta = version.get('preset_version') or {}
+        if search in str(version_meta.get('version_label', '')).lower():
+            return True
+
+    return False
+
+
+def _build_scoped_preset_summary(
+    file_path,
+    *,
+    source_type,
+    source_folder,
+    presets_root,
+    root_scope_key,
+    display_category='',
+    physical_category='',
+    category_mode='',
+    category_override='',
+    owner_card_id='',
+    owner_card_name='',
+    owner_card_category='',
+):
+    parsed = _parse_preset_file(file_path, os.path.basename(file_path))
+    if not parsed:
+        return None
+
+    item = parsed['summary']
+    canonical_id = _build_canonical_preset_id(file_path, source_type, source_folder, presets_root)
+    version_meta = extract_preset_version_meta(
+        parsed['details'].get('raw_data') or {},
+        fallback_name=item.get('name', ''),
+        fallback_filename=item.get('filename', ''),
+    )
+
+    item['id'] = canonical_id
+    item['type'] = source_type
+    item['source_type'] = source_type
+    item['source_folder'] = source_folder
+    item['root_scope_key'] = root_scope_key
+    item['path'] = os.path.relpath(file_path, BASE_DIR)
+    item['display_category'] = display_category
+    item['physical_category'] = physical_category
+    item['category_mode'] = category_mode
+    item['category_override'] = category_override
+    item['owner_card_id'] = owner_card_id
+    item['owner_card_name'] = owner_card_name
+    item['owner_card_category'] = owner_card_category
+    item['preset_version'] = version_meta
+    return item
+
+
+def _scan_preset_scope_items(preset_type, source_folder, presets_root):
+    if preset_type == 'resource' and source_folder:
+        scope_root = os.path.join(
+            os.path.join(BASE_DIR, load_config().get('resources_dir', 'data/assets/card_assets')),
+            source_folder,
+            'presets',
+        )
+        root_scope_key = f'resource::{source_folder}'
+    elif preset_type == 'global' and source_folder:
+        scope_root = _get_alternate_global_roots().get(source_folder)
+        root_scope_key = source_folder
+    else:
+        scope_root = presets_root
+        root_scope_key = 'global'
+
+    if not scope_root or not os.path.exists(scope_root):
+        return []
+
+    source_items = []
+    for root, _dirs, files in os.walk(scope_root):
+        for name in files:
+            if not name.lower().endswith('.json'):
+                continue
+            full_path = os.path.join(root, name)
+            if not os.path.isfile(full_path):
+                continue
+            rel_path = os.path.relpath(full_path, scope_root).replace('\\', '/')
+            physical_category = _get_parent_category(rel_path)
+            item = _build_scoped_preset_summary(
+                full_path,
+                source_type=preset_type,
+                source_folder=source_folder,
+                presets_root=presets_root,
+                root_scope_key=root_scope_key,
+                display_category=physical_category if preset_type == 'global' else '',
+                physical_category=physical_category if preset_type == 'global' else '',
+                category_mode='physical' if preset_type == 'global' else 'inherited',
+            )
+            if item:
+                source_items.append(item)
+
+    return source_items
+
+
+def _build_family_context_for_detail(file_path, preset_type, source_folder, presets_root):
+    source_items = _scan_preset_scope_items(preset_type, source_folder, presets_root)
+    if not source_items:
+        return None, None, None
+
+    grouped_items = group_preset_list_items(source_items)
+    canonical_id = _build_canonical_preset_id(file_path, preset_type, source_folder, presets_root)
+
+    for entry in grouped_items:
+        if entry.get('entry_type') != 'family':
+            continue
+        versions = entry.get('versions') or []
+        current_version = next((version for version in versions if version.get('id') == canonical_id), None)
+        if not current_version:
+            continue
+
+        family_info = {
+            'entry_type': 'family',
+            'id': entry.get('id'),
+            'family_id': entry.get('family_id'),
+            'family_name': entry.get('family_name'),
+            'default_version_id': entry.get('default_version_id'),
+            'default_version_label': entry.get('default_version_label'),
+            'version_count': entry.get('version_count'),
+            'source_type': entry.get('source_type'),
+            'root_scope_key': entry.get('root_scope_key'),
+        }
+        current_meta = current_version.get('preset_version') or {}
+        current_version_payload = {
+            'id': current_version.get('id'),
+            'name': current_version.get('name'),
+            'version_label': current_meta.get('version_label'),
+            'version_order': current_meta.get('version_order'),
+            'is_default_version': bool(current_meta.get('is_default_version')),
+        }
+        available_versions = [
+            {
+                'id': version.get('id'),
+                'name': version.get('name'),
+                'version_label': (version.get('preset_version') or {}).get('version_label'),
+                'version_order': (version.get('preset_version') or {}).get('version_order'),
+                'is_default_version': bool((version.get('preset_version') or {}).get('is_default_version')),
+            }
+            for version in versions
+        ]
+        return family_info, current_version_payload, available_versions
+
+    return None, None, None
+
+
 @bp.route('/api/presets/list', methods=['GET'])
 def list_presets():
     """
@@ -786,34 +1168,24 @@ def list_presets():
                         if not os.path.isfile(full_path):
                             continue
 
-                        parsed = _parse_preset_file(full_path, f)
-                        if not parsed:
-                            continue
-
                         rel_path = os.path.relpath(full_path, root_dir).replace('\\', '/')
                         physical_category = _get_parent_category(rel_path)
-                        item = parsed['summary']
-                        canonical_id = _build_canonical_preset_id(full_path, 'global', config_key, presets_root)
+                        item = _build_scoped_preset_summary(
+                            full_path,
+                            source_type='global',
+                            source_folder=config_key,
+                            presets_root=presets_root,
+                            root_scope_key='global' if not config_key else config_key,
+                            display_category=physical_category,
+                            physical_category=physical_category,
+                            category_mode='physical',
+                        )
+                        if not item:
+                            continue
+                        canonical_id = item['id']
                         if canonical_id in seen_global_ids:
                             continue
                         seen_global_ids.add(canonical_id)
-                        if config_key:
-                            item['id'] = canonical_id
-                            item['source_folder'] = config_key
-                        else:
-                            item['id'] = canonical_id
-                            item['source_folder'] = None
-                        item['type'] = 'global'
-                        item['source_type'] = 'global'
-                        item['path'] = os.path.relpath(full_path, BASE_DIR)
-                        item['display_category'] = physical_category
-                        item['physical_category'] = physical_category
-                        item['category_mode'] = 'physical'
-                        item['category_override'] = ''
-                        item['owner_card_id'] = ''
-                        item['owner_card_name'] = ''
-                        item['owner_card_category'] = ''
-
                         source_items.append(item)
         
         # 2. 扫描资源目录
@@ -841,27 +1213,28 @@ def list_presets():
                             if not os.path.isfile(full_path):
                                 continue
                             
-                            parsed = _parse_preset_file(full_path, f)
-                            if parsed:
-                                item = parsed['summary']
-                                item['id'] = f"resource::{folder}::{parsed['summary']['id']}"
-                                item['type'] = 'resource'
-                                item['source_type'] = 'resource'
-                                item['source_folder'] = folder
-                                item['path'] = os.path.relpath(full_path, BASE_DIR)
+                            item = None
+                            if os.path.isfile(full_path):
                                 path_key = _normalize_resource_item_key(full_path)
                                 override_info = resource_item_categories.get(path_key) or {}
                                 override_category = _normalize_category_path(override_info.get('category'))
                                 owner_card = cards_by_resource_folder.get(folder) or {}
                                 owner_category = _normalize_category_path(owner_card.get('category', ''))
-                                item['display_category'] = override_category or owner_category
-                                item['physical_category'] = ''
-                                item['category_mode'] = 'override' if override_category else 'inherited'
-                                item['category_override'] = override_category
-                                item['owner_card_id'] = owner_card.get('id', '')
-                                item['owner_card_name'] = owner_card.get('char_name', '')
-                                item['owner_card_category'] = owner_category
-
+                                item = _build_scoped_preset_summary(
+                                    full_path,
+                                    source_type='resource',
+                                    source_folder=folder,
+                                    presets_root=presets_root,
+                                    root_scope_key=f'resource::{folder}',
+                                    display_category=override_category or owner_category,
+                                    physical_category='',
+                                    category_mode='override' if override_category else 'inherited',
+                                    category_override=override_category,
+                                    owner_card_id=owner_card.get('id', ''),
+                                    owner_card_name=owner_card.get('char_name', ''),
+                                    owner_card_category=owner_category,
+                                )
+                            if item:
                                 source_items.append(item)
                                 
                 except Exception as e:
@@ -869,15 +1242,14 @@ def list_presets():
         
         folder_meta = _add_physical_folder_nodes(_build_folder_metadata(source_items), presets_root)
 
-        for item in source_items:
-            if selected_category and not _is_in_category_subtree(item.get('display_category', ''), selected_category):
+        grouped_items = group_preset_list_items(source_items)
+
+        for item in grouped_items:
+            if not _item_matches_category(item, selected_category):
                 continue
-            if search and search not in item.get('name', '').lower() and search not in item.get('description', '').lower():
+            if not _match_preset_search(item, search):
                 continue
             items.append(item)
-
-        # 按修改时间倒序
-        items.sort(key=lambda x: x.get('mtime', 0), reverse=True)
 
         return jsonify({
             "success": True,
@@ -933,6 +1305,15 @@ def get_preset_detail(preset_id):
             base_dir=BASE_DIR,
         )
         details.update(detail_payload)
+        family_info, current_version, available_versions = _build_family_context_for_detail(
+            file_path,
+            preset_type,
+            source_folder,
+            presets_root,
+        )
+        details['family_info'] = family_info
+        details['current_version'] = current_version
+        details['available_versions'] = available_versions or []
         
         return jsonify({
             "success": True,
@@ -1159,28 +1540,80 @@ def delete_preset():
     删除预设文件
     """
     try:
-        data = request.json
-        preset_id = data.get('id')
-        
+        data = request.get_json(silent=True) or {}
+        preset_id = str(data.get('id') or '').strip()
         if not preset_id:
             return jsonify({"success": False, "msg": "缺少预设ID"})
-        
+
         presets_root = _get_presets_path()
         file_path, _preset_type, _source_folder = _resolve_preset_file_path(preset_id, presets_root)
-
         if not file_path:
             return jsonify({"success": False, "msg": "Invalid preset ID"}), 400
-        
         if not os.path.exists(file_path):
             return jsonify({"success": False, "msg": "预设文件不存在"})
-        
-        os.remove(file_path)
-        
-        return jsonify({"success": True, "msg": "预设已删除"})
-        
+
+        source_revision = str(data.get('source_revision') or '').strip() or build_file_source_revision(file_path)
+        return _handle_preset_delete_via_save({'preset_id': preset_id, 'source_revision': source_revision})
+
+    except PresetConflictError as exc:
+        current_revision = str(exc) if str(exc) else ''
+        return jsonify({
+            'success': False,
+            'msg': 'source_revision mismatch' if current_revision else 'source_revision required for overwrite',
+            'current_source_revision': current_revision,
+        }), 409
     except Exception as e:
         logger.error(f"Error deleting preset: {e}")
         return jsonify({"success": False, "msg": str(e)}), 500
+
+
+@bp.route('/api/presets/version/set-default', methods=['POST'])
+def set_default_preset_version():
+    try:
+        data = request.get_json(silent=True) or {}
+        preset_id = str(data.get('preset_id') or '').strip()
+        if not preset_id:
+            return jsonify({'success': False, 'msg': '缺少预设ID'}), 400
+
+        presets_root = _get_presets_path()
+        file_path, preset_type, source_folder = _resolve_preset_file_path(preset_id, presets_root)
+        if not file_path:
+            return jsonify({'success': False, 'msg': 'Invalid preset ID'}), 400
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'msg': '预设文件不存在'}), 404
+
+        raw_data = load_preset_json(file_path)
+        version_meta = extract_preset_version_meta(
+            raw_data,
+            fallback_name=raw_data.get('name', ''),
+            fallback_filename=os.path.basename(file_path),
+        )
+        if not version_meta.get('is_versioned'):
+            return jsonify({'success': False, 'msg': '当前预设不是版本化预设'}), 400
+
+        suppress_fs_events(2.5)
+        _rewrite_family_default_flags(
+            file_path,
+            preset_type=preset_type,
+            source_folder=source_folder,
+            presets_root=presets_root,
+            target_default_path=file_path,
+        )
+
+        detail = _build_saved_preset_response(file_path, preset_type, source_folder, presets_root)
+        family_info, current_version, available_versions = _build_family_context_for_detail(
+            file_path,
+            preset_type,
+            source_folder,
+            presets_root,
+        )
+        detail['family_info'] = family_info
+        detail['current_version'] = current_version
+        detail['available_versions'] = available_versions or []
+        return jsonify({'success': True, 'preset': detail, 'preset_id': detail['id']})
+    except Exception as e:
+        logger.error(f'Error setting default preset version: {e}')
+        return jsonify({'success': False, 'msg': str(e)}), 500
 
 
 @bp.route('/api/presets/export', methods=['POST'])

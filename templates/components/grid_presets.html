@@ -156,6 +156,22 @@
                   :title="item.filename"
                   x-text="item.filename"
                 ></div>
+                <template x-if="item.entry_type === 'family'">
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <span
+                      class="px-2 py-0.5 text-[10px] bg-indigo-500/20 text-indigo-200 rounded"
+                    >
+                      版本 <span x-text="item.version_count"></span>
+                    </span>
+                    <template x-if="item.default_version_label">
+                      <span
+                        class="px-2 py-0.5 text-[10px] bg-sky-500/20 text-sky-200 rounded"
+                      >
+                        默认 <span x-text="item.default_version_label"></span>
+                      </span>
+                    </template>
+                  </div>
+                </template>
               </div>
             </div>
 

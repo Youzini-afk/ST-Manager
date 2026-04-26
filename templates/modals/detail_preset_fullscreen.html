@@ -32,6 +32,18 @@
       </div>
 
       <div class="flex items-center gap-2 flex-wrap justify-end">
+        <div x-show="hasMultipleVersions" class="flex items-center gap-2">
+          <label class="text-[11px] text-[var(--text-dim)]">版本</label>
+          <select
+            :value="editingPresetFile?.id || ''"
+            @change="openVersion($event.target.value)"
+            class="rounded-lg border border-[var(--border-light)] bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs text-[var(--text-main)]"
+          >
+            <template x-for="version in availableVersions" :key="version.id">
+              <option :value="version.id" x-text="version.version_label || version.name || version.id"></option>
+            </template>
+          </select>
+        </div>
         <span
           class="text-[10px] px-2 py-1 rounded border border-[var(--border-light)]"
           :class="isDirty ? 'text-amber-300 bg-amber-500/10' : 'text-green-300 bg-green-500/10'"
@@ -60,6 +72,19 @@
           class="btn-secondary px-3 py-1.5 text-xs rounded"
         >
           另存为
+        </button>
+        <button
+          @click="saveAsVersion()"
+          class="btn-secondary px-3 py-1.5 text-xs rounded"
+        >
+          另存为版本
+        </button>
+        <button
+          x-show="hasMultipleVersions"
+          @click="setCurrentVersionAsDefault()"
+          class="btn-secondary px-3 py-1.5 text-xs rounded"
+        >
+          设为默认版本
         </button>
         <button
           @click="renamePreset()"
@@ -139,6 +164,23 @@
         </button>
       </div>
 
+      <div
+        x-show="hasMultipleVersions"
+        x-cloak
+        class="px-4 pb-2 flex items-center gap-2"
+      >
+        <label class="sr-only">版本</label>
+        <select
+          :value="editingPresetFile?.id || ''"
+          @change="openVersion($event.target.value)"
+          class="flex-1 min-w-0 rounded-xl border border-[var(--border-light)] bg-[var(--bg-panel)] px-3 py-2 text-sm text-[var(--text-main)]"
+        >
+          <template x-for="version in availableVersions" :key="version.id">
+            <option :value="version.id" x-text="version.version_label || version.name || version.id"></option>
+          </template>
+        </select>
+      </div>
+
       <div class="preset-editor-mobile-header-bottom">
         <span
           class="preset-editor-mobile-status-chip"
@@ -163,6 +205,19 @@
         class="btn-secondary px-3 py-2 text-sm rounded-xl"
       >
         另存为
+      </button>
+      <button
+        @click="saveAsVersion()"
+        class="btn-secondary px-3 py-2 text-sm rounded-xl"
+      >
+        另存为版本
+      </button>
+      <button
+        x-show="hasMultipleVersions"
+        @click="setCurrentVersionAsDefault()"
+        class="btn-secondary px-3 py-2 text-sm rounded-xl"
+      >
+        设为默认版本
       </button>
       <button
         @click="renamePreset()"

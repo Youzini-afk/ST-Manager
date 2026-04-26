@@ -57,10 +57,16 @@ def run_preset_editor_runtime_check(script_body):
 
         const stubs = `
         const createAutoSaver = () => ({{ stop() {{}}, initBaseline() {{}}, start() {{}} }});
-        const apiCreateSnapshot = async () => ({{ success: true }});
-        const getPresetDetail = async () => ({{ success: true, preset: {{}} }});
-        const savePreset = async () => ({{ success: true }});
-        const apiSavePresetExtensions = async () => ({{ success: true }});
+        globalThis.__apiCreateSnapshot = async () => ({{ success: true }});
+        globalThis.__getPresetDetail = async () => ({{ success: true, preset: {{}} }});
+        globalThis.__savePreset = async () => ({{ success: true }});
+        globalThis.__apiSavePresetExtensions = async () => ({{ success: true }});
+        globalThis.__setDefaultPresetVersion = async () => ({{ success: true }});
+        const apiCreateSnapshot = (...args) => globalThis.__apiCreateSnapshot(...args);
+        const getPresetDetail = (...args) => globalThis.__getPresetDetail(...args);
+        const savePreset = (...args) => globalThis.__savePreset(...args);
+        const apiSavePresetExtensions = (...args) => globalThis.__apiSavePresetExtensions(...args);
+        const setDefaultPresetVersion = (...args) => globalThis.__setDefaultPresetVersion(...args);
         const estimateTokens = () => 0;
         const formatDate = (value) => value;
         const clearActiveRuntimeContext = () => {{}};
@@ -86,6 +92,107 @@ def run_preset_editor_runtime_check(script_body):
           'data:text/javascript,' + encodeURIComponent(stubs + source + '\\nexport default presetEditor;'),
         );
         const editor = module.default();
+
+        {textwrap.dedent(script_body)}
+        """
+    )
+    result = subprocess.run(
+        ['node', '--input-type=module', '-e', node_script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def run_preset_grid_runtime_check(script_body):
+    source_path = PROJECT_ROOT / 'static/js/components/presetGrid.js'
+    node_script = textwrap.dedent(
+        f"""
+        import {{ readFileSync }} from 'node:fs';
+
+        const sourcePath = {json.dumps(str(source_path))};
+        let source = readFileSync(sourcePath, 'utf8');
+        source = source.replace(/^import[\\s\\S]*?;\\r?\\n/gm, '');
+        source = source.replace('export default function presetGrid()', 'function presetGrid()');
+
+        const stubs = `
+        globalThis.downloadCalls = [];
+        const downloadFileFromApi = async (payload) => {{
+          globalThis.downloadCalls.push(payload);
+        }};
+        globalThis.fetchCalls = [];
+        globalThis.fetch = async (url, options = {{}}) => {{
+          globalThis.fetchCalls.push({{ url, options }});
+          return {{
+            json: async () => ({{ success: true, msg: 'ok' }}),
+          }};
+        }};
+        globalThis.confirm = () => true;
+        globalThis.alert = () => {{}};
+        const dispatchedEvents = [];
+        globalThis.window = {{
+          dispatchedEvents,
+          addEventListener() {{}},
+          removeEventListener() {{}},
+          dispatchEvent(event) {{
+            dispatchedEvents.push(event);
+          }},
+        }};
+        globalThis.CustomEvent = class CustomEvent {{
+          constructor(name, options = {{}}) {{
+            this.type = name;
+            this.detail = options.detail;
+          }}
+        }};
+        `;
+
+        const module = await import(
+          'data:text/javascript,' + encodeURIComponent(stubs + source + '\\nexport default presetGrid;'),
+        );
+        const grid = module.default();
+        grid.$store = {{
+          global: {{
+            viewState: {{ selectedIds: [], lastSelectedId: '', draggedCards: [] }},
+            showToast() {{}},
+          }},
+        }};
+
+        {textwrap.dedent(script_body)}
+        """
+    )
+    result = subprocess.run(
+        ['node', '--input-type=module', '-e', node_script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def run_preset_api_runtime_check(script_body):
+    source_path = PROJECT_ROOT / 'static/js/api/presets.js'
+    node_script = textwrap.dedent(
+        f"""
+        import {{ readFileSync }} from 'node:fs';
+
+        const sourcePath = {json.dumps(str(source_path))};
+        let source = readFileSync(sourcePath, 'utf8');
+        source = source.replace(/^import[\\s\\S]*?;\\r?\\n/gm, '');
+
+        globalThis.fetchCalls = [];
+        globalThis.fetch = async (url, options = {{}}) => {{
+          fetchCalls.push({{ url, options }});
+          return {{
+            json: async () => ({{ success: true, url, options }}),
+          }};
+        }};
+
+        const module = await import(
+          'data:text/javascript,' + encodeURIComponent(source),
+        );
 
         {textwrap.dedent(script_body)}
         """
@@ -230,6 +337,359 @@ def test_preset_editor_js_uses_explicit_dirty_state_and_cached_workspace_collect
     assert 'return JSON.stringify(this.editingData) !== this.baseDataJson;' not in source
 
 
+def test_preset_editor_js_exposes_version_actions_and_getters():
+    source = read_project_file('static/js/components/presetEditor.js')
+
+    assert 'get availableVersions() {' in source
+    assert 'get hasMultipleVersions() {' in source
+    assert 'openVersion(versionId) {' in source
+    assert 'saveAsVersion() {' in source
+    assert 'setCurrentVersionAsDefault() {' in source
+    assert 'setDefaultPresetVersion' in source
+
+
+def test_preset_api_runtime_set_default_version_posts_expected_payload():
+    run_preset_api_runtime_check(
+        """
+        await module.setDefaultPresetVersion({ preset_id: 'global::companion-v2.json' });
+        const call = globalThis.fetchCalls[0];
+        if (!call) {
+          throw new Error('expected fetch to be called');
+        }
+        if (call.url !== '/api/presets/version/set-default') {
+          throw new Error(`expected set-default url, got ${call.url}`);
+        }
+        if (call.options.method !== 'POST') {
+          throw new Error(`expected POST method, got ${JSON.stringify(call.options)}`);
+        }
+        if (call.options.headers?.['Content-Type'] !== 'application/json') {
+          throw new Error(`expected json content type, got ${JSON.stringify(call.options.headers)}`);
+        }
+        const payload = JSON.parse(call.options.body || '{}');
+        if (payload.preset_id !== 'global::companion-v2.json') {
+          throw new Error(`expected preset_id payload, got ${call.options.body}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_open_version_preserves_prompt_workspace_context_through_real_reopen():
+    run_preset_editor_runtime_check(
+        """
+        const requestedPresetIds = [];
+        globalThis.window = {
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent() {},
+        };
+        editor.$store = { global: { deviceType: 'desktop', showToast() {} } };
+        editor.$nextTick = (callback) => callback();
+        editor.restoreLocalDraft = () => false;
+        editor.updatePresetEditorLayoutMetrics = () => {};
+        globalThis.__getPresetDetail = async (presetId) => {
+          requestedPresetIds.push(presetId);
+          return {
+            success: true,
+            preset: {
+              id: presetId,
+              name: presetId === 'preset::v2' ? 'Companion V2' : 'Companion V1',
+              preset_kind: 'textgen',
+              type: 'global',
+              path: '/presets/companion.json',
+              source_revision: 'rev-' + presetId,
+              sections: { sampling: { label: 'Sampling' } },
+              reader_view: {
+                family: 'prompt_manager',
+                family_label: 'Prompt Manager',
+                groups: [
+                  { id: 'prompts', label: 'Prompts' },
+                  { id: 'sampling', label: 'Sampling' },
+                ],
+                items: [],
+                stats: {},
+              },
+              raw_data: {
+                name: presetId === 'preset::v2' ? 'Companion V2' : 'Companion V1',
+                prompts: [
+                  { identifier: 'prompt-main', content: 'hello' },
+                  { identifier: 'prompt-secondary', content: 'world' },
+                ],
+              },
+            },
+          };
+        };
+
+        await editor.openPresetEditor({ presetId: 'preset::v1' });
+        editor.activeNav = 'sampling';
+        editor.activeWorkspace = 'prompts';
+        editor.activePromptId = 'prompt-main';
+        editor.activeGroup = 'prompts';
+        editor.activeItemId = 'item-alpha';
+        editor.activeGenericItemId = 'item-alpha';
+
+        await editor.openVersion('preset::v2');
+
+        if (requestedPresetIds.length !== 2) {
+          throw new Error(`expected two detail fetches, got ${JSON.stringify(requestedPresetIds)}`);
+        }
+        if (requestedPresetIds[1] !== 'preset::v2') {
+          throw new Error(`expected reopen to request target preset, got ${JSON.stringify(requestedPresetIds)}`);
+        }
+        if (editor.editingPresetFile?.id !== 'preset::v2') {
+          throw new Error(`expected editor to reopen returned preset, got ${JSON.stringify(editor.editingPresetFile)}`);
+        }
+        if (editor.activeNav !== 'sampling') {
+          throw new Error(`expected activeNav to be preserved, got ${JSON.stringify(editor.activeNav)}`);
+        }
+        if (editor.activeWorkspace !== 'prompts') {
+          throw new Error(`expected prompt workspace to be preserved, got ${JSON.stringify(editor.activeWorkspace)}`);
+        }
+        if (editor.activePromptId !== 'prompt-main') {
+          throw new Error(`expected prompt selection to be preserved, got ${JSON.stringify(editor.activePromptId)}`);
+        }
+        if (editor.activeGroup !== 'prompts') {
+          throw new Error(`expected prompt group to be preserved, got ${JSON.stringify(editor.activeGroup)}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_selector_change_reopens_even_if_bound_id_mutated_first():
+    run_preset_editor_runtime_check(
+        """
+        const requestedPresetIds = [];
+        globalThis.window = {
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent() {},
+        };
+        editor.$store = { global: { deviceType: 'desktop', showToast() {} } };
+        editor.$nextTick = (callback) => callback();
+        editor.restoreLocalDraft = () => false;
+        editor.updatePresetEditorLayoutMetrics = () => {};
+        globalThis.__getPresetDetail = async (presetId) => {
+          requestedPresetIds.push(presetId);
+          return {
+            success: true,
+            preset: {
+              id: presetId,
+              name: presetId,
+              preset_kind: 'textgen',
+              type: 'global',
+              path: '/presets/companion.json',
+              source_revision: 'rev-' + presetId,
+              sections: { sampling: { label: 'Sampling' } },
+              reader_view: {
+                family: 'prompt_manager',
+                family_label: 'Prompt Manager',
+                groups: [{ id: 'prompts', label: 'Prompts' }],
+                items: [],
+                stats: {},
+              },
+              raw_data: {
+                name: presetId,
+                prompts: [{ identifier: 'prompt-main', content: 'hello' }],
+              },
+            },
+          };
+        };
+
+        await editor.openPresetEditor({ presetId: 'preset::v1' });
+        editor.activeNav = 'sampling';
+        editor.activeWorkspace = 'prompts';
+        editor.activePromptId = 'prompt-main';
+        editor.activeGroup = 'prompts';
+
+        editor.editingPresetFile.id = 'preset::v2';
+        await editor.openVersion('preset::v2');
+
+        if (requestedPresetIds.length !== 2) {
+          throw new Error(`expected selector-driven reopen fetch, got ${JSON.stringify(requestedPresetIds)}`);
+        }
+        if (requestedPresetIds[1] !== 'preset::v2') {
+          throw new Error(`expected target preset fetch after selector change, got ${JSON.stringify(requestedPresetIds)}`);
+        }
+        if (editor.editingPresetFile?.id !== 'preset::v2') {
+          throw new Error(`expected editor to reopen target version, got ${JSON.stringify(editor.editingPresetFile)}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_save_as_version_reopens_returned_preset_with_preserved_context():
+    run_preset_editor_runtime_check(
+        """
+        const prompts = ['Companion Family', 'v3', 'Companion V3'];
+        globalThis.prompt = () => prompts.shift() || '';
+        globalThis.window = {
+          dispatchedEvents: [],
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent(event) {
+            this.dispatchedEvents.push(event);
+          },
+        };
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(name, options = {}) {
+            this.type = name;
+            this.detail = options.detail;
+          }
+        };
+        const requestedPresetIds = [];
+        editor.$store = { global: { deviceType: 'desktop', showToast() {} } };
+        editor.$nextTick = (callback) => callback();
+        editor.restoreLocalDraft = () => false;
+        editor.updatePresetEditorLayoutMetrics = () => {};
+        globalThis.__getPresetDetail = async (presetId) => {
+          requestedPresetIds.push(presetId);
+          return {
+            success: true,
+            preset: {
+              id: presetId,
+              name: presetId === 'preset::v3' ? 'Companion V3' : 'Companion V2',
+              preset_kind: 'textgen',
+              type: 'global',
+              path: '/presets/companion.json',
+              source_revision: 'rev-' + presetId,
+              family_info: { family_name: 'Companion Family' },
+              available_versions: [
+                { id: 'preset::v2', version_label: 'v2', name: 'Companion V2' },
+                { id: 'preset::v3', version_label: 'v3', name: 'Companion V3' },
+              ],
+              sections: { sampling: { label: 'Sampling' } },
+              reader_view: {
+                family: 'prompt_manager',
+                family_label: 'Prompt Manager',
+                groups: [
+                  { id: 'prompts', label: 'Prompts' },
+                  { id: 'sampling', label: 'Sampling' },
+                ],
+                items: [],
+                stats: {},
+              },
+              raw_data: {
+                name: presetId === 'preset::v3' ? 'Companion V3' : 'Companion V2',
+                x_st_manager: {},
+                prompts: [
+                  { identifier: 'prompt-main', content: 'hello' },
+                  { identifier: 'prompt-secondary', content: 'world' },
+                ],
+              },
+            },
+          };
+        };
+
+        await editor.openPresetEditor({ presetId: 'preset::v2' });
+        editor.activeNav = 'sampling';
+        editor.activeWorkspace = 'prompts';
+        editor.activePromptId = 'prompt-main';
+        editor.activeGroup = 'prompts';
+        editor.activeItemId = 'item-alpha';
+        editor.activeGenericItemId = 'item-alpha';
+        globalThis.__savePreset = async (payload) => {
+          globalThis.__lastSavePayload = payload;
+          return { success: true, preset_id: 'preset::v3' };
+        };
+
+        await editor.saveAsVersion();
+
+        const saveCall = globalThis.__lastSavePayload;
+        if (!saveCall) {
+          throw new Error('expected savePreset to be called');
+        }
+        if (saveCall.create_as_version !== true) {
+          throw new Error(`expected create_as_version=true, got ${JSON.stringify(saveCall)}`);
+        }
+        if (saveCall.version_label !== 'v3') {
+          throw new Error(`expected version label payload, got ${JSON.stringify(saveCall)}`);
+        }
+        if (requestedPresetIds.length !== 2) {
+          throw new Error(`expected saveAsVersion to perform real reopen fetch, got ${JSON.stringify(requestedPresetIds)}`);
+        }
+        if (requestedPresetIds[1] !== 'preset::v3') {
+          throw new Error(`expected reopen fetch for returned preset, got ${JSON.stringify(requestedPresetIds)}`);
+        }
+        if (editor.editingPresetFile?.id !== 'preset::v3') {
+          throw new Error(`expected reopened preset to be active, got ${JSON.stringify(editor.editingPresetFile)}`);
+        }
+        if (editor.activeNav !== 'sampling' || editor.activeWorkspace !== 'prompts') {
+          throw new Error(`expected preserved reopen navigation context, got ${JSON.stringify({ activeNav: editor.activeNav, activeWorkspace: editor.activeWorkspace })}`);
+        }
+        if (editor.activePromptId !== 'prompt-main' || editor.activeGroup !== 'prompts') {
+          throw new Error(`expected preserved prompt selection context, got ${JSON.stringify({ activePromptId: editor.activePromptId, activeGroup: editor.activeGroup })}`);
+        }
+        const refreshEvent = globalThis.window.dispatchedEvents[0];
+        if (!refreshEvent || refreshEvent.type !== 'refresh-preset-list') {
+          throw new Error(`expected refresh-preset-list event, got ${JSON.stringify(refreshEvent)}`);
+        }
+        """
+    )
+
+
+def test_preset_editor_runtime_set_default_version_refreshes_and_reopens_with_preserved_context():
+    run_preset_editor_runtime_check(
+        """
+        const calls = [];
+        globalThis.window = {
+          dispatchedEvents: [],
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent(event) {
+            this.dispatchedEvents.push(event);
+          },
+        };
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(name, options = {}) {
+            this.type = name;
+            this.detail = options.detail;
+          }
+        };
+        editor.$store = { global: { showToast() {} } };
+        editor.editingPresetFile = {
+          id: 'preset::v2',
+          preset_kind: 'textgen',
+        };
+        editor.activeNav = 'sampling';
+        editor.activeWorkspace = 'prompts';
+        editor.activePromptId = 'prompt-main';
+        editor.activeGroup = 'prompts';
+        editor.activeItemId = 'item-alpha';
+        editor.activeGenericItemId = 'item-alpha';
+        editor.openPresetEditor = async (payload) => {
+          calls.push({ reopen: payload });
+        };
+        globalThis.__setDefaultPresetVersion = async (payload) => {
+          calls.push({ api: payload });
+          return { success: true, preset_id: 'preset::v2' };
+        };
+
+        await editor.setCurrentVersionAsDefault();
+
+        const apiCall = calls.find((entry) => entry.api)?.api;
+        const reopenCall = calls.find((entry) => entry.reopen)?.reopen;
+        if (!apiCall || apiCall.preset_id !== 'preset::v2') {
+          throw new Error(`expected setDefaultPresetVersion call, got ${JSON.stringify(calls)}`);
+        }
+        const refreshEvent = globalThis.window.dispatchedEvents[0];
+        if (!refreshEvent || refreshEvent.type !== 'refresh-preset-list') {
+          throw new Error(`expected refresh-preset-list event, got ${JSON.stringify(refreshEvent)}`);
+        }
+        if (!reopenCall) {
+          throw new Error('expected setCurrentVersionAsDefault to reopen preset context');
+        }
+        if (reopenCall.presetId !== 'preset::v2') {
+          throw new Error(`expected reopen preset id, got ${JSON.stringify(reopenCall)}`);
+        }
+        if (reopenCall.activeNav !== 'sampling' || !reopenCall.preserveContext) {
+          throw new Error(`expected reopen to preserve navigation context, got ${JSON.stringify(reopenCall)}`);
+        }
+        if (reopenCall.context?.activeWorkspace !== 'prompts' || reopenCall.context?.activePromptId !== 'prompt-main') {
+          throw new Error(`expected preserved prompt context, got ${JSON.stringify(reopenCall)}`);
+        }
+        """
+    )
+
+
 def test_preset_editor_js_uses_shared_prompt_marker_visual_source():
     editor_source = read_project_file('static/js/components/presetEditor.js')
     reader_source = read_project_file('static/js/components/presetDetailReader.js')
@@ -294,12 +754,157 @@ def test_preset_editor_template_removes_prompt_and_unknown_raw_editor_sections()
     assert 'applyRawUnknownJson(text) {' not in js_source
 
 
+def test_preset_editor_template_renders_fullscreen_version_selector_and_actions():
+    source = read_project_file('templates/modals/detail_preset_fullscreen.html')
+
+    assert 'x-show="hasMultipleVersions"' in source
+    assert 'x-model="editingPresetFile.id"' not in source
+    assert ':value="editingPresetFile?.id || \'\'"' in source
+    assert '@change="openVersion($event.target.value)"' in source
+    assert 'x-for="version in availableVersions"' in source
+    assert '@click="saveAsVersion()"' in source
+    assert '@click="setCurrentVersionAsDefault()"' in source
+    assert '设为默认版本' in source
+    assert '另存为版本' in source
+
+
 def test_grid_presets_template_leaves_manager_wallpaper_visible_at_root_surface():
     source = read_project_file('templates/components/grid_presets.html')
 
     assert 'x-data="presetGrid"' in source
     assert 'class="flex-1 flex flex-col overflow-hidden w-full relative h-full bg-[var(--bg-body)]"' not in source
     assert 'class="flex-1 flex flex-col overflow-hidden w-full relative h-full"' in source
+
+
+def test_preset_grid_runtime_prefers_family_default_version_id_for_reader_open():
+    run_preset_grid_runtime_check(
+        """
+        const familyItem = {
+          id: 'family::alpha',
+          entry_type: 'family',
+          default_version_id: 'preset::v2',
+          default_version_label: 'v2',
+        };
+
+        if (grid.getPresetOpenId(familyItem) !== 'preset::v2') {
+          throw new Error(`expected family open id to prefer default version, got ${JSON.stringify(grid.getPresetOpenId(familyItem))}`);
+        }
+
+        grid.openPresetDetail(familyItem);
+        const dispatched = globalThis.window.dispatchedEvents[0];
+        if (!dispatched || dispatched.type !== 'open-preset-reader') {
+          throw new Error(`expected open-preset-reader event, got ${JSON.stringify(dispatched)}`);
+        }
+        if (dispatched.detail.id !== 'preset::v2') {
+          throw new Error(`expected reader open detail to use default version id, got ${JSON.stringify(dispatched.detail)}`);
+        }
+        if (dispatched.detail.entry_type !== 'family') {
+          throw new Error(`expected family metadata to remain available, got ${JSON.stringify(dispatched.detail)}`);
+        }
+        """
+    )
+
+
+def test_preset_grid_runtime_resolves_family_action_targets_to_concrete_preset_ids():
+    run_preset_grid_runtime_check(
+        """
+        const familyItem = {
+          id: 'family::alpha',
+          entry_type: 'family',
+          default_version_id: 'preset::v2',
+          source_type: 'global',
+          type: 'global',
+          path: '/presets/companion.json',
+          name: 'Companion',
+          filename: 'companion.json',
+        };
+
+        if (grid.getPresetActionTargetId(familyItem) !== 'preset::v2') {
+          throw new Error(`expected family action target id to prefer concrete version, got ${JSON.stringify(grid.getPresetActionTargetId(familyItem))}`);
+        }
+
+        await grid.exportPresetItem(familyItem);
+        const exportCall = globalThis.downloadCalls[0];
+        if (!exportCall) {
+          throw new Error('expected export to invoke download helper');
+        }
+        if (exportCall.body?.id !== 'preset::v2') {
+          throw new Error(`expected export to use concrete preset id, got ${JSON.stringify(exportCall)}`);
+        }
+
+        await grid.deletePreset(familyItem, { stopPropagation() {} });
+        const deleteCall = globalThis.fetchCalls[0];
+        if (!deleteCall || deleteCall.url !== '/api/presets/delete') {
+          throw new Error(`expected delete api call, got ${JSON.stringify(deleteCall)}`);
+        }
+        const deletePayload = JSON.parse(deleteCall.options.body || '{}');
+        if (deletePayload.id !== 'preset::v2') {
+          throw new Error(`expected delete to use concrete preset id, got ${JSON.stringify(deletePayload)}`);
+        }
+        """
+    )
+
+
+def test_preset_grid_runtime_bulk_actions_resolve_family_targets_to_concrete_ids():
+    run_preset_grid_runtime_check(
+        """
+        const familyItem = {
+          id: 'family::alpha',
+          entry_type: 'family',
+          default_version_id: 'preset::v2',
+          source_type: 'global',
+          type: 'global',
+          path: '/presets/companion.json',
+          name: 'Companion',
+        };
+        const regularItem = {
+          id: 'preset::solo',
+          entry_type: 'preset',
+          source_type: 'global',
+          type: 'global',
+          path: '/presets/solo.json',
+          name: 'Solo',
+        };
+
+        grid.items = [familyItem, regularItem];
+        grid.selectedIds = ['family::alpha', 'preset::solo'];
+
+        await grid.deleteSelectedPresets();
+        const deletePayloads = globalThis.fetchCalls
+          .filter((call) => call.url === '/api/presets/delete')
+          .map((call) => JSON.parse(call.options.body || '{}'));
+        if (deletePayloads.length !== 2) {
+          throw new Error(`expected two delete calls, got ${JSON.stringify(globalThis.fetchCalls)}`);
+        }
+        if (deletePayloads[0].id !== 'preset::v2' || deletePayloads[1].id !== 'preset::solo') {
+          throw new Error(`expected bulk delete to use concrete ids, got ${JSON.stringify(deletePayloads)}`);
+        }
+
+        globalThis.fetchCalls.length = 0;
+        grid.selectedIds = ['family::alpha', 'preset::solo'];
+        await grid.moveSelectedPresets('archive');
+        const movePayloads = globalThis.fetchCalls
+          .filter((call) => call.url === '/api/presets/category/move')
+          .map((call) => JSON.parse(call.options.body || '{}'));
+        if (movePayloads.length !== 2) {
+          throw new Error(`expected two move calls, got ${JSON.stringify(globalThis.fetchCalls)}`);
+        }
+        if (movePayloads[0].id !== 'preset::v2' || movePayloads[1].id !== 'preset::solo') {
+          throw new Error(`expected bulk move to use concrete ids, got ${JSON.stringify(movePayloads)}`);
+        }
+        if (movePayloads[0].target_category !== 'archive') {
+          throw new Error(`expected move payload to preserve target category, got ${JSON.stringify(movePayloads[0])}`);
+        }
+        """
+    )
+
+
+def test_grid_presets_template_renders_family_badges_only_for_family_entries():
+    source = read_project_file('templates/components/grid_presets.html')
+
+    assert "x-if=\"item.entry_type === 'family'\"" in source
+    assert 'item.version_count' in source
+    assert 'item.default_version_label' in source
 
 
 def test_preset_editor_template_uses_user_facing_copy_for_prompt_and_mirrored_workspaces():
