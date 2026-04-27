@@ -1802,43 +1802,67 @@ def test_mobile_layout_css_defines_mobile_header_toggle_feedback_states():
 
 def test_card_sidebar_template_adds_stable_split_layout_hooks():
     sidebar_template = read_project_file('templates/components/sidebar.html')
+    compact_template = compact_whitespace(sidebar_template)
 
     assert 'class="flex-1 card-sidebar-shell"' in sidebar_template
+    assert 'x-ref="cardSidebarShell"' in sidebar_template
     assert 'class="card-sidebar-categories"' in sidebar_template
+    assert 'class="card-sidebar-splitter"' in sidebar_template
+    assert '@pointerdown.prevent="beginTagPaneResize($event)"' in sidebar_template
+    assert 'aria-label="调整标签索引区域高度"' in sidebar_template
     assert 'class="card-sidebar-tags"' in sidebar_template
-    assert 'class="sidebar-section-header card-sidebar-tags-header"' in sidebar_template
-    assert 'class="sidebar-content custom-scrollbar card-sidebar-tags-body"' in sidebar_template
+    assert 'x-ref="cardTagsPane"' in sidebar_template
+    assert 'x-ref="cardTagsHeader"' in sidebar_template
+    assert 'x-ref="cardTagCategoryStrip"' in sidebar_template
+    assert 'x-ref="cardTagCloud"' in sidebar_template
+    assert 'tagIndexVisibleTags.slice(0, dynamicVisibleTagCount)' in compact_template
 
 
 def test_card_sidebar_template_removes_expansion_only_lower_pane_layout_styles():
     sidebar_template = read_project_file('templates/components/sidebar.html')
+    compact_template = compact_whitespace(sidebar_template)
 
     assert ":style=\"tagsSectionExpanded ? 'flex: 1;' : ''\"" not in sidebar_template
     assert 'style="display: flex; flex-direction: column; overflow: hidden;"' not in sidebar_template
-    assert 'x-show="tagsSectionExpanded" class="sidebar-content custom-scrollbar card-sidebar-tags-body"' in compact_whitespace(sidebar_template)
-
-
-def test_card_sidebar_and_pagination_templates_add_empty_state_and_mobile_wrap_hooks():
-    sidebar_template = read_project_file('templates/components/sidebar.html')
-    cards_template = read_project_file('templates/components/grid_cards.html')
-
-    assert 'class="card-sidebar-empty-state"' in sidebar_template
-    assert 'class="card-pagination-summary"' in cards_template
-    assert 'class="card-pagination-controls card-pagination-page-cluster"' in cards_template
-    assert 'class="card-pagination-controls" style="display: flex; align-items: center; gap: 0.5rem;"' not in cards_template
+    assert 'x-show="tagsSectionExpanded" class="sidebar-content custom-scrollbar card-sidebar-tags-body"' in compact_template
+    assert 'x-show="tagIndexVisibleTags.length > dynamicVisibleTagCount"' in compact_template
+    assert 'tagIndexVisibleTags.length - dynamicVisibleTagCount' in sidebar_template
 
 
 def test_card_sidebar_layout_css_defines_persistent_strip_and_scoped_solid_surfaces():
     layout_css = read_project_file('static/css/modules/layout.css')
 
-    assert '.card-sidebar-shell {' in layout_css
-    assert '.card-sidebar-tags {' in layout_css
-    assert 'height: 3.25rem;' in extract_exact_css_block(layout_css, '.card-sidebar-tags.is-collapsed')
+    shell_block = extract_exact_css_block(layout_css, '.card-sidebar-shell')
+    splitter_block = extract_exact_css_block(layout_css, '.card-sidebar-splitter')
     expanded_block = extract_exact_css_block(layout_css, '.card-sidebar-tags.is-expanded')
-    assert 'flex: 0 0 clamp(10rem, 34%, 15rem);' in expanded_block
-    assert 'max-height: 45%;' in expanded_block
+
+    assert '--card-tags-pane-basis: 34%;' in shell_block
+    assert '.card-sidebar-tags {' in layout_css
+    assert 'cursor: row-resize;' in splitter_block
+    assert 'flex: 0 0 10px;' in splitter_block
+    assert '.card-sidebar-splitter-grip {' in layout_css
+    assert 'flex: 0 0 var(--card-tags-pane-basis);' in expanded_block
+    assert 'min-height: 112px;' in expanded_block
+    assert 'clamp(10rem, 34%, 15rem)' not in expanded_block
     assert '.card-sidebar-shell .sidebar-content {' in layout_css
     assert '.card-sidebar-shell .sidebar-section-header {' in layout_css
+
+
+def test_mobile_card_sidebar_layout_css_hides_desktop_splitter_and_keeps_tag_body_cap():
+    layout_css = read_project_file('static/css/modules/layout.css')
+    mobile_layout_css = extract_media_block(layout_css, '@media (max-width: 768px)')
+
+    mobile_splitter_block = extract_exact_css_block(
+        mobile_layout_css,
+        '.sidebar-mobile .card-sidebar-splitter',
+    )
+    mobile_tags_block = extract_exact_css_block(
+        mobile_layout_css,
+        '.sidebar-mobile .card-sidebar-tags-body',
+    )
+
+    assert 'display: none;' in mobile_splitter_block
+    assert 'max-height: min(34vh, 16rem);' in mobile_tags_block
 
 
 def test_card_pagination_css_keeps_mobile_footer_compact_with_safe_area_spacing():
