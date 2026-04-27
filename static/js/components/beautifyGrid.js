@@ -236,11 +236,15 @@ export default function beautifyGrid() {
       this.alignSettingsPreviewDeviceToViewport();
       if (this.workspace === "packages" && this.activeVariant) {
         const previewPlatform = this.resolvePackagePreviewPlatform();
+        const nextVariant =
+          this.resolvePreferredVariantForDevice(previewPlatform) ||
+          this.activeVariant;
         this.selectedVariantPlatform = previewPlatform;
-        this.syncPreviewUnavailableState({
-          variant: this.activeVariant,
-          device: previewPlatform,
-        });
+        if (nextVariant) {
+          this.applyActiveVariant(nextVariant, { preservePreviewDevice: true });
+        } else {
+          this.syncPreviewUnavailableState({ device: previewPlatform });
+        }
       }
       if (this.isMobileBeautifyViewport()) {
         this.closePackageDetailDrawer();
@@ -485,6 +489,7 @@ export default function beautifyGrid() {
       this.syncPackageIdentityFields();
 
       const preserveSelection = !!options.preserveSelection;
+      const preferCompatibleSelection = !!options.preferCompatibleSelection;
       const previewPlatform = this.resolvePackagePreviewPlatform(res.item);
       let nextVariant = null;
       if (
@@ -493,12 +498,17 @@ export default function beautifyGrid() {
         res.item.variants?.[this.selectedVariantId]
       ) {
         const preservedVariant = res.item.variants[this.selectedVariantId];
-        nextVariant = this.isVariantCompatibleWithDevice(
-          preservedVariant,
-          previewPlatform,
-        )
-          ? preservedVariant
-          : this.resolvePreferredVariantForDevice(previewPlatform, res.item);
+        if (!preferCompatibleSelection) {
+          nextVariant = preservedVariant;
+        } else {
+          nextVariant = this.isVariantCompatibleWithDevice(
+            preservedVariant,
+            previewPlatform,
+          )
+            ? preservedVariant
+            : this.resolvePreferredVariantForDevice(previewPlatform, res.item) ||
+              preservedVariant;
+        }
       } else {
         nextVariant =
           this.resolvePreferredVariantForDevice(previewPlatform, res.item) ||
@@ -544,6 +554,9 @@ export default function beautifyGrid() {
       }
       if (currentPlatform === "dual" && hasPc) {
         return "pc";
+      }
+      if (isMobileViewport && hasMobile) {
+        return "mobile";
       }
       if (currentPlatform === "mobile" && hasMobile) {
         return "mobile";
@@ -690,7 +703,7 @@ export default function beautifyGrid() {
       if (!this.isVariantCompatibleWithDevice(variant, device)) {
         this.setPreviewUnavailable(
           device === "mobile"
-            ? "当前变体仅支持 PC 预览，请切换到移动端或双端变体。"
+            ? "当前变体仅支持 PC 预览，请切换到支持移动端预览的变体。"
             : "当前预览目标没有可用变体。",
         );
         return true;
@@ -1348,6 +1361,7 @@ export default function beautifyGrid() {
         this.refreshVariantSelectionForPlatformChange(variantId, platform);
         await this.selectPackage(this.selectedPackageId, {
           preserveSelection: true,
+          preferCompatibleSelection: true,
         });
       } catch (error) {
         this.$store.global.showToast(String(error.message || error), 3200);

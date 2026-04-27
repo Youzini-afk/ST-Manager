@@ -2620,6 +2620,76 @@ def test_beautify_grid_mobile_viewport_marks_pc_only_variant_preview_unavailable
         if (!component.$store.global.beautifyPreviewUnavailableReason) {
           throw new Error('mobile selection of pc-only variant should mark preview unavailable');
         }
+        if (component.$store.global.beautifyPreviewUnavailableReason.includes('切换到移动端')) {
+          throw new Error(`mobile-target unavailable copy should not tell the user to switch to mobile, got ${component.$store.global.beautifyPreviewUnavailableReason}`);
+        }
+        '''
+    )
+
+
+def test_beautify_grid_desktop_to_mobile_resize_realigns_to_mobile_capable_preview_target():
+    run_beautify_grid_runtime_check(
+        '''
+        const listeners = new Map();
+        globalThis.window = {
+          innerWidth: 1280,
+          addEventListener: (name, callback) => listeners.set(name, callback),
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            currentMode: 'beautify',
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'pc',
+            beautifyPreviewUnavailableReason: '',
+            beautifyVariantSelectionByDevice: {
+              mobile: 'mobile_only',
+            },
+            beautifySelectedVariantId: 'pc_only',
+            beautifySelectedWallpaperId: '',
+            beautifyActiveDetail: {
+              id: 'pkg_split',
+              variants: {
+                pc_only: { id: 'pc_only', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+                mobile_only: { id: 'mobile_only', platform: 'mobile', wallpaper_ids: [], selected_wallpaper_id: '' },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+            beautifyActiveVariant: {
+              id: 'pc_only',
+              platform: 'pc',
+              wallpaper_ids: [],
+              selected_wallpaper_id: '',
+            },
+            beautifyActiveWallpaper: null,
+            beautifyMobileFullscreenOpen: false,
+            showToast: () => {},
+          },
+        };
+        component.$watch = () => {};
+
+        component.init();
+
+        const resizeHandler = listeners.get('resize');
+        if (typeof resizeHandler !== 'function') {
+          throw new Error('expected resize handler registration');
+        }
+
+        globalThis.window.innerWidth = 390;
+        resizeHandler();
+
+        if (component.$store.global.beautifyPreviewDevice !== 'mobile') {
+          throw new Error(`desktop-to-mobile resize should realign preview target to mobile when a mobile-capable fallback exists, got ${component.$store.global.beautifyPreviewDevice}`);
+        }
+        if (component.$store.global.beautifyActiveVariant?.id !== 'mobile_only') {
+          throw new Error(`desktop-to-mobile resize should activate the mobile-capable fallback, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+        if (component.$store.global.beautifyPreviewUnavailableReason) {
+          throw new Error(`desktop-to-mobile resize should clear unavailable state when a mobile-capable fallback exists, got ${component.$store.global.beautifyPreviewUnavailableReason}`);
+        }
         '''
     )
 
