@@ -89,6 +89,7 @@ def run_beautify_grid_runtime_check(script_body):
         const getBeautifyPackage = getGridStub('getBeautifyPackage', async () => ({{ success: true, item: null }}));
         const importBeautifyScreenshot = getGridStub('importBeautifyScreenshot', async () => ({{ success: true, screenshot: {{ id: '' }} }}));
         const importBeautifyTheme = getGridStub('importBeautifyTheme', async () => ({{ success: true, package: {{ id: '' }} }}));
+        const importBeautifyVariant = getGridStub('importBeautifyVariant', async () => ({{ success: true, package: {{ id: '' }}, variant: {{ id: '' }} }}));
         const importBeautifyPackageAvatar = getGridStub('importBeautifyPackageAvatar', async () => ({{ success: true, item: {{}} }}));
         const importGlobalBeautifyAvatar = getGridStub('importGlobalBeautifyAvatar', async () => ({{ success: true, item: null }}));
         const importGlobalBeautifyWallpaper = getGridStub('importGlobalBeautifyWallpaper', async () => ({{ success: true, item: null }}));
@@ -888,6 +889,106 @@ def test_beautify_grid_activates_first_imported_screenshot_when_none_was_selecte
 
         if (component.$store.global.beautifySelectedScreenshotId !== 'shot_new_1') {
           throw new Error(`expected first imported screenshot to become active, got ${component.$store.global.beautifySelectedScreenshotId}`);
+        }
+        '''
+    )
+
+
+def test_beautify_grid_variant_import_uses_selected_package_and_preserves_existing_same_platform_variants():
+    run_beautify_grid_runtime_check(
+        '''
+        let imported = 0;
+        globalThis.__gridStubs = {
+          importBeautifyVariant: async () => {
+            imported += 1;
+            return {
+              success: true,
+              package: { id: 'pkg_demo' },
+              variant: { id: `var_new_${imported}`, platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+            };
+          },
+          getBeautifyPackage: async () => ({
+            success: true,
+            item: {
+              id: 'pkg_demo',
+              variants: {
+                var_old: { id: 'var_old', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+                var_new_1: { id: 'var_new_1', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+          }),
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifySelectedPackageId: 'pkg_demo',
+            beautifySelectedVariantId: 'var_old',
+            beautifyPreviewDevice: 'pc',
+            beautifyVariantSelectionByDevice: {},
+            beautifyActiveDetail: {
+              id: 'pkg_demo',
+              variants: {
+                var_old: { id: 'var_old', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+            beautifyActiveVariant: { id: 'var_old', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+            beautifyActiveWallpaper: null,
+            showToast: () => {},
+          },
+        };
+
+        await component.handleVariantFiles([{ name: 'warm.json' }]);
+
+        if (component.$store.global.beautifyActiveDetail.variants.var_old == null) {
+          throw new Error('old same-platform variant should remain after import');
+        }
+        if (component.$store.global.beautifyActiveDetail.variants.var_new_1 == null) {
+          throw new Error('new sibling variant should exist after import');
+        }
+        '''
+    )
+
+
+def test_beautify_grid_selects_concrete_variant_without_erasing_preview_device_history():
+    run_beautify_grid_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyPreviewDevice: 'pc',
+            beautifyVariantSelectionByDevice: {},
+            beautifySelectedVariantId: '',
+            beautifySelectedWallpaperId: '',
+            beautifyActiveDetail: {
+              id: 'pkg_demo',
+              variants: {
+                pc_a: { id: 'pc_a', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+                pc_b: { id: 'pc_b', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+            beautifyActiveVariant: null,
+            beautifyActiveWallpaper: null,
+            showToast: () => {},
+          },
+        };
+
+        component.selectVariant('pc_b');
+
+        if (component.$store.global.beautifySelectedVariantId !== 'pc_b') {
+          throw new Error('expected concrete variant selection to persist id');
+        }
+        if (component.$store.global.beautifyVariantSelectionByDevice.pc !== 'pc_b') {
+          throw new Error('expected device-specific variant history to be recorded');
         }
         '''
     )

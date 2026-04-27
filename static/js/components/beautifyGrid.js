@@ -5,6 +5,7 @@ import {
   getBeautifyPackage,
   importBeautifyScreenshot,
   importBeautifyTheme,
+  importBeautifyVariant,
   importBeautifyPackageAvatar,
   importGlobalBeautifyAvatar,
   importGlobalBeautifyWallpaper,
@@ -90,6 +91,15 @@ export default function beautifyGrid() {
 
     set selectedVariantId(val) {
       this.$store.global.beautifySelectedVariantId = val;
+      return true;
+    },
+
+    get variantSelectionByDevice() {
+      return this.$store.global.beautifyVariantSelectionByDevice || {};
+    },
+
+    set variantSelectionByDevice(val) {
+      this.$store.global.beautifyVariantSelectionByDevice = val || {};
       return true;
     },
 
@@ -530,7 +540,23 @@ export default function beautifyGrid() {
       );
     },
 
-    applyActiveVariant(variant) {
+    recordVariantSelectionForDevice(device, variantId) {
+      const next = {
+        ...(this.variantSelectionByDevice || {}),
+        [device]: variantId,
+      };
+      this.variantSelectionByDevice = next;
+    },
+
+    selectVariant(variantId) {
+      const detail = this.activeDetail;
+      const variant = detail?.variants?.[variantId] || null;
+      if (!variant) return;
+      this.applyActiveVariant(variant, { preservePreviewDevice: true });
+      this.recordVariantSelectionForDevice(this.selectedVariantPlatform, variant.id);
+    },
+
+    applyActiveVariant(variant, options = {}) {
       if (!variant) {
         this.$store.global.beautifyActiveVariant = null;
         this.$store.global.beautifyActiveWallpaper = null;
@@ -546,7 +572,9 @@ export default function beautifyGrid() {
       this.$store.global.beautifyActiveWallpaper = wallpaper;
       this.selectedWallpaperId = wallpaper?.id || "";
 
-      this.selectedVariantPlatform = this.resolvePackagePreviewPlatform();
+      if (!options.preservePreviewDevice) {
+        this.selectedVariantPlatform = this.resolvePackagePreviewPlatform();
+      }
     },
 
     resolveActiveWallpaper(variant) {
@@ -822,6 +850,41 @@ export default function beautifyGrid() {
           await this.selectPackage(lastPackageId);
         }
         this.$store.global.showToast(`已导入 ${files.length} 个主题`, 2200);
+      } catch (error) {
+        this.$store.global.showToast(String(error.message || error), 3200);
+      } finally {
+        this.isActionLoading = false;
+      }
+    },
+
+    async handleVariantFiles(fileList) {
+      const files = Array.from(fileList || []).filter((file) =>
+        String(file.name || "")
+          .toLowerCase()
+          .endsWith(".json"),
+      );
+      if (!files.length || !this.selectedPackageId) {
+        this.$store.global.showToast("请先选择一个美化包后再导入变体", 2400);
+        return;
+      }
+
+      this.isActionLoading = true;
+      try {
+        let lastVariantId = "";
+        for (const file of files) {
+          const res = await importBeautifyVariant(file, this.selectedPackageId);
+          if (!res?.success) {
+            throw new Error(res?.error || "导入变体失败");
+          }
+          lastVariantId = res.variant?.id || lastVariantId;
+        }
+        await this.selectPackage(this.selectedPackageId, {
+          preserveSelection: true,
+        });
+        if (lastVariantId) {
+          this.selectVariant(lastVariantId);
+        }
+        this.$store.global.showToast(`已导入 ${files.length} 个变体`, 2200);
       } catch (error) {
         this.$store.global.showToast(String(error.message || error), 3200);
       } finally {
