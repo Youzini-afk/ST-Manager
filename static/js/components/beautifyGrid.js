@@ -234,6 +234,14 @@ export default function beautifyGrid() {
 
     syncMobileFullscreenState() {
       this.alignSettingsPreviewDeviceToViewport();
+      if (this.workspace === "packages" && this.activeVariant) {
+        const previewPlatform = this.resolvePackagePreviewPlatform();
+        this.selectedVariantPlatform = previewPlatform;
+        this.syncPreviewUnavailableState({
+          variant: this.activeVariant,
+          device: previewPlatform,
+        });
+      }
       if (this.isMobileBeautifyViewport()) {
         this.closePackageDetailDrawer();
       }
@@ -514,7 +522,10 @@ export default function beautifyGrid() {
       if (currentPlatform === "mobile" && hasMobile) {
         return "mobile";
       }
-       if (currentPlatform === "mobile" && isMobileViewport) {
+      if (currentPlatform === "mobile" && isMobileViewport) {
+        return "mobile";
+      }
+      if (currentPlatform === "pc" && isMobileViewport && !hasMobile) {
         return "mobile";
       }
       if (currentPlatform === "pc" && hasPc) {
