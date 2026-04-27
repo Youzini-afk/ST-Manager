@@ -210,6 +210,27 @@ export default function presetGrid() {
       );
     },
 
+    canMergePresetSelection() {
+      const items = this.selectedPresetItems();
+      if (items.length < 2) return false;
+      const scopeKeys = new Set(items.map((item) => String(item.root_scope_key || "")));
+      return (
+        scopeKeys.size === 1 &&
+        items.every((item) => String(item.preset_kind || "").trim() === "openai")
+      );
+    },
+
+    openPresetVersionMergeModal() {
+      if (!this.canMergePresetSelection()) return;
+      const items = this.selectedPresetItems();
+      if (items.length < 2) return;
+      window.dispatchEvent(
+        new CustomEvent("open-preset-version-merge", {
+          detail: { items },
+        }),
+      );
+    },
+
     toggleSelection(item) {
       if (!this.canSelectPresetItem(item)) return;
 
@@ -349,6 +370,10 @@ export default function presetGrid() {
 
       window.addEventListener("move-selected-presets", (e) => {
         this.moveSelectedPresets(e.detail?.target_category || "");
+      });
+
+      window.addEventListener("merge-selected-presets", () => {
+        this.openPresetVersionMergeModal();
       });
 
       window.addEventListener("preset-sent-to-st", (e) => {

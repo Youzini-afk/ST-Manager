@@ -266,3 +266,22 @@ def test_preset_grid_runtime_hides_send_for_alt_root_family_items():
         }
         """
     )
+
+
+def test_preset_grid_runtime_allows_send_for_openai_list_item_with_kind_metadata():
+    run_preset_grid_runtime_check(
+        """
+        grid.items = [{
+          id: 'global::OpenAI/chat.json',
+          entry_type: 'preset',
+          source_folder: null,
+          preset_kind: 'openai',
+          preset_kind_label: 'ST 聊天补全预设',
+          last_sent_to_st: 0,
+        }];
+
+        if (!grid.canSendPresetToST(grid.items[0])) {
+          throw new Error('expected openai list item with preset_kind metadata to remain sendable');
+        }
+        """
+    )

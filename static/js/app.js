@@ -34,6 +34,7 @@ import extensionGrid from "./components/extensionGrid.js";
 import presetGrid from "./components/presetGrid.js";
 import presetDetailReader from "./components/presetDetailReader.js";
 import presetEditor from "./components/presetEditor.js";
+import presetVersionMergeModal from './components/presetVersionMergeModal.js';
 import beautifyGrid from "./components/beautifyGrid.js";
 import beautifyPreviewFrame from "./components/beautifyPreviewFrame.js";
 
@@ -70,6 +71,7 @@ const registerComponents = () => {
   Alpine.data("presetGrid", presetGrid);
   Alpine.data("presetDetailReader", presetDetailReader);
   Alpine.data("presetEditor", presetEditor);
+  Alpine.data('presetVersionMergeModal', presetVersionMergeModal);
   Alpine.data("beautifyGrid", beautifyGrid);
   Alpine.data("beautifyPreviewFrame", beautifyPreviewFrame);
   console.log("✅ ST Manager Frontend: Modules Loaded & Alpine Initialized");

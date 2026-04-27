@@ -1,5 +1,6 @@
 import json
 import sys
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -163,6 +164,8 @@ def test_preset_send_to_st_global_openai_success_persists_timestamp_and_surfaces
     list_payload = list_res.get_json()
     item = next(entry for entry in list_payload['items'] if entry['id'] == preset_id)
     assert item['last_sent_to_st'] == sent_at
+    assert item['preset_kind'] == 'openai'
+    assert item['preset_kind_label'] == 'ST 聊天补全预设'
 
     detail_res = client.get(f'/api/presets/detail/{preset_id}')
     assert detail_res.status_code == 200
@@ -237,11 +240,280 @@ def test_preset_send_to_st_versioned_family_id_uses_default_version_and_surfaces
     family_item = next(entry for entry in list_res.get_json()['items'] if entry['id'] == family_entry_id)
     assert family_item['default_version_id'] == 'global::写作/companion-v1.json'
     assert family_item['last_sent_to_st'] == sent_at
+    assert family_item['preset_kind'] == 'openai'
+    assert family_item['preset_kind_label'] == 'ST 聊天补全预设'
 
     detail_res = client.get('/api/presets/detail/global::写作/companion-v1.json')
     assert detail_res.status_code == 200
     detail_payload = detail_res.get_json()['preset']
     assert detail_payload['last_sent_to_st'] == sent_at
+
+
+def test_preset_version_merge_global_openai_singles_promotes_target_and_rewrites_family_metadata(
+    monkeypatch, tmp_path
+):
+    presets_dir, _resources_dir, _openai_dir, _ui_path = _configure_paths(monkeypatch, tmp_path)
+    target_file = presets_dir / 'merge-target.json'
+    source_file = presets_dir / 'merge-source.json'
+
+    _write_json(
+        target_file,
+        {
+            'name': 'Merge Target',
+            'openai_model': 'gpt-4.1',
+            'prompts': [{'identifier': 'main', 'content': 'target'}],
+        },
+    )
+    _write_json(
+        source_file,
+        {
+            'name': 'Merge Source',
+            'openai_model': 'gpt-4.1',
+            'prompts': [{'identifier': 'main', 'content': 'source'}],
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/version/merge',
+        json={
+            'target_preset_id': 'global::merge-target.json',
+            'source_preset_ids': ['global::merge-source.json'],
+            'family_name': 'Merged OpenAI Family',
+        },
+    )
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['success'] is True
+    assert payload['preset_id'] == 'global::merge-target.json'
+    assert payload['preset']['family_info']['family_name'] == 'Merged OpenAI Family'
+    assert payload['preset']['family_info']['default_version_id'] == 'global::merge-target.json'
+    assert payload['preset']['current_version']['version_label'] == 'merge-target'
+    assert payload['preset']['current_version']['is_default_version'] is True
+    assert [version['id'] for version in payload['preset']['available_versions']] == [
+        'global::merge-target.json',
+        'global::merge-source.json',
+    ]
+
+    target_payload = json.loads(target_file.read_text(encoding='utf-8'))
+    source_payload = json.loads(source_file.read_text(encoding='utf-8'))
+    target_meta = target_payload['x_st_manager']
+    source_meta = source_payload['x_st_manager']
+    assert target_meta['preset_family_id']
+    assert source_meta['preset_family_id'] == target_meta['preset_family_id']
+    assert target_meta['preset_family_name'] == 'Merged OpenAI Family'
+    assert source_meta['preset_family_name'] == 'Merged OpenAI Family'
+    assert target_meta['preset_version_label'] == 'merge-target'
+    assert source_meta['preset_version_label'] == 'merge-source'
+    assert target_meta['preset_is_default_version'] is True
+    assert source_meta['preset_is_default_version'] is False
+
+
+def test_preset_version_merge_rejects_cross_scope_entries(monkeypatch, tmp_path):
+    presets_dir, resources_dir, _openai_dir, _ui_path = _configure_paths(monkeypatch, tmp_path)
+    global_file = presets_dir / 'global-openai.json'
+    resource_file = resources_dir / 'hero' / 'presets' / 'resource-openai.json'
+
+    _write_json(
+        global_file,
+        {
+            'name': 'Global OpenAI',
+            'openai_model': 'gpt-4.1',
+            'prompts': [{'identifier': 'main', 'content': 'global'}],
+        },
+    )
+    _write_json(
+        resource_file,
+        {
+            'name': 'Resource OpenAI',
+            'openai_model': 'gpt-4.1',
+            'prompts': [{'identifier': 'main', 'content': 'resource'}],
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/version/merge',
+        json={
+            'target_preset_id': 'global::global-openai.json',
+            'source_preset_ids': ['resource::hero::resource-openai'],
+            'family_name': 'Invalid Mixed Family',
+        },
+    )
+
+    assert res.status_code == 400
+    payload = res.get_json()
+    assert payload['success'] is False
+    assert '同一作用域' in payload['msg']
+
+
+def test_preset_version_import_openai_file_into_existing_family_returns_updated_family_payload(
+    monkeypatch, tmp_path
+):
+    presets_dir, _resources_dir, _openai_dir, _ui_path = _configure_paths(monkeypatch, tmp_path)
+    default_file = presets_dir / 'companion-v1.json'
+
+    _write_json(
+        default_file,
+        {
+            'name': 'Companion V1',
+            'openai_model': 'gpt-4.1',
+            'prompts': [{'identifier': 'main', 'content': 'default'}],
+            'x_st_manager': {
+                'preset_family_id': 'family-alpha',
+                'preset_family_name': 'Companion Family',
+                'preset_version_label': 'v1',
+                'preset_version_order': 10,
+                'preset_is_default_version': True,
+            },
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/version/import',
+        data={
+            'preset_id': 'global::companion-v1.json',
+            'file': (
+                BytesIO(
+                    json.dumps(
+                        {
+                            'name': 'Imported Companion',
+                            'openai_model': 'gpt-4.1',
+                            'prompts': [{'identifier': 'main', 'content': 'imported'}],
+                        },
+                        ensure_ascii=False,
+                    ).encode('utf-8')
+                ),
+                'imported-companion.json',
+            ),
+        },
+        content_type='multipart/form-data',
+    )
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['success'] is True
+    assert payload['preset_id'] == 'global::imported-companion.json'
+    assert payload['preset']['family_info']['family_id'] == 'family-alpha'
+    assert payload['preset']['family_info']['family_name'] == 'Companion Family'
+    assert payload['preset']['family_info']['default_version_id'] == 'global::companion-v1.json'
+    assert payload['preset']['current_version']['version_label'] == 'imported-companion'
+    assert payload['preset']['current_version']['is_default_version'] is False
+    assert [version['id'] for version in payload['preset']['available_versions']] == [
+        'global::companion-v1.json',
+        'global::imported-companion.json',
+    ]
+
+    imported_file = presets_dir / 'imported-companion.json'
+    assert imported_file.exists()
+    imported_payload = json.loads(imported_file.read_text(encoding='utf-8'))
+    imported_meta = imported_payload['x_st_manager']
+    assert imported_meta['preset_family_id'] == 'family-alpha'
+    assert imported_meta['preset_family_name'] == 'Companion Family'
+    assert imported_meta['preset_version_label'] == 'imported-companion'
+    assert imported_meta['preset_is_default_version'] is False
+
+
+def test_preset_version_import_rejects_generic_uploaded_json(monkeypatch, tmp_path):
+    presets_dir, _resources_dir, _openai_dir, _ui_path = _configure_paths(monkeypatch, tmp_path)
+    default_file = presets_dir / 'companion-v1.json'
+
+    _write_json(
+        default_file,
+        {
+            'name': 'Companion V1',
+            'openai_model': 'gpt-4.1',
+            'prompts': [{'identifier': 'main', 'content': 'default'}],
+            'x_st_manager': {
+                'preset_family_id': 'family-alpha',
+                'preset_family_name': 'Companion Family',
+                'preset_version_label': 'v1',
+                'preset_version_order': 10,
+                'preset_is_default_version': True,
+            },
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/version/import',
+        data={
+            'preset_id': 'global::companion-v1.json',
+            'file': (
+                BytesIO(
+                    json.dumps(
+                        {
+                            'name': 'Imported Generic',
+                            'temperature': 0.7,
+                            'top_p': 0.9,
+                            'prompts': [{'identifier': 'main', 'content': 'generic'}],
+                        },
+                        ensure_ascii=False,
+                    ).encode('utf-8')
+                ),
+                'imported-generic.json',
+            ),
+        },
+        content_type='multipart/form-data',
+    )
+
+    assert res.status_code == 400
+    payload = res.get_json()
+    assert payload['success'] is False
+    assert payload['msg'] == '仅支持 OpenAI/对话补全预设导入版本'
+    assert not (presets_dir / 'imported-generic.json').exists()
+
+
+def test_preset_version_merge_deduplicates_repeated_ids(monkeypatch, tmp_path):
+    presets_dir, _resources_dir, _openai_dir, _ui_path = _configure_paths(monkeypatch, tmp_path)
+    target_file = presets_dir / 'merge-target.json'
+    source_file = presets_dir / 'merge-source.json'
+
+    _write_json(
+        target_file,
+        {
+            'name': 'Merge Target',
+            'openai_model': 'gpt-4.1',
+            'prompts': [{'identifier': 'main', 'content': 'target'}],
+        },
+    )
+    _write_json(
+        source_file,
+        {
+            'name': 'Merge Source',
+            'openai_model': 'gpt-4.1',
+            'prompts': [{'identifier': 'main', 'content': 'source'}],
+        },
+    )
+
+    client = _make_test_app().test_client()
+    res = client.post(
+        '/api/presets/version/merge',
+        json={
+            'target_preset_id': 'global::merge-target.json',
+            'source_preset_ids': [
+                'global::merge-target.json',
+                'global::merge-source.json',
+                'global::merge-source.json',
+            ],
+            'family_name': 'Merged OpenAI Family',
+        },
+    )
+
+    assert res.status_code == 200
+    payload = res.get_json()
+    assert payload['success'] is True
+    assert [version['id'] for version in payload['preset']['available_versions']] == [
+        'global::merge-target.json',
+        'global::merge-source.json',
+    ]
+
+    target_payload = json.loads(target_file.read_text(encoding='utf-8'))
+    source_payload = json.loads(source_file.read_text(encoding='utf-8'))
+    assert target_payload['x_st_manager']['preset_version_order'] == 10
+    assert source_payload['x_st_manager']['preset_version_order'] == 20
 
 
 def test_preset_send_to_st_rejects_global_openai_under_alt_root(monkeypatch, tmp_path):

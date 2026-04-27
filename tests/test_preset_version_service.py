@@ -8,6 +8,8 @@ if str(ROOT) not in sys.path:
 
 
 from core.services.preset_versions import build_family_entry_id
+from core.services.preset_versions import build_merge_version_plan
+from core.services.preset_versions import ensure_unique_version_labels
 from core.services.preset_versions import extract_preset_version_meta
 from core.services.preset_versions import generate_preset_family_id
 from core.services.preset_versions import group_preset_list_items
@@ -136,3 +138,136 @@ def test_group_preset_list_items_collapses_versioned_items_into_scoped_family_en
     single_entry = grouped[1]
     assert single_entry['entry_type'] == 'single'
     assert single_entry['id'] == 'single-beta'
+
+
+def test_ensure_unique_version_labels_suffixes_duplicate_labels_in_order():
+    assert ensure_unique_version_labels(['v1', 'v1', 'v2', 'v1']) == ['v1', 'v1 (2)', 'v2', 'v1 (3)']
+
+
+def test_ensure_unique_version_labels_avoids_collisions_with_existing_suffixed_labels():
+    assert ensure_unique_version_labels(['v1', 'v1 (2)', 'v1']) == ['v1', 'v1 (2)', 'v1 (3)']
+
+
+def test_build_merge_version_plan_keeps_target_default_and_rehomes_all_members():
+    target_family_id = generate_preset_family_id()
+    source_family_id = generate_preset_family_id()
+    target_entry = {
+        'entry_type': 'family',
+        'id': build_family_entry_id('global', 'root-alpha', target_family_id),
+        'family_id': target_family_id,
+        'family_name': 'Creative Family',
+        'default_version_id': 'target-v1',
+        'versions': [
+            {
+                'id': 'target-v1',
+                'name': 'Creative Family',
+                'filename': 'target-v1.json',
+                'preset_version': {
+                    'family_id': target_family_id,
+                    'family_name': 'Creative Family',
+                    'version_label': 'v1',
+                    'version_order': 10,
+                    'is_default_version': True,
+                    'is_versioned': True,
+                },
+            },
+            {
+                'id': 'target-v2',
+                'name': 'Creative Family',
+                'filename': 'target-v2.json',
+                'preset_version': {
+                    'family_id': target_family_id,
+                    'family_name': 'Creative Family',
+                    'version_label': 'v2',
+                    'version_order': 20,
+                    'is_default_version': False,
+                    'is_versioned': True,
+                },
+            },
+        ],
+    }
+    source_entries = [
+        {
+            'entry_type': 'family',
+            'id': build_family_entry_id('global', 'root-beta', source_family_id),
+            'family_id': source_family_id,
+            'family_name': 'Legacy Family',
+            'default_version_id': 'source-v1',
+            'versions': [
+                {
+                    'id': 'source-v1',
+                    'name': 'Legacy Family',
+                    'filename': 'source-v1.json',
+                    'preset_version': {
+                        'family_id': source_family_id,
+                        'family_name': 'Legacy Family',
+                        'version_label': 'v1',
+                        'version_order': 10,
+                        'is_default_version': True,
+                        'is_versioned': True,
+                    },
+                },
+                {
+                    'id': 'source-v3',
+                    'name': 'Legacy Family',
+                    'filename': 'source-v3.json',
+                    'preset_version': {
+                        'family_id': source_family_id,
+                        'family_name': 'Legacy Family',
+                        'version_label': 'v3',
+                        'version_order': 30,
+                        'is_default_version': False,
+                        'is_versioned': True,
+                    },
+                },
+            ],
+        },
+        {
+            'id': 'single-imported',
+            'name': 'Imported Single',
+            'filename': 'imported-single.json',
+            'preset_version': {
+                'family_id': '',
+                'family_name': '',
+                'version_label': 'v2',
+                'version_order': 100,
+                'is_default_version': False,
+                'is_versioned': False,
+            },
+        },
+    ]
+
+    plan = build_merge_version_plan(
+        target_entry=target_entry,
+        source_entries=source_entries,
+        family_name='Merged Creative Family',
+    )
+
+    assert plan['family_id'] == target_family_id
+    assert plan['family_name'] == 'Merged Creative Family'
+    assert plan['default_version_id'] == 'target-v1'
+    assert [member['id'] for member in plan['members']] == [
+        'target-v1',
+        'target-v2',
+        'source-v1',
+        'source-v3',
+        'single-imported',
+    ]
+    assert [member['preset_version']['version_label'] for member in plan['members']] == [
+        'v1',
+        'v2',
+        'v1 (2)',
+        'v3',
+        'v2 (2)',
+    ]
+    assert [member['preset_version']['version_order'] for member in plan['members']] == [10, 20, 30, 40, 50]
+    assert [member['preset_version']['family_id'] for member in plan['members']] == [target_family_id] * 5
+    assert [member['preset_version']['family_name'] for member in plan['members']] == ['Merged Creative Family'] * 5
+    assert [member['preset_version']['is_default_version'] for member in plan['members']] == [
+        True,
+        False,
+        False,
+        False,
+        False,
+    ]
+    assert all(member['preset_version']['is_versioned'] is True for member in plan['members'])

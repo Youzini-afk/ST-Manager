@@ -39,6 +39,24 @@ export async function setDefaultPresetVersion(payload) {
   return res.json();
 }
 
+export async function mergePresetVersions(payload) {
+  const res = await fetch('/api/presets/version/merge', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  return res.json();
+}
+
+
+export async function importPresetVersion(formData) {
+  const res = await fetch('/api/presets/version/import', {
+    method: 'POST',
+    body: formData,
+  });
+  return res.json();
+}
+
 export async function sendPresetToSillyTavern(payload) {
   const res = await fetch("/api/presets/send_to_st", {
     method: "POST",

@@ -5,6 +5,7 @@
 
 import {
   getPresetDetail,
+  importPresetVersion,
   sendPresetToSillyTavern,
   isPresetSendToStPending,
   setPresetSendToStPending,
@@ -813,6 +814,45 @@ export default function presetDetailReader() {
         return false;
       }
       return this.activePresetDetail?.preset_kind === "openai";
+    },
+
+    canImportActivePresetVersion() {
+      return this.activePresetDetail?.preset_kind === "openai";
+    },
+
+    triggerImportActivePresetVersion() {
+      if (!this.canImportActivePresetVersion()) return;
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json,application/json";
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        await this.importActivePresetVersion(file);
+      }, { once: true });
+      input.click();
+    },
+
+    async importActivePresetVersion(file) {
+      if (!this.activePresetDetail?.id || !file) return;
+      const formData = new FormData();
+      formData.append("preset_id", this.activePresetDetail.id);
+      formData.append("file", file, file.name || "imported.json");
+      try {
+        const res = await importPresetVersion(formData);
+        if (!res?.success || !res?.preset) {
+          this.$store.global.showToast(res?.msg || "导入失败", "error");
+          return;
+        }
+        this.activePresetDetail = {
+          ...this.activePresetDetail,
+          ...res.preset,
+        };
+        this.$store.global.showToast("已导入并合并到当前预设");
+        window.dispatchEvent(new CustomEvent("refresh-preset-list"));
+      } catch (error) {
+        this.$store.global.showToast(error?.message || "导入失败", "error");
+      }
     },
 
     getActivePresetSendToSTTitle() {

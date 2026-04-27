@@ -545,6 +545,27 @@ export default function header() {
       );
     },
 
+    canMergePresetSelection() {
+      const items = this.selectedPresetItems();
+      if (items.length < 2) return false;
+      const scopeKeys = new Set(items.map((item) => String(item.root_scope_key || "")));
+      return (
+        scopeKeys.size === 1 &&
+        items.every((item) => String(item.preset_kind || "").trim() === "openai")
+      );
+    },
+
+    getPresetMergeSelectionTitle() {
+      const items = this.selectedPresetItems();
+      if (items.length < 2) return "至少选择两个预设后才能合并";
+      const scopeKeys = new Set(items.map((item) => String(item.root_scope_key || "")));
+      if (scopeKeys.size !== 1) return "仅支持同一作用域内合并";
+      if (!items.every((item) => String(item.preset_kind || "").trim() === "openai")) {
+        return "仅支持 OpenAI/对话补全预设";
+      }
+      return "合并选中的预设为多版本家族";
+    },
+
     deleteSelectedWorldInfo() {
       if (!this.canDeleteWorldInfoSelection()) return;
       window.dispatchEvent(new CustomEvent("delete-selected-worldinfo"));
@@ -572,6 +593,17 @@ export default function header() {
         new CustomEvent("move-selected-presets", {
           detail: {
             target_category: this.$store.global.presetFilterCategory || "",
+          },
+        }),
+      );
+    },
+
+    mergeSelectedPresets() {
+      if (!this.canMergePresetSelection()) return;
+      window.dispatchEvent(
+        new CustomEvent("merge-selected-presets", {
+          detail: {
+            selected_ids: this.selectedIds.slice(),
           },
         }),
       );

@@ -1,0 +1,37 @@
+<div x-data="presetVersionMergeModal" x-show="showModal" x-cloak class="modal-overlay z-modal-std flex items-center justify-center p-4" @click.self="close()">
+  <div class="w-full max-w-2xl rounded-2xl border border-[var(--border-light)] bg-[var(--bg-panel)] shadow-2xl overflow-hidden">
+    <div class="border-b border-[var(--border-light)] px-4 py-3 flex items-center justify-between">
+      <h3 class="text-base font-bold text-[var(--text-main)]">合并为多版本</h3>
+      <button type="button" class="btn-secondary px-3 py-1 text-xs" @click="close()">关闭</button>
+    </div>
+    <div class="p-4 space-y-4">
+      <label class="block space-y-2">
+        <span class="text-xs text-[var(--text-dim)]">目标预设 / 目标家族</span>
+        <select x-model="selectedTargetId" class="w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-body)] px-3 py-2 text-sm text-[var(--text-main)]">
+          <template x-for="item in flattenedItems" :key="item.id">
+            <option :value="item.id" x-text="item.name || item.id"></option>
+          </template>
+        </select>
+      </label>
+      <label class="block space-y-2">
+        <span class="text-xs text-[var(--text-dim)]">家族名称</span>
+        <input x-model="familyName" type="text" class="w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-body)] px-3 py-2 text-sm text-[var(--text-main)]" />
+      </label>
+      <div class="space-y-2">
+        <div class="text-xs text-[var(--text-dim)]">版本预览</div>
+        <div class="rounded-xl border border-[var(--border-light)] bg-[var(--bg-body)] divide-y divide-[var(--border-light)]">
+          <template x-for="row in previewVersions" :key="row.id">
+            <div class="px-3 py-2 flex items-center justify-between gap-3 text-sm">
+              <span class="truncate text-[var(--text-main)]" x-text="row.name"></span>
+              <span class="shrink-0 text-[var(--text-dim)]" x-text="row.version_label"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+    <div class="border-t border-[var(--border-light)] px-4 py-3 flex items-center justify-end gap-2">
+      <button type="button" class="btn-secondary px-3 py-1.5 text-xs" @click="close()">取消</button>
+      <button type="button" class="btn-primary px-3 py-1.5 text-xs" :disabled="isSubmitting" @click="confirmMerge()">确认合并</button>
+    </div>
+  </div>
+</div>

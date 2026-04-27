@@ -115,6 +115,11 @@ def run_preset_detail_reader_runtime_check(script_body):
         globalThis.__setSendPresetToSillyTavern = (fn) => {{
           __sendPresetToSillyTavernImpl = fn;
         }};
+        let __importPresetVersionImpl = async () => ({{ success: true, preset: null }});
+        const importPresetVersion = (...args) => __importPresetVersionImpl(...args);
+        globalThis.__setImportPresetVersion = (fn) => {{
+          __importPresetVersionImpl = fn;
+        }};
         const __presetSendToStInFlightIds = new Set();
         const isPresetSendToStPending = (presetId) => __presetSendToStInFlightIds.has(String(presetId || '').trim());
         const setPresetSendToStPending = (presetId, sending) => {{
@@ -237,6 +242,81 @@ def test_preset_detail_reader_js_exposes_mobile_detail_view_state_and_actions():
     assert 'showMobileDetailView:' in source
     assert 'openMobileDetailView() {' in source
     assert 'closeMobileDetailView() {' in source
+
+
+def test_preset_detail_reader_template_exposes_import_merge_action_for_openai_presets():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    assert '@click="triggerImportActivePresetVersion()"' in source
+    assert '导入并合并' in source
+
+
+def test_preset_detail_reader_runtime_import_action_posts_formdata_and_refreshes_versions():
+    run_preset_detail_reader_runtime_check(
+        """
+        const importCalls = [];
+        globalThis.__setImportPresetVersion(async (formData) => {
+          importCalls.push(formData.get('preset_id'));
+          return {
+            success: true,
+            preset: {
+              id: 'global::alpha.json',
+              preset_kind: 'openai',
+              available_versions: [
+                { id: 'global::alpha.json', version_label: 'alpha', is_default_version: true },
+                { id: 'global::imported.json', version_label: 'imported', is_default_version: false },
+              ],
+              family_info: { family_name: 'Alpha' },
+            },
+          };
+        });
+
+        const fakeFile = new Blob(['{}'], { type: 'application/json' });
+        fakeFile.name = 'imported.json';
+        let changeHandler = null;
+        let clicked = false;
+        globalThis.document = {
+          createElement(tagName) {
+            if (tagName !== 'input') {
+              throw new Error(`expected input element, got ${tagName}`);
+            }
+            return {
+              type: '',
+              accept: '',
+              files: [fakeFile],
+              addEventListener(eventName, handler) {
+                if (eventName !== 'change') {
+                  throw new Error(`expected change handler, got ${eventName}`);
+                }
+                changeHandler = handler;
+              },
+              click() {
+                clicked = true;
+                return Promise.resolve(changeHandler?.());
+              },
+            };
+          },
+        };
+        reader.$store = { global: { showToast() {}, deviceType: 'desktop' } };
+        reader.activePresetDetail = {
+          id: 'global::alpha.json',
+          preset_kind: 'openai',
+          available_versions: [{ id: 'global::alpha.json', version_label: 'alpha', is_default_version: true }],
+        };
+
+        await reader.triggerImportActivePresetVersion();
+
+        if (!clicked) {
+          throw new Error('expected import trigger to click file input');
+        }
+        if (importCalls.length !== 1 || importCalls[0] !== 'global::alpha.json') {
+          throw new Error(`expected preset id in import request, got ${JSON.stringify(importCalls)}`);
+        }
+        if (reader.availableVersions.length !== 2) {
+          throw new Error(`expected refreshed versions after import, got ${reader.availableVersions.length}`);
+        }
+        """
+    )
 
 
 def test_preset_detail_reader_runtime_exposes_version_helpers_and_switches_by_concrete_version_id():

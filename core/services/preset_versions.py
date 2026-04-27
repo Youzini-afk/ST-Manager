@@ -130,6 +130,79 @@ def group_preset_list_items(source_items):
     return sorted(grouped_items, key=lambda item: _coerce_mtime(item.get('mtime')), reverse=True)
 
 
+def ensure_unique_version_labels(labels):
+    reserved = set()
+    seen = {}
+    unique_labels = []
+
+    for label in labels:
+        normalized = str(label or '').strip()
+        if normalized not in reserved:
+            unique_labels.append(normalized)
+            reserved.add(normalized)
+            seen[normalized] = max(seen.get(normalized, 0), 1)
+            continue
+
+        next_index = seen.get(normalized, 1) + 1
+        candidate = f'{normalized} ({next_index})'
+        while candidate in reserved:
+            next_index += 1
+            candidate = f'{normalized} ({next_index})'
+
+        seen[normalized] = next_index
+        reserved.add(candidate)
+        unique_labels.append(candidate)
+
+    return unique_labels
+
+
+def iter_entry_version_members(entry):
+    if not isinstance(entry, dict):
+        return []
+    if entry.get('entry_type') == 'family':
+        return list(entry.get('versions') or [])
+    return [entry]
+
+
+def build_merge_version_plan(*, target_entry, source_entries, family_name):
+    members = []
+    for entry in [target_entry, *(source_entries or [])]:
+        members.extend(copy.deepcopy(iter_entry_version_members(entry)))
+
+    version_labels = []
+    for member in members:
+        version_meta = member.get('preset_version') or {}
+        version_labels.append(version_meta.get('version_label') or '')
+
+    unique_labels = ensure_unique_version_labels(version_labels)
+    family_id = (target_entry.get('family_id') or '').strip()
+    family_name = str(family_name or '').strip()
+    default_version_id = str(target_entry.get('default_version_id') or '').strip()
+
+    planned_members = []
+    for index, member in enumerate(members, start=1):
+        version_meta = copy.deepcopy(member.get('preset_version') or {})
+        version_meta.update(
+            {
+                'family_id': family_id,
+                'family_name': family_name,
+                'version_label': unique_labels[index - 1],
+                'version_order': index * 10,
+                'is_default_version': str(member.get('id') or '').strip() == default_version_id,
+                'is_versioned': True,
+            }
+        )
+        member['preset_version'] = version_meta
+        planned_members.append(member)
+
+    return {
+        'family_id': family_id,
+        'family_name': family_name,
+        'default_version_id': default_version_id,
+        'members': planned_members,
+    }
+
+
 def _build_fallback_version_label(fallback_filename):
     filename = os.path.basename(fallback_filename or '')
     stem, _ = os.path.splitext(filename)

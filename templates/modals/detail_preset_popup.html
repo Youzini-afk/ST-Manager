@@ -93,6 +93,13 @@
         发送到 ST
       </button>
       <button
+        x-show="canImportActivePresetVersion()"
+        @click="triggerImportActivePresetVersion(); showMobileMoreMenu = false"
+        class="btn-secondary py-1.5 px-3 text-xs"
+      >
+        导入并合并
+      </button>
+      <button
         @click="exportActivePreset(); showMobileMoreMenu = false"
         class="btn-secondary py-1.5 px-3 text-xs"
       >
@@ -157,6 +164,13 @@
           :disabled="isSendingPresetToST"
         >
           发送到 ST
+        </button>
+        <button
+          x-show="canImportActivePresetVersion()"
+          @click="triggerImportActivePresetVersion()"
+          class="btn-secondary py-1.5 px-3 text-xs"
+        >
+          导入并合并
         </button>
         <button
           x-show="$store.global.deviceType !== 'mobile'"

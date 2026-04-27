@@ -3010,12 +3010,29 @@ def test_header_selection_bar_switches_to_worldinfo_specific_actions():
 def test_header_selection_bar_switches_to_preset_specific_actions():
     header_template = read_project_file('templates/components/header.html')
     header_source = read_project_file('static/js/components/header.js')
+    desktop_selection_bar_start = header_template.index('<!-- 桌面端：右侧操作区 -->')
+    desktop_selection_bar_end = header_template.index('<!-- 搜索与筛选区 -->')
+    desktop_selection_bar = header_template[desktop_selection_bar_start:desktop_selection_bar_end]
 
     assert "currentMode === 'presets'" in header_template
+    assert 'mergeSelectedPresets()' in header_template
+    assert 'canMergePresetSelection()' in header_template
+    assert 'getPresetMergeSelectionTitle()' in header_template
+    assert ':disabled="!canMergePresetSelection()"' in header_template
+    assert ':title="getPresetMergeSelectionTitle()"' in header_template
+    assert 'mergeSelectedPresets()' in desktop_selection_bar
+    assert 'canMergePresetSelection()' in desktop_selection_bar
+    assert "x-show=\"selectedIds.length > 1 && currentMode === 'presets'\"" in desktop_selection_bar
+    assert "x-show=\"currentMode === 'presets' && canMergePresetSelection()\"" not in desktop_selection_bar
+    assert 'moveSelectedPresets()' in desktop_selection_bar
+    assert 'deleteSelectedPresets()' in desktop_selection_bar
     assert 'deleteSelectedPresets()' in header_template
     assert 'moveSelectedPresets()' in header_template
     assert 'canMovePresetSelection()' in header_template
     assert "x-show=\"selectedIds.length > 0 && currentMode === 'cards'\"" in header_template
+    assert 'mergeSelectedPresets()' in header_source
+    assert 'canMergePresetSelection()' in header_source
+    assert 'getPresetMergeSelectionTitle()' in header_source
     assert 'deleteSelectedPresets()' in header_source
     assert 'canDeletePresetSelection()' in header_source
     assert 'canMovePresetSelection()' in header_source

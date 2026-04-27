@@ -22,10 +22,11 @@ from core.data.ui_store import (
 )
 from core.services.preset_editor_schema import normalize_preset_content_for_save
 from core.services.preset_editor_schema import resolve_global_save_dir_config_key
-from core.services.preset_model import build_preset_detail
+from core.services.preset_model import PRESET_KIND_LABELS, build_preset_detail
 from core.services.preset_model import detect_preset_kind, merge_preset_content
 from core.services.preset_model import strip_managed_kind_marker
 from core.services.preset_versions import extract_preset_version_meta
+from core.services.preset_versions import build_merge_version_plan
 from core.services.preset_versions import generate_preset_family_id
 from core.services.preset_versions import group_preset_list_items
 from core.services.preset_versions import upsert_preset_version_meta
@@ -1051,6 +1052,11 @@ def _build_scoped_preset_summary(
 
     item = parsed['summary']
     canonical_id = _build_canonical_preset_id(file_path, source_type, source_folder, presets_root)
+    preset_kind = detect_preset_kind(
+        parsed['details'].get('raw_data') or {},
+        source_folder=_build_preset_kind_source_hint(canonical_id, source_folder),
+        file_path=file_path,
+    )
     version_meta = extract_preset_version_meta(
         parsed['details'].get('raw_data') or {},
         fallback_name=item.get('name', ''),
@@ -1070,6 +1076,8 @@ def _build_scoped_preset_summary(
     item['owner_card_id'] = owner_card_id
     item['owner_card_name'] = owner_card_name
     item['owner_card_category'] = owner_card_category
+    item['preset_kind'] = preset_kind
+    item['preset_kind_label'] = PRESET_KIND_LABELS[preset_kind]
     item['preset_version'] = version_meta
     return item
 
@@ -1168,6 +1176,116 @@ def _build_family_context_for_detail(file_path, preset_type, source_folder, pres
     return None, None, None
 
 
+def _load_preset_version_member(preset_id: str, presets_root: str):
+    file_path, preset_type, source_folder = _resolve_preset_file_path(preset_id, presets_root)
+    if not file_path:
+        return None
+    if not os.path.exists(file_path):
+        return None
+
+    raw_data = load_preset_json(file_path)
+    preset_kind = _resolve_requested_preset_kind(
+        '',
+        raw_data,
+        source_folder=source_folder,
+        file_path=file_path,
+    )
+    version_meta = extract_preset_version_meta(
+        raw_data,
+        fallback_name=raw_data.get('name', ''),
+        fallback_filename=os.path.basename(file_path),
+    )
+    root_scope_key = 'global'
+    if preset_type == 'resource' and source_folder:
+        root_scope_key = f'resource::{source_folder}'
+    elif preset_type == 'global' and source_folder:
+        root_scope_key = source_folder
+
+    return {
+        'id': _build_canonical_preset_id(file_path, preset_type, source_folder, presets_root),
+        'file_path': file_path,
+        'preset_type': preset_type,
+        'source_folder': source_folder,
+        'root_scope_key': root_scope_key,
+        'raw_data': raw_data,
+        'preset_kind': preset_kind,
+        'preset_version': version_meta,
+        'name': raw_data.get('name') or os.path.splitext(os.path.basename(file_path))[0],
+        'filename': os.path.basename(file_path),
+    }
+
+
+def _scope_signature_for_member(member: dict):
+    return (
+        str(member.get('preset_type') or '').strip(),
+        str(member.get('source_folder') or '').strip(),
+    )
+
+
+def _dedupe_preset_ids(preset_ids, *, exclude_id=''):
+    unique_ids = []
+    seen_ids = set()
+    excluded = str(exclude_id or '').strip()
+    for preset_id in preset_ids or []:
+        normalized = str(preset_id or '').strip()
+        if not normalized or normalized == excluded or normalized in seen_ids:
+            continue
+        seen_ids.add(normalized)
+        unique_ids.append(normalized)
+    return unique_ids
+
+
+def _build_family_detail_response(file_path: str, preset_type: str, source_folder, presets_root: str, *, preset_kind_hint=''):
+    detail = _build_saved_preset_response(
+        file_path,
+        preset_type,
+        source_folder,
+        presets_root,
+        preset_kind_hint=preset_kind_hint,
+    )
+    family_info, current_version, available_versions = _build_family_context_for_detail(
+        file_path,
+        preset_type,
+        source_folder,
+        presets_root,
+    )
+    detail['family_info'] = family_info
+    detail['current_version'] = current_version
+    detail['available_versions'] = available_versions or []
+    return detail
+
+
+def _coerce_member_to_merge_entry(member: dict, *, family_id: str):
+    entry = {
+        'id': member.get('id'),
+        'name': member.get('name'),
+        'filename': member.get('filename'),
+        'preset_version': dict(member.get('preset_version') or {}),
+    }
+    if family_id:
+        entry['family_id'] = family_id
+    entry['default_version_id'] = str(member.get('id') or '').strip()
+    return entry
+
+
+def _apply_version_plan_members(planned_members, presets_root: str):
+    for member in planned_members or []:
+        file_path, _preset_type, _source_folder = _resolve_preset_file_path(member.get('id'), presets_root)
+        if not file_path or not os.path.exists(file_path):
+            continue
+        raw_data = load_preset_json(file_path)
+        version_meta = member.get('preset_version') or {}
+        updated = upsert_preset_version_meta(
+            raw_data,
+            family_id=version_meta.get('family_id') or '',
+            family_name=version_meta.get('family_name') or '',
+            version_label=version_meta.get('version_label') or os.path.splitext(os.path.basename(file_path))[0],
+            version_order=version_meta.get('version_order'),
+            is_default_version=bool(version_meta.get('is_default_version')),
+        )
+        write_preset_json(file_path, updated)
+
+
 def _resolve_family_default_version_id(preset_id: str, presets_root: str) -> str:
     preset_id = str(preset_id or '').strip()
     if not preset_id or '::' not in preset_id:
@@ -1232,6 +1350,7 @@ def _inherit_family_default_version_fields(grouped_items):
 
         item['last_sent_to_st'] = default_version.get('last_sent_to_st', item.get('last_sent_to_st', 0))
         item['preset_kind'] = default_version.get('preset_kind', item.get('preset_kind', ''))
+        item['preset_kind_label'] = default_version.get('preset_kind_label', item.get('preset_kind_label', ''))
 
     return grouped_items
 
@@ -1755,6 +1874,182 @@ def set_default_preset_version():
         return jsonify({'success': True, 'preset': detail, 'preset_id': detail['id']})
     except Exception as e:
         logger.error(f'Error setting default preset version: {e}')
+        return jsonify({'success': False, 'msg': str(e)}), 500
+
+
+@bp.route('/api/presets/version/merge', methods=['POST'])
+def merge_preset_versions():
+    try:
+        data = request.get_json(silent=True) or {}
+        target_preset_id = str(data.get('target_preset_id') or '').strip()
+        source_preset_ids = [
+            str(item or '').strip()
+            for item in (data.get('source_preset_ids') or [])
+            if str(item or '').strip()
+        ]
+        family_name = str(data.get('family_name') or '').strip()
+
+        if not target_preset_id or not source_preset_ids:
+            return jsonify({'success': False, 'msg': '缺少预设ID'}), 400
+
+        source_preset_ids = _dedupe_preset_ids(source_preset_ids, exclude_id=target_preset_id)
+        if not source_preset_ids:
+            return jsonify({'success': False, 'msg': '缺少预设ID'}), 400
+
+        presets_root = _get_presets_path()
+        target_member = _load_preset_version_member(target_preset_id, presets_root)
+        if not target_member:
+            return jsonify({'success': False, 'msg': '预设文件不存在'}), 404
+
+        source_members = []
+        for source_preset_id in source_preset_ids:
+            source_member = _load_preset_version_member(source_preset_id, presets_root)
+            if not source_member:
+                return jsonify({'success': False, 'msg': '预设文件不存在'}), 404
+            source_members.append(source_member)
+
+        all_members = [target_member, *source_members]
+        if any(member.get('preset_kind') != 'openai' for member in all_members):
+            return jsonify({'success': False, 'msg': '仅支持 OpenAI/对话补全预设合并版本'}), 400
+
+        target_scope = _scope_signature_for_member(target_member)
+        if any(_scope_signature_for_member(member) != target_scope for member in source_members):
+            return jsonify({'success': False, 'msg': '仅支持同一作用域内的预设合并版本'}), 400
+
+        family_id = target_member.get('preset_version', {}).get('family_id') or generate_preset_family_id()
+        planned = build_merge_version_plan(
+            target_entry=_coerce_member_to_merge_entry(target_member, family_id=family_id),
+            source_entries=[_coerce_member_to_merge_entry(member, family_id=family_id) for member in source_members],
+            family_name=family_name or target_member.get('name') or '',
+        )
+
+        suppress_fs_events(2.5)
+        _apply_version_plan_members(planned.get('members') or [], presets_root)
+        detail = _build_family_detail_response(
+            target_member['file_path'],
+            target_member['preset_type'],
+            target_member['source_folder'],
+            presets_root,
+            preset_kind_hint='openai',
+        )
+        return jsonify({'success': True, 'preset': detail, 'preset_id': detail['id']})
+    except Exception as e:
+        logger.error(f'Error merging preset versions: {e}')
+        return jsonify({'success': False, 'msg': str(e)}), 500
+
+
+@bp.route('/api/presets/version/import', methods=['POST'])
+def import_preset_version():
+    try:
+        preset_id = str(request.form.get('preset_id') or '').strip()
+        upload = request.files.get('file')
+        if not preset_id:
+            return jsonify({'success': False, 'msg': '缺少预设ID'}), 400
+        if upload is None or not str(upload.filename or '').strip():
+            return jsonify({'success': False, 'msg': '未接收到文件'}), 400
+
+        presets_root = _get_presets_path()
+        target_member = _load_preset_version_member(preset_id, presets_root)
+        if not target_member:
+            return jsonify({'success': False, 'msg': '预设文件不存在'}), 404
+        if target_member.get('preset_kind') != 'openai':
+            return jsonify({'success': False, 'msg': '仅支持 OpenAI/对话补全预设导入版本'}), 400
+
+        try:
+            incoming_raw = json.loads(upload.read())
+        except json.JSONDecodeError:
+            return jsonify({'success': False, 'msg': 'JSON格式无效'}), 400
+
+        if not isinstance(incoming_raw, dict):
+            return jsonify({'success': False, 'msg': 'JSON格式无效'}), 400
+
+        incoming_kind = _resolve_requested_preset_kind(
+            '',
+            incoming_raw,
+            source_folder=target_member.get('source_folder'),
+        )
+        if incoming_kind != 'openai':
+            return jsonify({'success': False, 'msg': '仅支持 OpenAI/对话补全预设导入版本'}), 400
+
+        target_meta = target_member.get('preset_version') or {}
+        family_id = target_meta.get('family_id') or generate_preset_family_id()
+        family_name = target_meta.get('family_name') or target_member.get('name') or ''
+
+        if not target_meta.get('is_versioned'):
+            upgraded_target = upsert_preset_version_meta(
+                target_member['raw_data'],
+                family_id=family_id,
+                family_name=family_name,
+                version_label=target_meta.get('version_label') or os.path.splitext(target_member['filename'])[0],
+                version_order=target_meta.get('version_order'),
+                is_default_version=True,
+            )
+            suppress_fs_events(2.5)
+            write_preset_json(target_member['file_path'], upgraded_target)
+
+        existing_family_paths = _list_family_version_paths(
+            target_member['file_path'],
+            target_member['preset_type'],
+            target_member['source_folder'],
+            presets_root,
+            family_id,
+        )
+        next_version_order = 20
+        if existing_family_paths:
+            next_version_order = max(
+                extract_preset_version_meta(
+                    load_preset_json(path),
+                    fallback_name='',
+                    fallback_filename=os.path.basename(path),
+                ).get('version_order') or 100
+                for path in existing_family_paths
+            ) + 10
+
+        upload_stem = os.path.splitext(str(upload.filename or '').strip())[0]
+        imported_name = str(incoming_raw.get('name') or '').strip() or upload_stem
+        final_content = merge_preset_content({}, 'openai', incoming_raw)
+        if isinstance(final_content, dict):
+            final_content['name'] = imported_name
+        final_content = upsert_preset_version_meta(
+            final_content,
+            family_id=family_id,
+            family_name=family_name,
+            version_label=upload_stem,
+            version_order=next_version_order,
+            is_default_version=False,
+        )
+
+        target_dir = _resolve_existing_preset_target_dir(
+            target_member['file_path'],
+            target_member['preset_type'],
+            target_member['source_folder'],
+            presets_root,
+        )
+        import_path = ensure_unique_path(build_save_as_path(target_dir, upload_stem))
+        suppress_fs_events(2.5)
+        write_preset_json(import_path, final_content)
+
+        import_source_folder = target_member['source_folder']
+        if target_member['preset_type'] == 'resource' and import_source_folder:
+            import_preset_id = f"resource::{import_source_folder}::{os.path.splitext(os.path.basename(import_path))[0]}"
+        else:
+            import_preset_id = _build_canonical_preset_id(
+                import_path,
+                target_member['preset_type'],
+                import_source_folder,
+                presets_root,
+            )
+
+        detail = _build_family_detail_response(
+            import_path,
+            target_member['preset_type'],
+            import_source_folder,
+            presets_root,
+            preset_kind_hint='openai',
+        )
+        return jsonify({'success': True, 'preset': detail, 'preset_id': import_preset_id})
+    except Exception as e:
+        logger.error(f'Error importing preset version: {e}')
         return jsonify({'success': False, 'msg': str(e)}), 500
 
 

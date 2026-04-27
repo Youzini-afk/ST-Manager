@@ -314,6 +314,16 @@
         🗑️ 删除世界书
       </button>
       <button
+        x-show="selectedIds.length > 1 && currentMode === 'presets'"
+        @click="mergeSelectedPresets()"
+        :disabled="!canMergePresetSelection()"
+        :title="getPresetMergeSelectionTitle()"
+        class="text-xs px-2 py-1 rounded text-white"
+        style="background-color: #7c3aed"
+      >
+        合并为多版本
+      </button>
+      <button
         x-show="currentMode === 'presets' && canMovePresetSelection()"
         @click="moveSelectedPresets()"
         class="text-xs px-2 py-1 rounded text-white bg-blue-700 hover:bg-blue-600 transition-all"
