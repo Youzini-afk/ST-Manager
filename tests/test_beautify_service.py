@@ -456,6 +456,8 @@ def test_import_theme_into_existing_package_keeps_older_same_platform_variant_un
     package_id = first['package']['id']
     original_variant_id = first['variant']['id']
     original_theme_file = first['variant']['theme_file']
+    original_theme_path = tmp_path / original_theme_file
+    original_theme_payload = json.loads(original_theme_path.read_text(encoding='utf-8'))
 
     second_theme = tmp_path / 'second-pc.json'
     second_theme.write_text(
@@ -463,11 +465,13 @@ def test_import_theme_into_existing_package_keeps_older_same_platform_variant_un
         encoding='utf-8',
     )
 
-    service.import_theme(str(second_theme), package_id=package_id, platform='pc')
+    second = service.import_theme(str(second_theme), package_id=package_id, platform='pc')
     package_detail = service.get_package(package_id)
 
     assert original_variant_id in package_detail['variants']
     assert package_detail['variants'][original_variant_id]['theme_file'] == original_theme_file
+    assert json.loads(original_theme_path.read_text(encoding='utf-8')) == original_theme_payload
+    assert second['variant']['theme_file'] != original_theme_file
     assert {variant['theme_name'] for variant in package_detail['variants'].values()} == {'First Demo', 'Second Demo'}
 
 

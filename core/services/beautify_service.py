@@ -303,12 +303,26 @@ class BeautifyService:
         resolved_package_id = str(package_id or '').strip() or self._build_package_id(package_name, packages)
         package_info = copy.deepcopy(packages.get(resolved_package_id) or self._build_empty_package(resolved_package_id, package_name))
         package_info['name'] = package_info.get('name') or package_name
+        target_existing_package = bool(str(package_id or '').strip())
 
         themes_dir = os.path.join(self.library_root, 'packages', resolved_package_id, 'themes')
         os.makedirs(themes_dir, exist_ok=True)
 
-        variant_id = self._build_variant_id(resolved_platform, source_hint, package_info)
-        target_file = os.path.join(themes_dir, f'{variant_id}.json')
+        if target_existing_package:
+            variant_id = self._build_variant_id(resolved_platform, source_hint, package_info)
+            target_file = os.path.join(themes_dir, f'{variant_id}.json')
+            variant_name = self._build_variant_name(theme_payload)
+            wallpaper_ids = []
+            selected_wallpaper_id = ''
+        else:
+            existing_variant = self._find_variant_by_platform(package_info, resolved_platform)
+            target_file = os.path.join(themes_dir, f'{resolved_platform}.json')
+            relative_theme_file = os.path.relpath(target_file, self._project_root_for_library()).replace('\\', '/')
+            variant_id = existing_variant['id'] if existing_variant else f'var_{resolved_platform}_{self._short_hash(relative_theme_file)}'
+            variant_name = (existing_variant or {}).get('name') or self._build_variant_name(theme_payload)
+            wallpaper_ids = list((existing_variant or {}).get('wallpaper_ids', []))
+            selected_wallpaper_id = str((existing_variant or {}).get('selected_wallpaper_id') or '').strip()
+
         with open(target_file, 'w', encoding='utf-8') as f:
             json.dump(theme_payload, f, ensure_ascii=False, indent=2)
 
@@ -316,12 +330,12 @@ class BeautifyService:
         relative_theme_file = os.path.relpath(target_file, self._project_root_for_library()).replace('\\', '/')
         package_info['variants'][variant_id] = {
             'id': variant_id,
-            'name': self._build_variant_name(theme_payload),
+            'name': variant_name,
             'platform': resolved_platform,
             'theme_name': str(theme_payload.get('name') or package_info['name']).strip(),
             'theme_file': relative_theme_file,
-            'wallpaper_ids': [],
-            'selected_wallpaper_id': '',
+            'wallpaper_ids': wallpaper_ids,
+            'selected_wallpaper_id': selected_wallpaper_id,
             'preview_hint': {
                 'needs_platform_review': needs_review,
                 'preview_accuracy': preview_accuracy,
