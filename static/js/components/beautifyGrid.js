@@ -566,11 +566,45 @@ export default function beautifyGrid() {
       this.variantSelectionByDevice = next;
     },
 
+    isVariantCompatibleWithDevice(
+      variant,
+      device = this.selectedVariantPlatform,
+    ) {
+      const platform = String(variant?.platform || "");
+      if (device === "mobile") {
+        return platform === "mobile" || platform === "dual";
+      }
+      if (device === "pc") {
+        return platform === "pc" || platform === "dual";
+      }
+      return platform === "dual" || platform === "pc" || platform === "mobile";
+    },
+
+    setPreviewUnavailable(reason = "") {
+      this.$store.global.beautifyPreviewUnavailableReason = String(reason || "");
+    },
+
+    clearPreviewUnavailable() {
+      this.setPreviewUnavailable("");
+    },
+
     selectVariant(variantId) {
       const detail = this.activeDetail;
       const variant = detail?.variants?.[variantId] || null;
       if (!variant) return;
       this.applyActiveVariant(variant, { preservePreviewDevice: true });
+
+      if (
+        this.isMobileBeautifyViewport() &&
+        !this.isVariantCompatibleWithDevice(variant, "mobile")
+      ) {
+        this.setPreviewUnavailable(
+          "当前变体仅支持 PC 预览，请切换到移动端或双端变体。",
+        );
+        return;
+      }
+
+      this.clearPreviewUnavailable();
       if (variant.platform === "dual") {
         this.recordVariantSelectionForDevice("pc", variant.id);
         this.recordVariantSelectionForDevice("mobile", variant.id);
@@ -644,6 +678,7 @@ export default function beautifyGrid() {
         this.resolveRememberedVariant(platform) ||
         this.findVariantByPlatform(platform);
       if (variant) {
+        this.clearPreviewUnavailable();
         this.applyActiveVariant(variant);
         this.selectedVariantPlatform = platform;
         return;
@@ -651,9 +686,13 @@ export default function beautifyGrid() {
 
       const dualVariant = this.findVariantByPlatform("dual");
       if (dualVariant && ["pc", "mobile", "dual"].includes(platform)) {
+        this.clearPreviewUnavailable();
         this.applyActiveVariant(dualVariant);
         this.selectedVariantPlatform = platform === "dual" ? "dual" : platform;
+        return;
       }
+
+      this.setPreviewUnavailable("当前预览目标没有可用变体。");
     },
 
     isMobileBeautifyViewport() {

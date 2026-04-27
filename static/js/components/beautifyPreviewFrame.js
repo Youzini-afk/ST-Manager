@@ -113,6 +113,10 @@ export default function beautifyPreviewFrame() {
       );
     },
 
+    get isPreviewUnavailable() {
+      return !!this.$store.global.beautifyPreviewUnavailableReason;
+    },
+
     init() {
       this.startPreviewHostObserver();
       this.$watch("$store.global.beautifyPreviewResetToken", () => {
@@ -277,6 +281,10 @@ export default function beautifyPreviewFrame() {
 
     renderPreview() {
       if (!this.isPreviewLoaded) {
+        return;
+      }
+
+      if (this.isPreviewUnavailable) {
         return;
       }
 

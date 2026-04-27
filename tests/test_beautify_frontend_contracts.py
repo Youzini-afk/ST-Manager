@@ -2584,6 +2584,46 @@ def test_beautify_preview_frame_reuses_document_scene_catalog_for_host_switcher(
     assert 'const HOST_PREVIEW_SCENES' not in preview_frame_source
 
 
+def test_beautify_grid_mobile_viewport_marks_pc_only_variant_preview_unavailable_when_selected():
+    run_beautify_grid_runtime_check(
+        '''
+        globalThis.window = { innerWidth: 390, addEventListener: () => {} };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyPreviewDevice: 'mobile',
+            beautifyPreviewUnavailableReason: '',
+            beautifyVariantSelectionByDevice: {},
+            beautifySelectedVariantId: '',
+            beautifySelectedWallpaperId: '',
+            beautifyActiveDetail: {
+              id: 'pkg_demo',
+              variants: {
+                pc_only: { id: 'pc_only', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+            beautifyActiveVariant: null,
+            beautifyActiveWallpaper: null,
+            showToast: () => {},
+          },
+        };
+
+        component.selectVariant('pc_only');
+
+        if (component.$store.global.beautifySelectedVariantId !== 'pc_only') {
+          throw new Error('pc-only variant should still be selected for management');
+        }
+        if (!component.$store.global.beautifyPreviewUnavailableReason) {
+          throw new Error('mobile selection of pc-only variant should mark preview unavailable');
+        }
+        '''
+    )
+
+
 def test_beautify_preview_frame_falls_back_to_global_wallpaper_when_variant_selection_has_no_resolved_wallpaper():
     run_beautify_preview_frame_runtime_check(
         '''

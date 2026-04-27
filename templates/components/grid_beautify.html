@@ -471,15 +471,15 @@
             </div>
           </div>
           <div class="beautify-device-switches">
-            <button
-              type="button"
-              class="beautify-device-btn"
-              :class="selectedVariantPlatform === 'pc' ? 'is-active' : ''"
-              :disabled="stageMode === 'screenshot' || !hasPcVariant"
-              @click="previewPlatform('pc')"
-            >
-              PC
-            </button>
+             <button
+               type="button"
+               class="beautify-device-btn"
+               :class="selectedVariantPlatform === 'pc' ? 'is-active' : ''"
+               :disabled="stageMode === 'screenshot' || !hasPcVariant || isMobileBeautifyViewport()"
+               @click="previewPlatform('pc')"
+             >
+               PC
+             </button>
             <button
               type="button"
               class="beautify-device-btn"
@@ -539,7 +539,9 @@
                     </template>
                   </div>
 
-                  <template x-if="isMobileFullscreenEnabled()">
+                  <template
+                    x-if="!$store.global.beautifyPreviewUnavailableReason && isMobileFullscreenEnabled()"
+                  >
                     <div
                       class="beautify-preview-unloaded-card beautify-mobile-entry-card"
                     >
@@ -557,8 +559,18 @@
                     </div>
                   </template>
 
+                  <template x-if="$store.global.beautifyPreviewUnavailableReason">
+                    <div class="beautify-preview-unloaded-card beautify-preview-unavailable-card">
+                      <div class="beautify-detail-heading">原生 ST 预览不可用</div>
+                      <div
+                        class="beautify-empty-copy"
+                        x-text="$store.global.beautifyPreviewUnavailableReason"
+                      ></div>
+                    </div>
+                  </template>
+
                   <template
-                    x-if="!isMobileFullscreenEnabled() && !isPreviewLoaded"
+                    x-if="!$store.global.beautifyPreviewUnavailableReason && !isMobileFullscreenEnabled() && !isPreviewLoaded"
                   >
                     <div class="beautify-preview-unloaded-card">
                       <div class="beautify-detail-heading">原生 ST 预览</div>
@@ -577,7 +589,7 @@
                   </template>
 
                   <template
-                    x-if="!isMobileFullscreenEnabled() && isPreviewLoaded"
+                    x-if="!$store.global.beautifyPreviewUnavailableReason && !isMobileFullscreenEnabled() && isPreviewLoaded"
                   >
                     <div
                       class="beautify-preview-frame-shell"
@@ -702,7 +714,7 @@
                   type="button"
                   class="beautify-device-btn"
                   :class="selectedVariantPlatform === 'pc' ? 'is-active' : ''"
-                  :disabled="!hasPcVariant"
+                  :disabled="!hasPcVariant || isMobileBeautifyViewport()"
                   @click="previewPlatform('pc')"
                 >
                   PC
@@ -747,7 +759,17 @@
         <div class="beautify-mobile-stage">
           <template x-if="stageMode === 'preview'">
             <div class="beautify-preview-stage beautify-mobile-preview-stage">
-              <template x-if="!isPreviewLoaded">
+              <template x-if="$store.global.beautifyPreviewUnavailableReason">
+                <div class="beautify-preview-unloaded-card beautify-preview-unavailable-card">
+                  <div class="beautify-detail-heading">原生 ST 预览不可用</div>
+                  <div
+                    class="beautify-empty-copy"
+                    x-text="$store.global.beautifyPreviewUnavailableReason"
+                  ></div>
+                </div>
+              </template>
+
+              <template x-if="!$store.global.beautifyPreviewUnavailableReason && !isPreviewLoaded">
                 <div class="beautify-preview-unloaded-card">
                   <div class="beautify-detail-heading">
                     <span
@@ -770,7 +792,7 @@
                 </div>
               </template>
 
-              <template x-if="isPreviewLoaded">
+              <template x-if="!$store.global.beautifyPreviewUnavailableReason && isPreviewLoaded">
                 <div
                   class="beautify-preview-frame-shell"
                   :class="previewShellMode === 'mobile' ? 'is-mobile' : 'is-pc'"

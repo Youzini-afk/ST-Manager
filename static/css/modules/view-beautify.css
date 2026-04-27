@@ -455,6 +455,10 @@
   padding: 1.25rem;
 }
 
+.beautify-preview-unavailable-card {
+  border-color: color-mix(in srgb, #f59e0b 45%, var(--border-light));
+}
+
 .beautify-preview-notice {
   margin-bottom: 0.65rem;
   border: 1px solid rgba(251, 191, 36, 0.3);

@@ -378,6 +378,13 @@ def test_beautify_grid_template_keeps_unavailable_device_button_disabled_instead
     assert '!hasMobileVariant' in template
 
 
+def test_beautify_grid_mobile_viewport_disables_pc_preview_button_in_template():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert 'isMobileBeautifyViewport()' in template
+    assert 'selectedVariantPlatform === \'pc\'' in template or 'selectedVariantPlatform === "pc"' in template
+
+
 def test_beautify_grid_template_uses_isolated_preview_host_instead_of_inline_preview_dom():
     template = read_project_file('templates/components/grid_beautify.html')
 
