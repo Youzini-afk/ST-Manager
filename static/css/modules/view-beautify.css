@@ -101,6 +101,7 @@
 
 .beautify-toolbar-actions {
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .beautify-toolbar-global-action,
@@ -111,10 +112,12 @@
 .beautify-toolbar-package-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 0.65rem;
-  padding-left: 0.65rem;
-  margin-left: 0.1rem;
-  border-left: 1px solid var(--border-light);
+  padding-left: 0;
+  margin-left: 0;
+  border-left: 0;
 }
 
 .beautify-workspace-switcher {

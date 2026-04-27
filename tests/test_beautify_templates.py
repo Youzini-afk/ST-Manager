@@ -137,6 +137,26 @@ def test_beautify_toolbar_actions_center_button_group_on_desktop_and_keep_mobile
     assert_has_css_declaration(mobile_block, 'align-items', 'stretch')
 
 
+def test_beautify_toolbar_actions_allow_desktop_wrap_and_reset_package_group_separator():
+    css = read_project_file('static/css/modules/view-beautify.css')
+
+    desktop_block = extract_css_block(css, r'\.beautify-toolbar-actions')
+    package_match = re.search(
+        r'\.beautify-toolbar-package-actions\s*\{(?P<body>[^{}]*flex-wrap:\s*wrap;[^{}]*)\}',
+        css,
+        re.DOTALL,
+    )
+    assert package_match, 'Expected desktop .beautify-toolbar-package-actions block with wrapping'
+    package_block = package_match.group('body')
+
+    assert_has_css_declaration(desktop_block, 'flex-wrap', 'wrap')
+    assert_has_css_declaration(package_block, 'flex-wrap', 'wrap')
+    assert_has_css_declaration(package_block, 'justify-content', 'center')
+    assert_has_css_declaration(package_block, 'padding-left', '0')
+    assert_has_css_declaration(package_block, 'margin-left', '0')
+    assert_has_css_declaration(package_block, 'border-left', '0')
+
+
 def test_index_template_includes_dedicated_beautify_grid_view():
     template = read_project_file('templates/index.html')
     assert '{% include "components/grid_beautify.html" %}' in template
