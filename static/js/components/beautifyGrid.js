@@ -689,7 +689,9 @@ export default function beautifyGrid() {
         return;
       }
       const previewPlatform = this.resolvePackagePreviewPlatform();
-      const nextVariant = this.findVariantForPreviewPlatform(previewPlatform);
+      const nextVariant =
+        this.resolveRememberedVariant(previewPlatform) ||
+        this.findVariantForPreviewPlatform(previewPlatform);
       if (nextVariant) {
         this.applyActiveVariant(nextVariant);
         this.selectedVariantPlatform = previewPlatform;

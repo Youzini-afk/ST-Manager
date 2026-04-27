@@ -1867,11 +1867,15 @@ def test_beautify_grid_switching_back_to_packages_realigns_active_variant_with_m
             beautifyWorkspace: 'settings',
             beautifyPreviewDevice: 'mobile',
             beautifyMobileFullscreenOpen: false,
+            beautifyVariantSelectionByDevice: {
+              mobile: 'mobile_b',
+            },
             beautifyActiveDetail: {
               id: 'pkg_split',
               variants: {
                 pc: { id: 'pc', platform: 'pc', wallpaper_ids: [] },
                 mobile: { id: 'mobile', platform: 'mobile', wallpaper_ids: [] },
+                mobile_b: { id: 'mobile_b', platform: 'mobile', wallpaper_ids: [] },
               },
               wallpapers: {},
               screenshots: {},
@@ -1888,8 +1892,8 @@ def test_beautify_grid_switching_back_to_packages_realigns_active_variant_with_m
         if (component.$store.global.beautifyPreviewDevice !== 'mobile') {
           throw new Error(`expected package workspace to preserve mobile preview shell, got ${component.$store.global.beautifyPreviewDevice}`);
         }
-        if (component.$store.global.beautifyActiveVariant?.id !== 'mobile') {
-          throw new Error(`expected package workspace to reactivate the mobile variant for the mobile shell, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        if (component.$store.global.beautifyActiveVariant?.id !== 'mobile_b') {
+          throw new Error(`expected package workspace to reactivate the remembered mobile variant for the mobile shell, got ${component.$store.global.beautifyActiveVariant?.id}`);
         }
         '''
     )
