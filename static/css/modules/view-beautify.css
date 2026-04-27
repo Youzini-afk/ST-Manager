@@ -103,6 +103,20 @@
   justify-content: center;
 }
 
+.beautify-toolbar-global-action,
+.beautify-toolbar-package-actions {
+  flex: 0 0 auto;
+}
+
+.beautify-toolbar-package-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding-left: 0.65rem;
+  margin-left: 0.1rem;
+  border-left: 1px solid var(--border-light);
+}
+
 .beautify-workspace-switcher {
   padding: 0.2rem;
   border: 1px solid var(--border-light);
@@ -809,9 +823,16 @@
     max-height: calc(100dvh - 10rem);
   }
   .beautify-toolbar-actions,
+  .beautify-toolbar-package-actions,
   .beautify-stage-controls,
   .beautify-stage-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .beautify-toolbar-package-actions {
+    padding-left: 0;
+    margin-left: 0;
+    border-left: 0;
   }
 }

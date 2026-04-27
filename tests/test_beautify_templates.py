@@ -90,6 +90,33 @@ def test_sidebar_template_adds_beautify_workspace_switcher_and_screenshot_import
     assert ':disabled="!selectedPackageId"' in template or ":disabled='!selectedPackageId'" in template
 
 
+def test_sidebar_template_separates_global_theme_import_from_package_scoped_imports():
+    template = read_project_file('templates/components/sidebar.html')
+
+    theme_index = template.index('导入主题')
+    variant_index = template.index('导入变体')
+    wallpaper_index = template.index('导入壁纸')
+    screenshot_index = template.index('导入截图')
+
+    assert theme_index < variant_index < wallpaper_index < screenshot_index
+    assert 'beautify-toolbar-global-action' in template
+    assert 'beautify-toolbar-package-actions' in template
+
+
+def test_sidebar_template_keeps_wallpaper_import_bound_to_selected_variant_after_variant_button_added():
+    template = read_project_file('templates/components/sidebar.html')
+
+    variant_index = template.index('导入变体')
+    wallpaper_index = template.index('导入壁纸')
+    screenshot_index = template.index('导入截图')
+
+    assert variant_index < wallpaper_index < screenshot_index
+    assert 'handleVariantFiles($event.target.files)' in template
+    assert 'handleWallpaperFiles($event.target.files)' in template
+    assert ':disabled="!selectedVariantId"' in template or ":disabled='!selectedVariantId'" in template
+    assert ':disabled="!selectedPackageId"' in template or ":disabled='!selectedPackageId'" in template
+
+
 def test_beautify_toolbar_actions_center_button_group_on_desktop_and_keep_mobile_stack():
     css = read_project_file('static/css/modules/view-beautify.css')
 

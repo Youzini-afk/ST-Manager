@@ -818,7 +818,7 @@
         class="beautify-toolbar-actions"
         x-show="beautifyWorkspace === 'packages'"
       >
-        <label class="beautify-action-btn cursor-pointer">
+        <label class="beautify-action-btn beautify-toolbar-global-action cursor-pointer">
           <input
             type="file"
             class="hidden"
@@ -828,33 +828,49 @@
           />
           导入主题
         </label>
-        <label
-          class="beautify-action-btn cursor-pointer"
-          :class="!selectedVariantId ? 'is-disabled' : ''"
-        >
-          <input
-            type="file"
-            class="hidden"
-            accept="image/*"
-            :disabled="!selectedVariantId"
-            @change="handleWallpaperFiles($event.target.files); $event.target.value = ''"
-          />
-          导入壁纸
-        </label>
-        <label
-          class="beautify-action-btn cursor-pointer"
-          :class="!selectedPackageId ? 'is-disabled' : ''"
-        >
-          <input
-            type="file"
-            class="hidden"
-            accept="image/*"
-            multiple
-            :disabled="!selectedPackageId"
-            @change="handleScreenshotFiles($event.target.files); $event.target.value = ''"
-          />
-          导入截图
-        </label>
+        <div class="beautify-toolbar-package-actions">
+          <label
+            class="beautify-action-btn cursor-pointer"
+            :class="!selectedPackageId ? 'is-disabled' : ''"
+          >
+            <input
+              type="file"
+              class="hidden"
+              accept=".json,application/json"
+              multiple
+              :disabled="!selectedPackageId"
+              @change="handleVariantFiles($event.target.files); $event.target.value = ''"
+            />
+            导入变体
+          </label>
+          <label
+            class="beautify-action-btn cursor-pointer"
+            :class="!selectedVariantId ? 'is-disabled' : ''"
+          >
+            <input
+              type="file"
+              class="hidden"
+              accept="image/*"
+              :disabled="!selectedVariantId"
+              @change="handleWallpaperFiles($event.target.files); $event.target.value = ''"
+            />
+            导入壁纸
+          </label>
+          <label
+            class="beautify-action-btn cursor-pointer"
+            :class="!selectedPackageId ? 'is-disabled' : ''"
+          >
+            <input
+              type="file"
+              class="hidden"
+              accept="image/*"
+              multiple
+              :disabled="!selectedPackageId"
+              @change="handleScreenshotFiles($event.target.files); $event.target.value = ''"
+            />
+            导入截图
+          </label>
+        </div>
       </div>
     </div>
 
