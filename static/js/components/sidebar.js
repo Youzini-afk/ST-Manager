@@ -21,13 +21,16 @@ function clamp(value, min, max) {
 }
 
 function getMaxTagPaneHeight(totalHeight) {
-  return Math.max(
-    MIN_CARD_TAG_PANE_HEIGHT,
-    Math.min(
-      totalHeight * MAX_CARD_TAG_PANE_RATIO,
-      totalHeight - MIN_CARD_CATEGORY_PANE_HEIGHT,
-    ),
+  const preferredMaxHeight = Math.min(
+    totalHeight * MAX_CARD_TAG_PANE_RATIO,
+    totalHeight - MIN_CARD_CATEGORY_PANE_HEIGHT,
   );
+
+  if (preferredMaxHeight >= MIN_CARD_TAG_PANE_HEIGHT) {
+    return preferredMaxHeight;
+  }
+
+  return Math.max(0, totalHeight - MIN_CARD_CATEGORY_PANE_HEIGHT);
 }
 
 function readStoredTagPaneRatio() {
@@ -908,7 +911,8 @@ export default function sidebar() {
 
     normalizeTagPaneHeight(totalHeight, requestedHeight) {
       const maxHeight = getMaxTagPaneHeight(totalHeight);
-      return clamp(requestedHeight, MIN_CARD_TAG_PANE_HEIGHT, maxHeight);
+      const minHeight = Math.min(MIN_CARD_TAG_PANE_HEIGHT, maxHeight);
+      return clamp(requestedHeight, minHeight, maxHeight);
     },
 
     scheduleTagPaneLayoutSync() {

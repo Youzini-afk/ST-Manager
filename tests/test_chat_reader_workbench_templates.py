@@ -1,5 +1,8 @@
+import json
 from pathlib import Path
 import re
+import subprocess
+import textwrap
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -7,6 +10,160 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def read_project_file(relative_path):
     return (PROJECT_ROOT / relative_path).read_text(encoding='utf-8')
+
+
+def run_sidebar_runtime_check(script_body):
+    source_path = PROJECT_ROOT / 'static/js/components/sidebar.js'
+    node_script = textwrap.dedent(
+        """
+        import { readFileSync } from 'node:fs';
+
+        const sourcePath = __SOURCE_PATH__;
+        let source = readFileSync(sourcePath, 'utf8');
+        source = source
+          .split(/\\r?\\n/)
+          .filter((line) => !line.trim().startsWith('import '))
+          .join('\\n');
+
+        globalThis.__sidebarTestState = {
+          localStorageState: new Map(),
+          windowListeners: [],
+          shellClassNames: new Set(),
+          rafQueue: [],
+        };
+        const { localStorageState, windowListeners, shellClassNames, rafQueue } = globalThis.__sidebarTestState;
+
+        const stubs = `
+        const createFolder = async () => ({});
+        const moveFolder = async () => ({});
+        const moveCard = async () => ({});
+        const migrateLorebooks = async () => ({});
+        globalThis.fetch = async () => ({ json: async () => ({ success: true }) });
+        globalThis.requestAnimationFrame = (cb) => {
+          globalThis.__sidebarTestState.rafQueue.push(cb);
+          return globalThis.__sidebarTestState.rafQueue.length;
+        };
+        globalThis.cancelAnimationFrame = (id) => {
+          if (id > 0 && id <= globalThis.__sidebarTestState.rafQueue.length) {
+            globalThis.__sidebarTestState.rafQueue[id - 1] = null;
+          }
+        };
+        globalThis.window = {
+          addEventListener(type, handler) {
+            globalThis.__sidebarTestState.windowListeners.push({ action: 'add', type, handler });
+          },
+          removeEventListener(type, handler) {
+            globalThis.__sidebarTestState.windowListeners.push({ action: 'remove', type, handler });
+          },
+          dispatchEvent() {},
+        };
+        globalThis.document = {
+          querySelectorAll() { return []; },
+          body: { style: {} },
+        };
+        globalThis.localStorage = {
+          getItem(key) {
+            const storage = globalThis.__sidebarTestState.localStorageState;
+            return storage.has(key) ? storage.get(key) : null;
+          },
+          setItem(key, value) {
+            globalThis.__sidebarTestState.localStorageState.set(key, String(value));
+          },
+          removeItem(key) {
+            globalThis.__sidebarTestState.localStorageState.delete(key);
+          },
+        };
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(type, options = {}) {
+            this.type = type;
+            this.detail = options.detail;
+          }
+        };
+        `;
+
+        const module = await import(
+          'data:text/javascript,' + encodeURIComponent(stubs + source),
+        );
+
+        const store = {
+          global: {
+            currentMode: 'cards',
+            visibleSidebar: true,
+            deviceType: 'desktop',
+            allFoldersList: [],
+            isolatedCategories: [],
+            allTagsPool: [],
+            tagIndexActiveCategory: '',
+            cardCategorySearchQuery: '',
+            wiCategorySearchQuery: '',
+            presetCategorySearchQuery: '',
+            wiAllFolders: [],
+            presetAllFolders: [],
+            viewState: {
+              filterCategory: '',
+              filterTags: [],
+              draggedCards: [],
+              draggedFolder: '',
+              selectedIds: [],
+            },
+            groupTagsByTaxonomy(tags) {
+              return [{ category: '', tags }];
+            },
+            getTagCategory() {
+              return '';
+            },
+          },
+        };
+
+        const component = module.default();
+        component.$store = store;
+        component.$watch = () => {};
+        component.$nextTick = (cb) => cb();
+        component.$refs = {
+          cardSidebarShell: {
+            getBoundingClientRect() { return { height: 500 }; },
+            classList: {
+              add(name) { shellClassNames.add(name); },
+              remove(name) { shellClassNames.delete(name); },
+              contains(name) { return shellClassNames.has(name); },
+            },
+          },
+          cardTagsPane: {
+            getBoundingClientRect() { return { height: 170 }; },
+          },
+          cardTagsHeader: {
+            getBoundingClientRect() { return { height: 48 }; },
+          },
+          cardTagCategoryStrip: {
+            getBoundingClientRect() { return { height: 34 }; },
+          },
+          cardTagCloud: {
+            clientWidth: 286,
+          },
+        };
+
+        const flushRaf = () => {
+          while (rafQueue.length) {
+            const cb = rafQueue.shift();
+            if (typeof cb === 'function') cb();
+          }
+        };
+
+        __SCRIPT_BODY__
+        """
+    ).replace('__SOURCE_PATH__', json.dumps(str(source_path))).replace(
+        '__SCRIPT_BODY__', textwrap.dedent(script_body)
+    )
+    result = subprocess.run(
+        ['node', '--input-type=module', '-e', node_script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def compact_whitespace(source):
@@ -1886,6 +2043,79 @@ def test_sidebar_js_supports_desktop_tag_pane_resize_and_dynamic_visible_tag_cou
     )
     assert 'Math.floor((tagCloudWidth + 6) / ESTIMATED_TAG_CHIP_WIDTH)' in compute_block
     assert 'Math.floor((availableTagHeight + 6) / ESTIMATED_TAG_ROW_HEIGHT)' in compute_block
+
+
+def test_sidebar_runtime_resizes_desktop_tag_pane_and_persists_ratio():
+    run_sidebar_runtime_check(
+        """
+        if (component.desktopTagPaneStyle !== '--card-tags-pane-basis: 34.00%;') {
+          throw new Error(`Expected desktop style to reflect default ratio, got ${component.desktopTagPaneStyle}`);
+        }
+
+        const visibleTagCount = component.computeDynamicVisibleTagCount();
+        if (visibleTagCount !== 6) {
+          throw new Error(`Expected computed visible tag count to be 6, got ${visibleTagCount}`);
+        }
+
+        component.beginTagPaneResize({ clientY: 200 });
+        if (!component.tagPaneResizeState) {
+          throw new Error('Expected beginTagPaneResize to capture resize state');
+        }
+        if (!component.$refs.cardSidebarShell.classList.contains('is-resizing')) {
+          throw new Error('Expected beginTagPaneResize to add the resizing class');
+        }
+
+        const addEvents = windowListeners
+          .filter((entry) => entry.action === 'add')
+          .map((entry) => entry.type);
+        const expectedAddEvents = ['pointermove', 'pointerup', 'pointercancel'];
+        if (JSON.stringify(addEvents) !== JSON.stringify(expectedAddEvents)) {
+          throw new Error(`Expected resize listeners to be added, got ${JSON.stringify(addEvents)}`);
+        }
+
+        component.handleTagPaneResize({ clientY: 160 });
+        if (component.tagPaneRatio <= 0.34) {
+          throw new Error(`Expected dragging upward to increase tagPaneRatio, got ${component.tagPaneRatio}`);
+        }
+        flushRaf();
+        if (component.dynamicVisibleTagCount !== 6) {
+          throw new Error(`Expected resize sync to keep measured visible tag count, got ${component.dynamicVisibleTagCount}`);
+        }
+
+        component.endTagPaneResize();
+        if (component.tagPaneResizeState !== null) {
+          throw new Error('Expected endTagPaneResize to clear resize state');
+        }
+        if (component.$refs.cardSidebarShell.classList.contains('is-resizing')) {
+          throw new Error('Expected endTagPaneResize to remove the resizing class');
+        }
+
+        const storedRatio = localStorage.getItem('st_manager_card_tags_split_ratio');
+        if (storedRatio !== String(component.tagPaneRatio)) {
+          throw new Error(`Expected endTagPaneResize to persist ratio, got ${storedRatio}`);
+        }
+
+        const removeEvents = windowListeners
+          .filter((entry) => entry.action === 'remove')
+          .map((entry) => entry.type);
+        const expectedRemoveEvents = ['pointermove', 'pointerup', 'pointercancel'];
+        if (JSON.stringify(removeEvents) !== JSON.stringify(expectedRemoveEvents)) {
+          throw new Error(`Expected resize listeners to be removed, got ${JSON.stringify(removeEvents)}`);
+        }
+
+        component.$refs.cardSidebarShell.getBoundingClientRect = () => ({ height: 250 });
+        component.$refs.cardTagsPane.getBoundingClientRect = () => ({ height: 170 });
+        component.tagPaneRatio = 0.9;
+        component.syncTagPaneLayout();
+        const constrainedHeight = component.tagPaneRatio * 250;
+        if (constrainedHeight !== 30) {
+          throw new Error(`Expected short shell sync to degrade to 30px tag pane height, got ${constrainedHeight}`);
+        }
+        if (250 - constrainedHeight !== 220) {
+          throw new Error(`Expected short shell sync to leave 220px for categories, got ${250 - constrainedHeight}`);
+        }
+        """
+    )
 
 
 def test_card_pagination_css_keeps_mobile_footer_compact_with_safe_area_spacing():
