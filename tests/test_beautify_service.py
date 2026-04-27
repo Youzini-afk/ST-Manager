@@ -762,6 +762,28 @@ def test_update_variant_can_switch_selected_wallpaper_without_changing_platform(
     assert persisted_variant['selected_wallpaper_id'] == first_result['wallpaper']['id']
 
 
+def test_update_variant_allows_same_platform_sibling_variants(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+
+    first = _import_theme_for_package(service, tmp_path, filename='first-pc.json', name='First Demo', platform='pc')
+    package_id = first['package']['id']
+
+    second_theme = tmp_path / 'second-mobile.json'
+    second_theme.write_text(
+        json.dumps({'name': 'Second Demo', 'main_text_color': '#dbeafe'}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    second = service.import_theme(str(second_theme), package_id=package_id, platform='mobile')
+
+    updated_variant = service.update_variant(package_id, second['variant']['id'], platform='pc')
+    package_detail = service.get_package(package_id)
+
+    assert updated_variant['platform'] == 'pc'
+    assert updated_variant['theme_file'].endswith(f"/{second['variant']['id']}.json")
+    assert sorted(variant['platform'] for variant in package_detail['variants'].values()) == ['pc', 'pc']
+
+
 def test_get_global_settings_reads_preview_wallpaper_id_from_shared_library_even_when_beautify_state_has_stale_value(tmp_path):
     shared_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
     shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)
@@ -1258,6 +1280,32 @@ def test_load_library_recovery_recovers_multi_variant_package_wallpapers_by_vari
     assert recovered_mobile_variant['selected_wallpaper_id'] == ''
     assert package_detail['wallpapers'][recovered_pc_variant['wallpaper_ids'][0]]['origin_variant_id'] == pc_variant_id
     assert package_detail['wallpapers'][recovered_mobile_variant['wallpaper_ids'][0]]['origin_variant_id'] == mobile_variant_id
+
+
+def test_match_existing_variant_requires_theme_file_match_for_same_platform_siblings(tmp_path):
+    service = _build_service(tmp_path, {})
+
+    variant_id, existing_variant = service._match_existing_variant(
+        {
+            'var_pc_first': {
+                'id': 'var_pc_first',
+                'platform': 'pc',
+                'theme_file': 'data/library/beautify/packages/pkg_demo/themes/var_pc_first.json',
+                'name': 'First Variant',
+            },
+            'var_pc_second': {
+                'id': 'var_pc_second',
+                'platform': 'pc',
+                'theme_file': 'data/library/beautify/packages/pkg_demo/themes/var_pc_second.json',
+                'name': 'Second Variant',
+            },
+        },
+        'pc',
+        'data/library/beautify/packages/pkg_demo/themes/missing.json',
+    )
+
+    assert variant_id == ''
+    assert existing_variant is None
 
 
 def test_load_library_recovery_does_not_duplicate_package_local_wallpaper_imports(tmp_path):

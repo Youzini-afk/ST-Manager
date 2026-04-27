@@ -364,12 +364,13 @@ class BeautifyService:
         ui_data = self._load_ui_data()
         library, package_info, variant = self._load_package_variant(ui_data, package_id, variant_id)
         if resolved_platform and variant.get('platform') != resolved_platform:
-            conflict = self._find_variant_by_platform(package_info, resolved_platform)
-            if conflict and conflict.get('id') != variant_id:
-                raise ValueError('目标端类型已存在，请先调整或替换现有变体')
-
             old_theme_path = self._resolve_project_relative_path(variant.get('theme_file', ''))
-            new_theme_path = os.path.join(self.library_root, 'packages', package_info['id'], 'themes', f'{resolved_platform}.json')
+            variant_basename = os.path.basename(str(variant.get('theme_file') or '').replace('\\', '/'))
+            if variant_basename.startswith('var_'):
+                theme_filename = variant_basename
+            else:
+                theme_filename = f'{resolved_platform}.json'
+            new_theme_path = os.path.join(self.library_root, 'packages', package_info['id'], 'themes', theme_filename)
             os.makedirs(os.path.dirname(new_theme_path), exist_ok=True)
             if old_theme_path and os.path.exists(old_theme_path) and os.path.abspath(old_theme_path) != os.path.abspath(new_theme_path):
                 if os.path.exists(new_theme_path):
@@ -835,9 +836,6 @@ class BeautifyService:
     def _match_existing_variant(self, existing_variants: Dict, platform: str, theme_file: str):
         for variant_id, variant in (existing_variants or {}).items():
             if str((variant or {}).get('theme_file') or '').strip() == theme_file:
-                return variant_id, copy.deepcopy(variant)
-        for variant_id, variant in (existing_variants or {}).items():
-            if str((variant or {}).get('platform') or '').strip() == platform:
                 return variant_id, copy.deepcopy(variant)
         return '', None
 
