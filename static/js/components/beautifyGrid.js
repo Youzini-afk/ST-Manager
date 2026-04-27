@@ -324,6 +324,18 @@ export default function beautifyGrid() {
       }
     },
 
+    normalizePackageDetailRailState(nextPackageId) {
+      const resolvedNextPackageId = String(nextPackageId || "").trim();
+      const currentPackageId = String(this.selectedPackageId || "").trim();
+      const isSamePackage =
+        !!resolvedNextPackageId && resolvedNextPackageId === currentPackageId;
+
+      this.closePackageDetailDrawer();
+      if (!isSamePackage) {
+        this.packageDetailCollapsed = false;
+      }
+    },
+
     init() {
       this.$watch("$store.global.currentMode", (mode) => {
         if (mode === "beautify") {
@@ -429,6 +441,7 @@ export default function beautifyGrid() {
     async selectPackage(packageId, options = {}) {
       const targetId = String(packageId || "").trim();
       if (!targetId) return false;
+      this.normalizePackageDetailRailState(targetId);
       const res = await getBeautifyPackage(targetId);
       if (!res?.success || !res.item) {
         return false;

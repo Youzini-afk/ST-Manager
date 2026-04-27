@@ -1759,6 +1759,118 @@ def test_beautify_grid_forces_package_detail_drawer_closed_when_workspace_switch
     )
 
 
+def test_beautify_grid_resets_package_detail_collapse_and_drawer_when_switching_packages():
+    run_beautify_grid_runtime_check(
+        '''
+        globalThis.__gridStubs = {
+          getBeautifyPackage: async (packageId) => ({
+            success: true,
+            item: {
+              id: packageId,
+              variants: {
+                pc: { id: `variant_${packageId}`, platform: 'pc', wallpaper_ids: [] },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+          }),
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifySelectedPackageId: 'pkg_a',
+            beautifySelectedVariantId: 'variant_pkg_a',
+            beautifySelectedWallpaperId: '',
+            beautifyPreviewDevice: 'pc',
+            beautifyPackageDetailCollapsed: true,
+            beautifyPackageDetailDrawerOpen: true,
+            beautifyActiveDetail: {
+              id: 'pkg_a',
+              variants: {
+                pc: { id: 'variant_pkg_a', platform: 'pc', wallpaper_ids: [] },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+            beautifyActiveVariant: { id: 'variant_pkg_a', platform: 'pc', wallpaper_ids: [] },
+            showToast: () => {},
+          },
+        };
+
+        await component.selectPackage('pkg_b');
+
+        if (component.selectedPackageId !== 'pkg_b') {
+          throw new Error(`expected package switch to pkg_b, got ${component.selectedPackageId}`);
+        }
+        if (component.packageDetailCollapsed !== false) {
+          throw new Error('package switch should reset collapsed state for the new package page');
+        }
+        if (component.packageDetailDrawerOpen !== false) {
+          throw new Error('package switch should close the detail drawer');
+        }
+        '''
+    )
+
+
+def test_beautify_grid_closes_package_detail_drawer_when_reloading_same_package_detail():
+    run_beautify_grid_runtime_check(
+        '''
+        globalThis.__gridStubs = {
+          getBeautifyPackage: async (packageId) => ({
+            success: true,
+            item: {
+              id: packageId,
+              variants: {
+                pc: { id: 'variant_pkg_a', platform: 'pc', wallpaper_ids: [] },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+          }),
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifySelectedPackageId: 'pkg_a',
+            beautifySelectedVariantId: 'variant_pkg_a',
+            beautifySelectedWallpaperId: '',
+            beautifyPreviewDevice: 'pc',
+            beautifySelectedScreenshotId: '',
+            beautifyPackageDetailCollapsed: true,
+            beautifyPackageDetailDrawerOpen: true,
+            beautifyActiveDetail: {
+              id: 'pkg_a',
+              variants: {
+                pc: { id: 'variant_pkg_a', platform: 'pc', wallpaper_ids: [] },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+            beautifyActiveVariant: { id: 'variant_pkg_a', platform: 'pc', wallpaper_ids: [] },
+            showToast: () => {},
+          },
+        };
+
+        await component.selectPackage('pkg_a', { preserveSelection: true });
+
+        if (component.packageDetailCollapsed !== true) {
+          throw new Error('same-package refresh should preserve collapse state');
+        }
+        if (component.packageDetailDrawerOpen !== false) {
+          throw new Error('same-package refresh should close the stale detail drawer session');
+        }
+        '''
+    )
+
+
 def test_beautify_grid_opens_mobile_fullscreen_for_screenshot_empty_state_without_images():
     run_beautify_grid_runtime_check(
         '''
