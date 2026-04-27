@@ -1999,7 +1999,7 @@ def test_card_sidebar_layout_css_defines_persistent_strip_and_scoped_solid_surfa
     assert 'flex: 0 0 10px;' in splitter_block
     assert '.card-sidebar-splitter-grip {' in layout_css
     assert 'flex: 0 0 var(--card-tags-pane-basis);' in expanded_block
-    assert 'min-height: 112px;' in expanded_block
+    assert 'min-height:' not in expanded_block
     assert 'clamp(10rem, 34%, 15rem)' not in expanded_block
     assert '.card-sidebar-shell .sidebar-content {' in layout_css
     assert '.card-sidebar-shell .sidebar-section-header {' in layout_css

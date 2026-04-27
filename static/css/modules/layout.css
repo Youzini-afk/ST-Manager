@@ -814,7 +814,6 @@
 
 .card-sidebar-tags.is-expanded {
   flex: 0 0 var(--card-tags-pane-basis);
-  min-height: 112px;
 }
 
 .card-sidebar-shell .sidebar-content {
