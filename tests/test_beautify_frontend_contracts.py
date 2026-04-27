@@ -2995,6 +2995,7 @@ def test_beautify_grid_preview_platform_change_preserves_compatible_selected_var
           throw new Error(`expected preview target to remain dual, got ${component.$store.global.beautifyPreviewDevice}`);
         }
 
+        component.$store.global.beautifyPreviewDevice = 'mobile';
         component.$store.global.beautifySelectedVariantId = 'dual_a';
         component.$store.global.beautifyActiveVariant = component.$store.global.beautifyActiveDetail.variants.dual_a;
         component.$store.global.beautifyVariantSelectionByDevice = {
@@ -3003,16 +3004,16 @@ def test_beautify_grid_preview_platform_change_preserves_compatible_selected_var
           dual: 'dual_a',
         };
 
-        await component.updateCurrentVariantPlatform('mobile');
+        await component.updateCurrentVariantPlatform('pc');
 
-        if (component.$store.global.beautifyVariantSelectionByDevice.pc !== 'pc_b') {
-          throw new Error(`expected unrelated pc memory to stay intact, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
-        }
-        if (component.$store.global.beautifyVariantSelectionByDevice.mobile !== 'dual_a') {
-          throw new Error(`expected platform edit to re-key remembered mobile selection, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
+        if (component.$store.global.beautifyVariantSelectionByDevice.pc !== 'dual_a') {
+          throw new Error(`expected platform edit to re-key remembered pc selection, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
         }
         if (component.$store.global.beautifyVariantSelectionByDevice.dual) {
-          throw new Error(`expected stale dual remembered selection to be cleared after mobile edit, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
+          throw new Error(`expected stale dual remembered selection to be cleared after pc edit, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
+        }
+        if (component.$store.global.beautifyActiveVariant?.id !== 'mobile_a') {
+          throw new Error(`expected post-edit package reload to resolve the remembered compatible mobile variant, got ${component.$store.global.beautifyActiveVariant?.id}`);
         }
         '''
     )

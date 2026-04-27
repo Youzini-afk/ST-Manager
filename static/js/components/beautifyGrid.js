@@ -485,15 +485,25 @@ export default function beautifyGrid() {
       this.syncPackageIdentityFields();
 
       const preserveSelection = !!options.preserveSelection;
+      const previewPlatform = this.resolvePackagePreviewPlatform(res.item);
       let nextVariant = null;
       if (
         preserveSelection &&
         this.selectedVariantId &&
         res.item.variants?.[this.selectedVariantId]
       ) {
-        nextVariant = res.item.variants[this.selectedVariantId];
+        const preservedVariant = res.item.variants[this.selectedVariantId];
+        nextVariant = this.isVariantCompatibleWithDevice(
+          preservedVariant,
+          previewPlatform,
+        )
+          ? preservedVariant
+          : this.resolvePreferredVariantForDevice(previewPlatform, res.item);
       } else {
-        nextVariant = this.resolveDefaultVariant(res.item);
+        nextVariant =
+          this.resolvePreferredVariantForDevice(previewPlatform, res.item) ||
+          Object.values(res.item.variants || {})[0] ||
+          null;
       }
 
       this.applyActiveVariant(nextVariant);
