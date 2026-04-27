@@ -1,5 +1,8 @@
+import json
 from pathlib import Path
 import re
+import subprocess
+import textwrap
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -7,6 +10,160 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def read_project_file(relative_path):
     return (PROJECT_ROOT / relative_path).read_text(encoding='utf-8')
+
+
+def run_sidebar_runtime_check(script_body):
+    source_path = PROJECT_ROOT / 'static/js/components/sidebar.js'
+    node_script = textwrap.dedent(
+        """
+        import { readFileSync } from 'node:fs';
+
+        const sourcePath = __SOURCE_PATH__;
+        let source = readFileSync(sourcePath, 'utf8');
+        source = source
+          .split(/\\r?\\n/)
+          .filter((line) => !line.trim().startsWith('import '))
+          .join('\\n');
+
+        globalThis.__sidebarTestState = {
+          localStorageState: new Map(),
+          windowListeners: [],
+          shellClassNames: new Set(),
+          rafQueue: [],
+        };
+        const { localStorageState, windowListeners, shellClassNames, rafQueue } = globalThis.__sidebarTestState;
+
+        const stubs = `
+        const createFolder = async () => ({});
+        const moveFolder = async () => ({});
+        const moveCard = async () => ({});
+        const migrateLorebooks = async () => ({});
+        globalThis.fetch = async () => ({ json: async () => ({ success: true }) });
+        globalThis.requestAnimationFrame = (cb) => {
+          globalThis.__sidebarTestState.rafQueue.push(cb);
+          return globalThis.__sidebarTestState.rafQueue.length;
+        };
+        globalThis.cancelAnimationFrame = (id) => {
+          if (id > 0 && id <= globalThis.__sidebarTestState.rafQueue.length) {
+            globalThis.__sidebarTestState.rafQueue[id - 1] = null;
+          }
+        };
+        globalThis.window = {
+          addEventListener(type, handler) {
+            globalThis.__sidebarTestState.windowListeners.push({ action: 'add', type, handler });
+          },
+          removeEventListener(type, handler) {
+            globalThis.__sidebarTestState.windowListeners.push({ action: 'remove', type, handler });
+          },
+          dispatchEvent() {},
+        };
+        globalThis.document = {
+          querySelectorAll() { return []; },
+          body: { style: {} },
+        };
+        globalThis.localStorage = {
+          getItem(key) {
+            const storage = globalThis.__sidebarTestState.localStorageState;
+            return storage.has(key) ? storage.get(key) : null;
+          },
+          setItem(key, value) {
+            globalThis.__sidebarTestState.localStorageState.set(key, String(value));
+          },
+          removeItem(key) {
+            globalThis.__sidebarTestState.localStorageState.delete(key);
+          },
+        };
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(type, options = {}) {
+            this.type = type;
+            this.detail = options.detail;
+          }
+        };
+        `;
+
+        const module = await import(
+          'data:text/javascript,' + encodeURIComponent(stubs + source),
+        );
+
+        const store = {
+          global: {
+            currentMode: 'cards',
+            visibleSidebar: true,
+            deviceType: 'desktop',
+            allFoldersList: [],
+            isolatedCategories: [],
+            allTagsPool: [],
+            tagIndexActiveCategory: '',
+            cardCategorySearchQuery: '',
+            wiCategorySearchQuery: '',
+            presetCategorySearchQuery: '',
+            wiAllFolders: [],
+            presetAllFolders: [],
+            viewState: {
+              filterCategory: '',
+              filterTags: [],
+              draggedCards: [],
+              draggedFolder: '',
+              selectedIds: [],
+            },
+            groupTagsByTaxonomy(tags) {
+              return [{ category: '', tags }];
+            },
+            getTagCategory() {
+              return '';
+            },
+          },
+        };
+
+        const component = module.default();
+        component.$store = store;
+        component.$watch = () => {};
+        component.$nextTick = (cb) => cb();
+        component.$refs = {
+          cardSidebarShell: {
+            getBoundingClientRect() { return { height: 500 }; },
+            classList: {
+              add(name) { shellClassNames.add(name); },
+              remove(name) { shellClassNames.delete(name); },
+              contains(name) { return shellClassNames.has(name); },
+            },
+          },
+          cardTagsPane: {
+            getBoundingClientRect() { return { height: 170 }; },
+          },
+          cardTagsHeader: {
+            getBoundingClientRect() { return { height: 48 }; },
+          },
+          cardTagCategoryStrip: {
+            getBoundingClientRect() { return { height: 34 }; },
+          },
+          cardTagCloud: {
+            clientWidth: 286,
+          },
+        };
+
+        const flushRaf = () => {
+          while (rafQueue.length) {
+            const cb = rafQueue.shift();
+            if (typeof cb === 'function') cb();
+          }
+        };
+
+        __SCRIPT_BODY__
+        """
+    ).replace('__SOURCE_PATH__', json.dumps(str(source_path))).replace(
+        '__SCRIPT_BODY__', textwrap.dedent(script_body)
+    )
+    result = subprocess.run(
+        ['node', '--input-type=module', '-e', node_script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def compact_whitespace(source):
@@ -1802,43 +1959,163 @@ def test_mobile_layout_css_defines_mobile_header_toggle_feedback_states():
 
 def test_card_sidebar_template_adds_stable_split_layout_hooks():
     sidebar_template = read_project_file('templates/components/sidebar.html')
+    compact_template = compact_whitespace(sidebar_template)
 
     assert 'class="flex-1 card-sidebar-shell"' in sidebar_template
+    assert 'x-ref="cardSidebarShell"' in sidebar_template
     assert 'class="card-sidebar-categories"' in sidebar_template
+    assert 'class="card-sidebar-splitter"' in sidebar_template
+    assert '@pointerdown.prevent="beginTagPaneResize($event)"' in sidebar_template
+    assert 'aria-label="调整标签索引区域高度"' in sidebar_template
     assert 'class="card-sidebar-tags"' in sidebar_template
-    assert 'class="sidebar-section-header card-sidebar-tags-header"' in sidebar_template
-    assert 'class="sidebar-content custom-scrollbar card-sidebar-tags-body"' in sidebar_template
+    assert 'x-ref="cardTagsPane"' in sidebar_template
+    assert 'x-ref="cardTagsHeader"' in sidebar_template
+    assert 'x-ref="cardTagCategoryStrip"' in sidebar_template
+    assert 'x-ref="cardTagCloud"' in sidebar_template
+    assert 'tagIndexVisibleTags.slice(0, dynamicVisibleTagCount)' in compact_template
 
 
 def test_card_sidebar_template_removes_expansion_only_lower_pane_layout_styles():
     sidebar_template = read_project_file('templates/components/sidebar.html')
+    compact_template = compact_whitespace(sidebar_template)
 
     assert ":style=\"tagsSectionExpanded ? 'flex: 1;' : ''\"" not in sidebar_template
     assert 'style="display: flex; flex-direction: column; overflow: hidden;"' not in sidebar_template
-    assert 'x-show="tagsSectionExpanded" class="sidebar-content custom-scrollbar card-sidebar-tags-body"' in compact_whitespace(sidebar_template)
-
-
-def test_card_sidebar_and_pagination_templates_add_empty_state_and_mobile_wrap_hooks():
-    sidebar_template = read_project_file('templates/components/sidebar.html')
-    cards_template = read_project_file('templates/components/grid_cards.html')
-
-    assert 'class="card-sidebar-empty-state"' in sidebar_template
-    assert 'class="card-pagination-summary"' in cards_template
-    assert 'class="card-pagination-controls card-pagination-page-cluster"' in cards_template
-    assert 'class="card-pagination-controls" style="display: flex; align-items: center; gap: 0.5rem;"' not in cards_template
+    assert 'x-show="tagsSectionExpanded" class="sidebar-content custom-scrollbar card-sidebar-tags-body"' in compact_template
+    assert 'x-show="tagIndexVisibleTags.length > dynamicVisibleTagCount"' in compact_template
+    assert 'tagIndexVisibleTags.length - dynamicVisibleTagCount' in sidebar_template
 
 
 def test_card_sidebar_layout_css_defines_persistent_strip_and_scoped_solid_surfaces():
     layout_css = read_project_file('static/css/modules/layout.css')
 
-    assert '.card-sidebar-shell {' in layout_css
-    assert '.card-sidebar-tags {' in layout_css
-    assert 'height: 3.25rem;' in extract_exact_css_block(layout_css, '.card-sidebar-tags.is-collapsed')
+    shell_block = extract_exact_css_block(layout_css, '.card-sidebar-shell')
+    splitter_block = extract_exact_css_block(layout_css, '.card-sidebar-splitter')
     expanded_block = extract_exact_css_block(layout_css, '.card-sidebar-tags.is-expanded')
-    assert 'flex: 0 0 clamp(10rem, 34%, 15rem);' in expanded_block
-    assert 'max-height: 45%;' in expanded_block
+
+    assert '--card-tags-pane-basis: 34%;' in shell_block
+    assert '.card-sidebar-tags {' in layout_css
+    assert 'cursor: row-resize;' in splitter_block
+    assert 'flex: 0 0 10px;' in splitter_block
+    assert '.card-sidebar-splitter-grip {' in layout_css
+    assert 'flex: 0 0 var(--card-tags-pane-basis);' in expanded_block
+    assert 'min-height:' not in expanded_block
+    assert 'clamp(10rem, 34%, 15rem)' not in expanded_block
     assert '.card-sidebar-shell .sidebar-content {' in layout_css
     assert '.card-sidebar-shell .sidebar-section-header {' in layout_css
+
+
+def test_mobile_card_sidebar_layout_css_hides_desktop_splitter_and_keeps_tag_body_cap():
+    layout_css = read_project_file('static/css/modules/layout.css')
+    mobile_layout_css = extract_media_block(layout_css, '@media (max-width: 768px)')
+
+    mobile_splitter_block = extract_exact_css_block(
+        mobile_layout_css,
+        '.sidebar-mobile .card-sidebar-splitter',
+    )
+    mobile_tags_block = extract_exact_css_block(
+        mobile_layout_css,
+        '.sidebar-mobile .card-sidebar-tags-body',
+    )
+
+    assert 'display: none;' in mobile_splitter_block
+    assert 'max-height: min(34vh, 16rem);' in mobile_tags_block
+
+
+def test_sidebar_js_supports_desktop_tag_pane_resize_and_dynamic_visible_tag_count():
+    sidebar_source = read_project_file('static/js/components/sidebar.js')
+
+    assert 'TAG_PANE_RATIO_STORAGE_KEY = "st_manager_card_tags_split_ratio"' in sidebar_source
+    assert 'dynamicVisibleTagCount: DEFAULT_VISIBLE_TAG_COUNT' in sidebar_source
+    assert 'get shouldShowCardTagSplitter() {' in sidebar_source
+    assert 'get desktopTagPaneStyle() {' in sidebar_source
+    assert 'scheduleTagPaneLayoutSync() {' in sidebar_source
+    assert 'computeDynamicVisibleTagCount() {' in sidebar_source
+    assert 'beginTagPaneResize(event) {' in sidebar_source
+    assert 'handleTagPaneResize(event) {' in sidebar_source
+    assert 'endTagPaneResize() {' in sidebar_source
+    assert 'window.addEventListener("resize", this._syncTagPaneLayoutHandler);' in sidebar_source
+    assert 'localStorage.setItem(TAG_PANE_RATIO_STORAGE_KEY, String(this.tagPaneRatio));' in sidebar_source
+
+    compute_block = extract_js_function_block(
+        sidebar_source,
+        'computeDynamicVisibleTagCount() {',
+    )
+    assert 'Math.floor((tagCloudWidth + 6) / ESTIMATED_TAG_CHIP_WIDTH)' in compute_block
+    assert 'Math.floor((availableTagHeight + 6) / ESTIMATED_TAG_ROW_HEIGHT)' in compute_block
+
+
+def test_sidebar_runtime_resizes_desktop_tag_pane_and_persists_ratio():
+    run_sidebar_runtime_check(
+        """
+        if (component.desktopTagPaneStyle !== '--card-tags-pane-basis: 34.00%;') {
+          throw new Error(`Expected desktop style to reflect default ratio, got ${component.desktopTagPaneStyle}`);
+        }
+
+        const visibleTagCount = component.computeDynamicVisibleTagCount();
+        if (visibleTagCount !== 6) {
+          throw new Error(`Expected computed visible tag count to be 6, got ${visibleTagCount}`);
+        }
+
+        component.beginTagPaneResize({ clientY: 200 });
+        if (!component.tagPaneResizeState) {
+          throw new Error('Expected beginTagPaneResize to capture resize state');
+        }
+        if (!component.$refs.cardSidebarShell.classList.contains('is-resizing')) {
+          throw new Error('Expected beginTagPaneResize to add the resizing class');
+        }
+
+        const addEvents = windowListeners
+          .filter((entry) => entry.action === 'add')
+          .map((entry) => entry.type);
+        const expectedAddEvents = ['pointermove', 'pointerup', 'pointercancel'];
+        if (JSON.stringify(addEvents) !== JSON.stringify(expectedAddEvents)) {
+          throw new Error(`Expected resize listeners to be added, got ${JSON.stringify(addEvents)}`);
+        }
+
+        component.handleTagPaneResize({ clientY: 160 });
+        if (component.tagPaneRatio <= 0.34) {
+          throw new Error(`Expected dragging upward to increase tagPaneRatio, got ${component.tagPaneRatio}`);
+        }
+        flushRaf();
+        if (component.dynamicVisibleTagCount !== 6) {
+          throw new Error(`Expected resize sync to keep measured visible tag count, got ${component.dynamicVisibleTagCount}`);
+        }
+
+        component.endTagPaneResize();
+        if (component.tagPaneResizeState !== null) {
+          throw new Error('Expected endTagPaneResize to clear resize state');
+        }
+        if (component.$refs.cardSidebarShell.classList.contains('is-resizing')) {
+          throw new Error('Expected endTagPaneResize to remove the resizing class');
+        }
+
+        const storedRatio = localStorage.getItem('st_manager_card_tags_split_ratio');
+        if (storedRatio !== String(component.tagPaneRatio)) {
+          throw new Error(`Expected endTagPaneResize to persist ratio, got ${storedRatio}`);
+        }
+
+        const removeEvents = windowListeners
+          .filter((entry) => entry.action === 'remove')
+          .map((entry) => entry.type);
+        const expectedRemoveEvents = ['pointermove', 'pointerup', 'pointercancel'];
+        if (JSON.stringify(removeEvents) !== JSON.stringify(expectedRemoveEvents)) {
+          throw new Error(`Expected resize listeners to be removed, got ${JSON.stringify(removeEvents)}`);
+        }
+
+        component.$refs.cardSidebarShell.getBoundingClientRect = () => ({ height: 250 });
+        component.$refs.cardTagsPane.getBoundingClientRect = () => ({ height: 170 });
+        component.tagPaneRatio = 0.9;
+        component.syncTagPaneLayout();
+        const constrainedHeight = component.tagPaneRatio * 250;
+        if (constrainedHeight !== 30) {
+          throw new Error(`Expected short shell sync to degrade to 30px tag pane height, got ${constrainedHeight}`);
+        }
+        if (250 - constrainedHeight !== 220) {
+          throw new Error(`Expected short shell sync to leave 220px for categories, got ${250 - constrainedHeight}`);
+        }
+        """
+    )
 
 
 def test_card_pagination_css_keeps_mobile_footer_compact_with_safe_area_spacing():

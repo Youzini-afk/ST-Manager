@@ -116,6 +116,8 @@
   <div
     x-show="currentMode === 'cards' && visibleSidebar"
     class="flex-1 card-sidebar-shell"
+    x-ref="cardSidebarShell"
+    :style="desktopTagPaneStyle"
   >
     <div class="card-sidebar-categories">
       <div class="sidebar-section-header">
@@ -255,11 +257,22 @@
         </div>
       </div>
     </div>
+    <button
+      x-show="shouldShowCardTagSplitter"
+      type="button"
+      class="card-sidebar-splitter"
+      @pointerdown.prevent="beginTagPaneResize($event)"
+      aria-label="调整标签索引区域高度"
+      title="拖拽调整标签索引区域高度"
+    >
+      <span class="card-sidebar-splitter-grip"></span>
+    </button>
     <div
       class="card-sidebar-tags"
+      x-ref="cardTagsPane"
       :class="tagsSectionExpanded ? 'is-expanded' : 'is-collapsed'"
     >
-      <div class="sidebar-section-header card-sidebar-tags-header">
+      <div class="sidebar-section-header card-sidebar-tags-header" x-ref="cardTagsHeader">
         <div
           class="flex items-center gap-2"
           @click="tagsSectionExpanded = !tagsSectionExpanded"
@@ -301,6 +314,7 @@
       >
         <div
           x-show="tagIndexCategoryNames.length > 0"
+          x-ref="cardTagCategoryStrip"
           class="sidebar-tag-category-strip"
         >
           <button
@@ -325,8 +339,15 @@
             </button>
           </template>
         </div>
-        <div x-show="allTagsPool.length > 0" class="sidebar-tag-cloud">
-          <template x-for="tag in tagIndexVisibleTags.slice(0, 30)" :key="tag">
+        <div
+          x-show="allTagsPool.length > 0"
+          x-ref="cardTagCloud"
+          class="sidebar-tag-cloud"
+        >
+          <template
+            x-for="tag in tagIndexVisibleTags.slice(0, dynamicVisibleTagCount)"
+            :key="tag"
+          >
             <button
               @click="toggleFilterTag(tag, $event)"
               class="sidebar-tag-chip"
@@ -341,12 +362,12 @@
             </button>
           </template>
           <button
-            x-show="tagIndexVisibleTags.length > 30"
+            x-show="tagIndexVisibleTags.length > dynamicVisibleTagCount"
             @click="showTagFilterModal=true"
             class="sidebar-tag-chip"
             style="border-style: dashed; opacity: 0.7"
           >
-            + <span x-text="tagIndexVisibleTags.length - 30"></span> 更多...
+            + <span x-text="tagIndexVisibleTags.length - dynamicVisibleTagCount"></span> 更多...
           </button>
         </div>
       </div>

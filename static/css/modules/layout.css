@@ -759,6 +759,7 @@
   min-height: 0;
   overflow: hidden;
   background-color: var(--bg-panel);
+  --card-tags-pane-basis: 34%;
 }
 
 .card-sidebar-categories {
@@ -768,6 +769,37 @@
   flex-direction: column;
   overflow: hidden;
   border-bottom: 1px solid var(--border-main);
+}
+
+.card-sidebar-splitter {
+  appearance: none;
+  border: none;
+  border-top: 1px solid var(--border-main);
+  border-bottom: 1px solid var(--border-main);
+  background: color-mix(in srgb, var(--bg-sub), transparent 8%);
+  padding: 0;
+  height: 10px;
+  flex: 0 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+}
+
+.card-sidebar-splitter:hover,
+.card-sidebar-shell.is-resizing .card-sidebar-splitter {
+  background: color-mix(in srgb, var(--accent-main), transparent 88%);
+}
+
+.card-sidebar-splitter-grip {
+  width: 2.75rem;
+  height: 0.25rem;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--text-dim), transparent 25%);
+}
+
+.card-sidebar-shell.is-resizing {
+  user-select: none;
 }
 
 .card-sidebar-tags {
@@ -781,8 +813,7 @@
 }
 
 .card-sidebar-tags.is-expanded {
-  flex: 0 0 clamp(10rem, 34%, 15rem);
-  max-height: 45%;
+  flex: 0 0 var(--card-tags-pane-basis);
 }
 
 .card-sidebar-shell .sidebar-content {
@@ -2143,6 +2174,9 @@ html.light-mode .header-favorite-btn.is-excluded .header-favorite-icon::after {
   }
   .sidebar-mobile .card-sidebar-tags.is-collapsed {
     z-index: 2;
+  }
+  .sidebar-mobile .card-sidebar-splitter {
+    display: none;
   }
   .sidebar-mobile .card-sidebar-tags-body {
     max-height: min(34vh, 16rem);
