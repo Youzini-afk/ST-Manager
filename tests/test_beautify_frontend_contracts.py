@@ -3047,6 +3047,21 @@ def test_beautify_grid_preview_platform_change_preserves_compatible_selected_var
           throw new Error(`expected compatible dual variant to remain selected on mobile target, got ${component.$store.global.beautifyActiveVariant?.id}`);
         }
 
+        component.$store.global.beautifyVariantSelectionByDevice = {
+          pc: 'pc_b',
+          mobile: 'mobile_a',
+        };
+        component.selectVariant('dual_a');
+        if (component.$store.global.beautifyVariantSelectionByDevice.pc !== 'pc_b') {
+          throw new Error(`selecting dual variant should not overwrite remembered pc selection, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
+        }
+        if (component.$store.global.beautifyVariantSelectionByDevice.mobile !== 'mobile_a') {
+          throw new Error(`selecting dual variant should not overwrite remembered mobile selection, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
+        }
+        if (component.$store.global.beautifyVariantSelectionByDevice.dual !== 'dual_a') {
+          throw new Error(`selecting dual variant should remember the dual slot, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
+        }
+
         component.switchBeautifyWorkspace('settings');
         component.switchBeautifyWorkspace('packages');
         if (component.$store.global.beautifyActiveVariant?.id !== 'dual_a') {
@@ -3084,6 +3099,26 @@ def test_beautify_grid_preview_platform_change_preserves_compatible_selected_var
         }
         if (component.$store.global.beautifyActiveVariant?.id !== 'mobile_a') {
           throw new Error(`expected post-edit package reload to resolve the remembered compatible mobile variant, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+
+        component.$store.global.beautifyPreviewDevice = 'pc';
+        component.$store.global.beautifySelectedVariantId = 'mobile_a';
+        component.$store.global.beautifyActiveVariant = component.$store.global.beautifyActiveDetail.variants.mobile_a;
+        component.$store.global.beautifyVariantSelectionByDevice = {
+          pc: 'pc_b',
+          mobile: 'mobile_a',
+        };
+
+        await component.updateCurrentVariantPlatform('dual');
+
+        if (component.$store.global.beautifyVariantSelectionByDevice.pc !== 'pc_b') {
+          throw new Error(`converting variant to dual should preserve remembered pc selection, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
+        }
+        if (component.$store.global.beautifyVariantSelectionByDevice.mobile !== 'mobile_a') {
+          throw new Error(`converting variant to dual should preserve remembered mobile selection, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
+        }
+        if (component.$store.global.beautifyVariantSelectionByDevice.dual !== 'mobile_a') {
+          throw new Error(`converting variant to dual should remember the dual slot only, got ${JSON.stringify(component.$store.global.beautifyVariantSelectionByDevice)}`);
         }
         '''
     )

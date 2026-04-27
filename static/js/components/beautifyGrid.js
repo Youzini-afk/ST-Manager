@@ -644,6 +644,8 @@ export default function beautifyGrid() {
       if (!resolvedVariantId) return;
 
       const next = { ...(this.variantSelectionByDevice || {}) };
+      const previousPcSelection = next.pc;
+      const previousMobileSelection = next.mobile;
       Object.keys(next).forEach((device) => {
         if (next[device] === resolvedVariantId) {
           delete next[device];
@@ -651,8 +653,12 @@ export default function beautifyGrid() {
       });
 
       if (platform === 'dual') {
-        next.pc = resolvedVariantId;
-        next.mobile = resolvedVariantId;
+        if (previousPcSelection) {
+          next.pc = previousPcSelection;
+        }
+        if (previousMobileSelection) {
+          next.mobile = previousMobileSelection;
+        }
         next.dual = resolvedVariantId;
       } else if (platform === 'pc' || platform === 'mobile') {
         next[platform] = resolvedVariantId;
@@ -721,8 +727,6 @@ export default function beautifyGrid() {
 
       this.syncPreviewUnavailableState({ variant });
       if (variant.platform === "dual") {
-        this.recordVariantSelectionForDevice("pc", variant.id);
-        this.recordVariantSelectionForDevice("mobile", variant.id);
         this.recordVariantSelectionForDevice("dual", variant.id);
         return;
       }
