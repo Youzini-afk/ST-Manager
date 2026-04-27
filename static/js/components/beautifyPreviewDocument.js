@@ -771,9 +771,6 @@ ${stylesheetMarkup}
       }
 
       .st-preview-root {
-        --st-preview-panel-width: min(420px, calc(100vw - 48px));
-        --st-preview-left-panel-offset: 20px;
-        --st-preview-right-panel-offset: 20px;
         display: flex;
         flex-direction: column;
         width: 100%;
@@ -804,33 +801,6 @@ ${stylesheetMarkup}
 
       #top-bar {
         display: block;
-      }
-
-      #top-settings-holder {
-        display: block;
-        position: absolute;
-        inset: 72px 20px auto 20px;
-        pointer-events: none;
-        z-index: 4;
-      }
-
-      .drawer {
-        position: absolute;
-        top: 0;
-        width: 100%;
-        max-width: var(--st-preview-panel-width);
-        min-width: 0;
-        pointer-events: none;
-        z-index: 4;
-      }
-
-      #ai-config-button,
-      #advanced-formatting-button {
-        left: var(--st-preview-left-panel-offset);
-      }
-
-      #right-nav-drawer {
-        right: var(--st-preview-right-panel-offset);
       }
 
       .drawer-toggle {

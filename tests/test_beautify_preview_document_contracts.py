@@ -629,7 +629,7 @@ def test_build_beautify_preview_sample_markup_contains_st_right_send_form_action
           'id="mes_stop" title="Abort request" class="mes_stop"',
           'id="mes_impersonate" class="fa-solid fa-user-secret interactable displayNone"',
           'id="mes_continue" class="fa-fw fa-solid fa-arrow-right interactable displayNone"',
-          'id="send_but" class="fa-solid fa-paper-plane interactable displayNone"',
+          'id="send_but" class="fa-solid fa-paper-plane interactable"',
         ]) {
           if (!html.includes(token)) throw new Error(`missing token: ${token}`);
         }
@@ -874,6 +874,28 @@ def test_build_beautify_preview_sample_markup_contains_st_send_form_and_textarea
 
         if (html.includes('data-i18n="[no_connection_text]Not connected to API!;[connected_text]Type a message, or /? for help"')) {
           throw new Error('preview send textarea should follow vendored shell attributes instead of legacy hand-built i18n scaffolding');
+        }
+        '''
+    )
+
+
+def test_build_beautify_preview_sample_markup_keeps_extensions_button_and_visible_send_button_in_send_form():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewSampleMarkup('pc');
+
+        for (const token of [
+          'id="leftSendForm" class="alignContentCenter"',
+          'id="extensionsMenuButton"',
+          'class="fa-solid fa-magic-wand-sparkles interactable"',
+          'title="Extensions"',
+          'id="send_but" class="fa-solid fa-paper-plane interactable"',
+        ]) {
+          if (!html.includes(token)) throw new Error(`missing token: ${token}`);
+        }
+
+        if (html.includes('id="send_but" class="fa-solid fa-paper-plane interactable displayNone"')) {
+          throw new Error('preview send button should be visible in the isolated shell');
         }
         '''
     )
@@ -1141,38 +1163,37 @@ def test_build_beautify_preview_document_does_not_leave_unmatched_topbar_panel_t
     )
 
 
-def test_build_beautify_preview_document_styles_overlay_drawers_inside_preview_root():
+def test_build_beautify_preview_document_preserves_vendor_toolbar_layout_and_only_overrides_drawer_visibility():
     source = (ROOT / 'static/js/components/beautifyPreviewDocument.js').read_text(encoding='utf-8')
 
     for token in [
+        '.st-preview-panel-body {',
+        'min-width: 0;',
+        'max-height: min(680px, calc(100vh - 160px));',
+        ".st-preview-root[data-active-panel='settings'] [data-panel-surface='settings']",
+        ".st-preview-root[data-active-panel='formatting'] [data-panel-surface='formatting']",
+        ".st-preview-root[data-active-panel='character'] [data-panel-surface='character']",
+        'display: block;',
+        'pointer-events: auto;',
+    ]:
+        assert token in source, f'missing drawer visibility override token: {token}'
+
+    for removed in [
         '--st-preview-panel-width: min(420px, calc(100vw - 48px));',
         '--st-preview-left-panel-offset: 20px;',
         '--st-preview-right-panel-offset: 20px;',
-        '#top-settings-holder {',
-        'position: absolute;',
         'inset: 72px 20px auto 20px;',
-        'pointer-events: none;',
-        '.drawer {',
         'max-width: var(--st-preview-panel-width);',
-        'min-width: 0;',
-        'pointer-events: none;',
         '#ai-config-button,',
         '#advanced-formatting-button {',
         'left: var(--st-preview-left-panel-offset);',
         '#right-nav-drawer {',
         'right: var(--st-preview-right-panel-offset);',
-        '.st-preview-panel-body {',
-        'min-width: 0;',
-        'max-height: min(680px, calc(100vh - 160px));',
-    ]:
-        assert token in source, f'missing overlay drawer token: {token}'
-
-    for removed in [
         '#sheld {',
         'width: min(var(--sheldWidth), 100%);',
         'margin: 0 auto;',
     ]:
-        assert removed not in source, f'legacy preview-owned sheld sizing should be removed: {removed}'
+        assert removed not in source, f'legacy preview-owned shell layout override should be removed: {removed}'
 
 
 def test_build_beautify_preview_document_binds_only_supported_drawer_controls():
@@ -1305,9 +1326,7 @@ def test_build_beautify_preview_document_binds_only_supported_drawer_controls():
 def test_build_beautify_preview_document_shows_top_settings_holder_in_default_preview_state():
     source = (ROOT / 'static/js/components/beautifyPreviewDocument.js').read_text(encoding='utf-8')
 
-    assert '#top-settings-holder {' in source
-    top_settings_block = source.split('#top-settings-holder {', 1)[1].split('}', 1)[0]
-    assert 'display: block;' in top_settings_block
+    assert '#top-settings-holder {' not in source
 
 
 def test_beautify_preview_identity_assets_exist_in_project_static_images():

@@ -146,6 +146,7 @@ export function buildVendorFirstPreviewShell({
               <div id="nonQRFormItems">
                 <div id="leftSendForm" class="alignContentCenter">
                   <div id="options_button" class="fa-solid fa-bars interactable"></div>
+                  <div id="extensionsMenuButton" class="fa-solid fa-magic-wand-sparkles interactable" title="Extensions"></div>
                 </div>
                 <textarea id="send_textarea" name="text" class="mdHotkeys" placeholder="Not connected to API!" no_connection_text="Not connected to API!" connected_text="Type a message, or /? for help" autocomplete="off"></textarea>
                 <div id="rightSendForm" class="alignContentCenter">
@@ -155,7 +156,7 @@ export function buildVendorFirstPreviewShell({
                   <div id="mes_stop" title="Abort request" class="mes_stop"><i class="fa-solid fa-circle-stop"></i></div>
                   <div id="mes_impersonate" class="fa-solid fa-user-secret interactable displayNone" title="Ask AI to write your message for you" tabindex="0"></div>
                   <div id="mes_continue" class="fa-fw fa-solid fa-arrow-right interactable displayNone" title="Continue the last message"></div>
-                  <div id="send_but" class="fa-solid fa-paper-plane interactable displayNone" title="Send a message"></div>
+                  <div id="send_but" class="fa-solid fa-paper-plane interactable" title="Send a message"></div>
                 </div>
               </div>
             </div>
