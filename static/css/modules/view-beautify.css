@@ -571,12 +571,35 @@
   min-height: 180px;
 }
 
+.beautify-settings-preview-stage {
+  margin-top: 0.9rem;
+}
+
+.beautify-settings-preview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 1rem;
+  min-height: 0;
+}
+
+.beautify-settings-preview-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-height: 0;
+}
+
+.beautify-settings-preview-sidebar-gap {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .beautify-mobile-entry-card {
   min-height: 280px;
 }
 
 .beautify-settings-preview-shell {
-  margin-top: 0.9rem;
+  margin-top: 0;
 }
 
 .beautify-settings-form-grid {
@@ -614,6 +637,24 @@
   padding: 0.55rem;
   border: 1px solid var(--border-light);
   border-radius: 14px;
+}
+
+.beautify-settings-wallpaper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+}
+
+.beautify-settings-wallpaper-card {
+  align-items: stretch;
+  flex-direction: column;
+  padding: 0.7rem;
+}
+
+.beautify-settings-wallpaper-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  height: auto;
 }
 
 .beautify-device-btn.is-active,
@@ -744,6 +785,12 @@
     grid-template-columns: minmax(0, 1fr);
     flex: 0 0 auto;
     align-content: start;
+  }
+  .beautify-settings-preview-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .beautify-settings-preview-sidebar-gap {
+    display: none;
   }
   .beautify-detail-column {
     flex-direction: row;
