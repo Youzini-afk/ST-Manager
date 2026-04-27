@@ -414,6 +414,63 @@ def test_import_theme_defaults_to_dual_and_marks_platform_review_when_guess_is_u
     assert result['variant']['preview_hint']['preview_accuracy'] == 'base'
 
 
+def test_import_theme_into_existing_package_creates_new_same_platform_variant(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+
+    first = _import_theme_for_package(
+        service,
+        tmp_path,
+        filename='mono-pc.json',
+        name='Mono Demo',
+        platform='pc',
+    )
+    package_id = first['package']['id']
+
+    second_theme = tmp_path / 'warm-pc.json'
+    second_theme.write_text(
+        json.dumps({'name': 'Warm Demo', 'main_text_color': '#ffeeaa'}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    second = service.import_theme(str(second_theme), package_id=package_id, platform='pc')
+    package_detail = service.get_package(package_id)
+
+    assert second['package']['id'] == package_id
+    assert second['variant']['id'] != first['variant']['id']
+    assert len(package_detail['variants']) == 2
+    assert sorted(variant['platform'] for variant in package_detail['variants'].values()) == ['pc', 'pc']
+
+
+def test_import_theme_into_existing_package_keeps_older_same_platform_variant_untouched(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+
+    first = _import_theme_for_package(
+        service,
+        tmp_path,
+        filename='first-pc.json',
+        name='First Demo',
+        platform='pc',
+    )
+    package_id = first['package']['id']
+    original_variant_id = first['variant']['id']
+    original_theme_file = first['variant']['theme_file']
+
+    second_theme = tmp_path / 'second-pc.json'
+    second_theme.write_text(
+        json.dumps({'name': 'Second Demo', 'main_text_color': '#dbeafe'}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    service.import_theme(str(second_theme), package_id=package_id, platform='pc')
+    package_detail = service.get_package(package_id)
+
+    assert original_variant_id in package_detail['variants']
+    assert package_detail['variants'][original_variant_id]['theme_file'] == original_theme_file
+    assert {variant['theme_name'] for variant in package_detail['variants'].values()} == {'First Demo', 'Second Demo'}
+
+
 def test_import_wallpaper_registers_shared_variant_wallpaper_and_selects_it(tmp_path):
     library_root = tmp_path / 'data' / 'library' / 'beautify'
     ui_data = {}
