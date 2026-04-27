@@ -315,7 +315,7 @@ def test_beautify_grid_template_disables_preview_only_controls_in_screenshot_mod
 
     assert ":disabled=\"stageMode === 'screenshot' || !hasPcVariant || isMobileBeautifyViewport()\"" in template or ':disabled="stageMode === \"screenshot\" || !hasPcVariant || isMobileBeautifyViewport()"' in template
     assert ":disabled=\"stageMode === 'screenshot' || !hasMobileVariant\"" in template or ':disabled="stageMode === \"screenshot\" || !hasMobileVariant"' in template
-    assert ":disabled=\"stageMode === 'screenshot' || !hasDualVariant\"" in template or ':disabled="stageMode === \"screenshot\" || !hasDualVariant"' in template
+    assert ":disabled=\"stageMode === 'screenshot' || !canPreviewDualTarget\"" in template or ':disabled="stageMode === \"screenshot\" || !canPreviewDualTarget"' in template
     assert ":disabled=\"stageMode === 'screenshot' || wallpaperOptions.length === 0\"" in template or ':disabled="stageMode === \"screenshot\" || wallpaperOptions.length === 0"' in template
 
 

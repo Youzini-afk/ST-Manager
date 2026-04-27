@@ -6,7 +6,7 @@ export const PREVIEW_SCENE_OPTIONS = [
   {
     id: 'daily',
     label: '日常陪伴',
-    description: '轻松自然的日常聊天',
+    description: '更自然的日常多轮聊天',
   },
   {
     id: 'flirty',
@@ -21,14 +21,22 @@ export const PREVIEW_SCENE_OPTIONS = [
   {
     id: 'story',
     label: '剧情推进',
-    description: '带动作与状态变化的连续片段',
+    description: '连续叙事与状态推进',
   },
   {
-    id: 'system',
-    label: '系统提示',
-    description: '系统通知与规则提醒',
+    id: 'style-demo',
+    label: '样式演示',
+    description: '用于校验富文本、系统提示和代码块等样式表现',
   },
 ];
+
+const PREVIEW_SCENE_CONTEXT_STORY_STRINGS = {
+  daily: '日常陪伴场景：输出轻松自然的多轮对话，语气温和，重视承接与停顿。',
+  flirty: '暧昧互动场景：输出克制、柔和、留有余白的短轮对话。',
+  lore: '设定说明场景：输出信息清晰、段落完整、便于阅读的长文本说明。',
+  story: '剧情推进场景：输出包含动作、观察与状态变化的连续叙事。',
+  'style-demo': '样式演示专用：集中展示粗体、斜体、引用、列表、链接、行内代码、代码块和系统提示样式。',
+};
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -322,26 +330,42 @@ function buildPreviewScenes(normalizedPlatform = "pc") {
             tokenCounter: 'meta',
             extraClass: 'smallSysMes',
             messageHtml:
-              '<p>当前预览使用内置聊天场景，便于观察主题在真实聊天节奏里的表现。</p><p><a href="#" data-preview-link="disabled">Example link</a></p><hr>',
+              '<p>日常陪伴预览：观察更自然的多轮来回节奏。</p><hr>',
           },
           {
             role: 'character',
             mesId: '2',
-            timestamp: '2026年4月27日 08:14',
+            timestamp: '2026年4月27日 20:11',
             timer: '',
-            tokenCounter: '318 tok',
-            includeReasoning: true,
+            tokenCounter: '148 tok',
             messageHtml:
-              '<p><strong>粗体</strong>、<em>斜体</em>、<u>下划线</u> 和 <code>inline code</code>。</p><p>你总算忙完啦？先坐下缓一缓，我把灯调暗一点。</p><blockquote>Welcome back. Theme variables now drive this isolated preview.</blockquote>',
+              '<p>你终于忙完了？我刚刚还在想，要不要再等你五分钟就去泡茶。</p>',
           },
           {
             role: 'user',
             mesId: '3',
-            timestamp: '2026年4月27日 08:15',
+            timestamp: '2026年4月27日 20:12',
             timer: '',
-            tokenCounter: '142 tok',
+            tokenCounter: '42 tok',
+            messageHtml: '<p>差一点就要加班到更晚了，现在总算能喘口气。</p>',
+          },
+          {
+            role: 'character',
+            mesId: '4',
+            timestamp: '2026年4月27日 20:12',
+            timer: '',
+            tokenCounter: '173 tok',
+            messageHtml:
+              '<p>那先别急着想别的，坐下来，肩膀放松一点。你说一句今天最想听的话，我负责顺着你往下接。</p>',
+          },
+          {
+            role: 'user',
+            mesId: '5',
+            timestamp: '2026年4月27日 20:13',
+            timer: '',
+            tokenCounter: '36 tok',
             extraClass: 'last_mes',
-            messageHtml: `<p>列表、链接和代码块也需要稳定呈现。</p><ul><li>Keep the message shell realistic.</li><li>Make rich text and code samples visible.</li></ul><pre><code>const preview = buildBeautifyPreviewDocument({ platform: '${escapeHtml(normalizedPlatform)}' });</code></pre>`,
+            messageHtml: '<p>那你先说，欢迎回来。</p>',
           },
         ],
       };
@@ -356,7 +380,7 @@ function buildPreviewScenes(normalizedPlatform = "pc") {
             mesId: '1',
             timestamp: '2026年4月27日 22:06',
             timer: '',
-            tokenCounter: '204 tok',
+            tokenCounter: '124 tok',
             messageHtml:
               '<p>你刚刚那句“只看一眼消息”听起来，可不像真的只看一眼。</p>',
           },
@@ -367,6 +391,24 @@ function buildPreviewScenes(normalizedPlatform = "pc") {
             timer: '',
             tokenCounter: '72 tok',
             messageHtml: '<p>被你发现了。我本来只是想确认你睡了没。</p>',
+          },
+          {
+            role: 'character',
+            mesId: '3',
+            timestamp: '2026年4月27日 22:07',
+            timer: '',
+            tokenCounter: '136 tok',
+            messageHtml:
+              '<p>如果我说还没睡，你是不是就会顺理成章地多陪我几分钟？</p>',
+          },
+          {
+            role: 'user',
+            mesId: '4',
+            timestamp: '2026年4月27日 22:08',
+            timer: '',
+            tokenCounter: '48 tok',
+            extraClass: 'last_mes',
+            messageHtml: '<p>几分钟可能不够，要看你接下来打算怎么留我。</p>',
           },
         ],
       };
@@ -389,9 +431,27 @@ function buildPreviewScenes(normalizedPlatform = "pc") {
             mesId: '2',
             timestamp: '2026年4月27日 19:25',
             timer: '',
-            tokenCounter: '352 tok',
+            tokenCounter: '220 tok',
             messageHtml:
-              '<p>港口白天看着安静，到了夜里，栈桥边会亮起成串的冷色灯。</p>',
+              '<p>港口白天看着安静，到了夜里，栈桥边会亮起成串的冷色灯。海面不算平，风一吹，光带就碎成一片一片的，像有人把玻璃撒进水里。</p>',
+          },
+          {
+            role: 'user',
+            mesId: '3',
+            timestamp: '2026年4月27日 19:26',
+            timer: '',
+            tokenCounter: '81 tok',
+            messageHtml: '<p>听起来不像旅游港，更像某种会藏秘密的地方。</p>',
+          },
+          {
+            role: 'character',
+            mesId: '4',
+            timestamp: '2026年4月27日 19:27',
+            timer: '',
+            tokenCounter: '268 tok',
+            extraClass: 'last_mes',
+            messageHtml:
+              '<p>确实。那里的旧仓库区白天封着，晚上却有人出入。很多走私传闻都和那边有关，所以本地人提起潮灯湾时，总会把声音压低一点。</p>',
           },
         ],
       };
@@ -417,7 +477,33 @@ function buildPreviewScenes(normalizedPlatform = "pc") {
             timer: '',
             tokenCounter: '180 tok',
             messageHtml:
-              '<p>巷口的风把纸灯吹得一晃一晃的，我抬手替你挡了下火。</p>',
+              '<p>巷口的风把纸灯吹得一晃一晃的，我抬手替你挡了下火，指尖顺势擦过你袖口上沾着的灰。</p>',
+          },
+          {
+            role: 'user',
+            mesId: '3',
+            timestamp: '2026年4月27日 23:12',
+            timer: '',
+            tokenCounter: '74 tok',
+            messageHtml: '<p>前面那扇门里真的有人？我刚才明明听见里面拖动椅子的声音了。</p>',
+          },
+          {
+            role: 'character',
+            mesId: '4',
+            timestamp: '2026年4月27日 23:13',
+            timer: '',
+            tokenCounter: '196 tok',
+            messageHtml:
+              '<p>有人，而且不止一个。你先站我身后，等我数到三，我们一起进去。要是灯灭了，就沿着右手边的墙走，别回头。</p>',
+          },
+          {
+            role: 'user',
+            mesId: '5',
+            timestamp: '2026年4月27日 23:13',
+            timer: '',
+            tokenCounter: '55 tok',
+            extraClass: 'last_mes',
+            messageHtml: '<p>好，你数吧。我会跟紧你。</p>',
           },
         ],
       };
@@ -433,11 +519,34 @@ function buildPreviewScenes(normalizedPlatform = "pc") {
           tokenCounter: 'meta',
           extraClass: 'smallSysMes',
           messageHtml:
-            '<p>系统消息、提示条和轻量说明也会通过相同的 ST 消息壳层渲染。</p>',
+            '<p>样式演示场景：集中观察富文本、系统提示和代码样式。</p><hr>',
+        },
+        {
+          role: 'character',
+          mesId: '2',
+          timestamp: '2026年4月27日 21:40',
+          timer: '',
+          tokenCounter: '188 tok',
+          includeReasoning: true,
+          messageHtml:
+            '<p><strong>粗体</strong>、<em>斜体</em>、<u>下划线</u> 和 <code>inline code</code>。</p><blockquote>Welcome back. Theme variables now drive this isolated preview.</blockquote>',
+        },
+        {
+          role: 'user',
+          mesId: '3',
+          timestamp: '2026年4月27日 21:41',
+          timer: '',
+          tokenCounter: '120 tok',
+          extraClass: 'last_mes',
+          messageHtml: `<p>这里还要检查列表、链接和代码块。</p><ul><li>Example item A</li><li>Example item B</li></ul><p><a href="#" data-preview-link="disabled">Example link</a></p><pre><code>const preview = buildBeautifyPreviewDocument({ platform: '${escapeHtml(normalizedPlatform)}' });</code></pre>`,
         },
       ],
     };
   });
+}
+
+function getPreviewSceneContextStoryString(sceneId) {
+  return PREVIEW_SCENE_CONTEXT_STORY_STRINGS[sceneId] || PREVIEW_SCENE_CONTEXT_STORY_STRINGS[DEFAULT_PREVIEW_SCENE_ID];
 }
 
 function buildPreviewSceneMessage(message, previewIdentities) {
@@ -501,7 +610,7 @@ function buildSettingsDrawerPreviewMarkup() {
   `;
 }
 
-function buildFormattingDrawerPreviewMarkup() {
+function buildFormattingDrawerPreviewMarkup(scenePromptContent) {
   return `
     <div class="flex-container alignItemsBaseline">
       <h3 class="margin0 flex1 flex-container alignItemsBaseline"><span class="standoutHeader">Advanced Formatting</span></h3>
@@ -510,7 +619,7 @@ function buildFormattingDrawerPreviewMarkup() {
     <div id="advanced-formatting-cc-notice" class="info-block warning"><i class="fa-solid fa-triangle-exclamation"></i><span>Preview-only formatting surfaces.</span></div>
     <div id="ContextSettings" class="flex-container flexNoGap flexFlowColumn flex1">
       <select id="context_presets" class="flex1 text_pole"><option>Default Context</option></select>
-      <textarea id="context_story_string" class="text_pole textarea_compact" rows="3">{{system}}</textarea>
+      <textarea id="context_story_string" class="text_pole textarea_compact" rows="3">${escapeHtml(scenePromptContent)}</textarea>
       <textarea id="context_chat_start" class="text_pole textarea_compact" rows="2">### Response:</textarea>
     </div>
     <div id="InstructSettingsColumn" class="flex-container flexNoGap flexFlowColumn flex1">
@@ -721,7 +830,9 @@ export function buildBeautifyPreviewSampleMarkup(
   }
 
   const settingsDrawerContentMarkup = buildSettingsDrawerPreviewMarkup();
-  const formattingDrawerContentMarkup = buildFormattingDrawerPreviewMarkup();
+  const formattingDrawerContentMarkup = buildFormattingDrawerPreviewMarkup(
+    getPreviewSceneContextStoryString(selectedScene.id),
+  );
   const characterDrawerContentMarkup = buildCharacterDrawerPreviewMarkup(previewIdentities);
   const chatMarkup = buildPreviewSceneMessages(selectedScene, previewIdentities);
 

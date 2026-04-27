@@ -280,7 +280,7 @@ def test_build_beautify_preview_document_keeps_vendor_character_strip_ids_unique
     )
 
 
-def test_build_beautify_preview_document_exports_host_scene_catalog_contract():
+def test_build_beautify_preview_scene_options_renames_system_scene_to_style_demo():
     run_preview_document_check(
         '''
         if (module.DEFAULT_PREVIEW_SCENE_ID !== 'daily') {
@@ -292,15 +292,34 @@ def test_build_beautify_preview_document_exports_host_scene_catalog_contract():
         }
 
         const sceneIds = module.PREVIEW_SCENE_OPTIONS.map((scene) => scene.id);
-        const expectedIds = ['daily', 'flirty', 'lore', 'story', 'system'];
+        const expectedIds = ['daily', 'flirty', 'lore', 'story', 'style-demo'];
         if (JSON.stringify(sceneIds) !== JSON.stringify(expectedIds)) {
           throw new Error(`unexpected exported preview scene ids: ${JSON.stringify(sceneIds)}`);
         }
+
+        const expectedScenes = {
+          daily: { label: '日常陪伴', description: '更自然的日常多轮聊天' },
+          flirty: { label: '暧昧互动', description: '更柔和的情绪和停顿' },
+          lore: { label: '设定说明', description: '长段落和说明性文本' },
+          story: { label: '剧情推进', description: '连续叙事与状态推进' },
+          'style-demo': { label: '样式演示', description: '用于校验富文本、系统提示和代码块等样式表现' },
+        };
 
         for (const scene of module.PREVIEW_SCENE_OPTIONS) {
           if (!scene.label || !scene.description) {
             throw new Error(`scene metadata should include label and description: ${JSON.stringify(scene)}`);
           }
+          const expectedScene = expectedScenes[scene.id];
+          if (!expectedScene) {
+            throw new Error(`unexpected scene metadata entry: ${JSON.stringify(scene)}`);
+          }
+          if (scene.label !== expectedScene.label || scene.description !== expectedScene.description) {
+            throw new Error(`unexpected scene metadata for ${scene.id}: ${JSON.stringify(scene)}`);
+          }
+        }
+
+        if (sceneIds.includes('system')) {
+          throw new Error('legacy system scene should not remain exported');
         }
         '''
     )
@@ -648,7 +667,7 @@ def test_build_beautify_preview_document_strips_protocol_relative_and_layered_re
 def test_build_beautify_preview_sample_markup_contains_vendor_first_shell_surfaces():
     run_preview_document_check(
         '''
-        const html = module.buildBeautifyPreviewSampleMarkup('pc');
+        const html = module.buildBeautifyPreviewSampleMarkup('pc', {}, {}, 'style-demo');
 
         for (const token of [
           'id="bg1"',
@@ -817,7 +836,7 @@ def test_build_beautify_preview_sample_markup_contains_scene_switcher_and_defaul
           '日常陪伴',
           '设定说明',
           '剧情推进',
-          '系统提示',
+          '样式演示',
         ]) {
           if (html.includes(forbidden)) throw new Error(`unexpected in-frame scene-switcher token: ${forbidden}`);
         }
@@ -828,7 +847,7 @@ def test_build_beautify_preview_sample_markup_contains_scene_switcher_and_defaul
 def test_build_beautify_preview_sample_markup_keeps_preview_link_as_marked_real_anchor():
     run_preview_document_check(
         '''
-        const html = module.buildBeautifyPreviewSampleMarkup('pc');
+        const html = module.buildBeautifyPreviewSampleMarkup('pc', {}, {}, 'style-demo');
 
         if (!html.includes('data-preview-link="disabled"')) throw new Error('missing marked preview link');
         if (html.includes('<a role="link" aria-disabled="true">')) throw new Error('preview link should not use fake link semantics');
@@ -837,18 +856,28 @@ def test_build_beautify_preview_sample_markup_keeps_preview_link_as_marked_real_
     )
 
 
-def test_build_beautify_preview_sample_markup_default_scene_keeps_inline_rich_text_markers():
+def test_build_beautify_preview_sample_markup_moves_rich_text_showcase_out_of_daily_scene():
     run_preview_document_check(
         '''
-        const html = module.buildBeautifyPreviewSampleMarkup('pc');
+        const dailyHtml = module.buildBeautifyPreviewSampleMarkup('pc');
+        const styleDemoHtml = module.buildBeautifyPreviewSampleMarkup('pc', {}, {}, 'style-demo');
 
         for (const token of [
           '<strong>粗体</strong>',
           '<em>斜体</em>',
           '<u>下划线</u>',
           '<code>inline code</code>',
+          '<pre><code>',
         ]) {
-          if (!html.includes(token)) throw new Error(`missing token: ${token}`);
+          if (dailyHtml.includes(token)) throw new Error(`daily scene should not include rich-text showcase token: ${token}`);
+          if (!styleDemoHtml.includes(token)) throw new Error(`style-demo scene missing showcase token: ${token}`);
+        }
+
+        if (!dailyHtml.includes('日常陪伴预览：观察更自然的多轮来回节奏。')) {
+          throw new Error('daily scene should keep the new daily preview system message');
+        }
+        if (!styleDemoHtml.includes('样式演示场景：集中观察富文本、系统提示和代码样式。')) {
+          throw new Error('style-demo scene should include its system message');
         }
         '''
     )
@@ -857,7 +886,7 @@ def test_build_beautify_preview_sample_markup_default_scene_keeps_inline_rich_te
 def test_build_beautify_preview_sample_markup_mobile_code_sample_reflects_mobile_platform():
     run_preview_document_check(
         '''
-        const html = module.buildBeautifyPreviewSampleMarkup('mobile');
+        const html = module.buildBeautifyPreviewSampleMarkup('mobile', {}, {}, 'style-demo');
 
         if (!html.includes("platform: 'mobile'")) throw new Error('missing mobile platform code sample');
         if (html.includes("platform: 'pc'")) throw new Error('mobile preview should not hard-code pc platform sample');
@@ -865,10 +894,34 @@ def test_build_beautify_preview_sample_markup_mobile_code_sample_reflects_mobile
     )
 
 
+def test_build_beautify_preview_document_uses_scene_aware_context_story_string_copy():
+    run_preview_document_check(
+        '''
+        const html = module.buildBeautifyPreviewDocument({
+          platform: 'pc',
+          theme: {},
+          wallpaperUrl: '',
+          activeScene: 'style-demo',
+        });
+
+        const expectedPrompt = '样式演示专用：集中展示粗体、斜体、引用、列表、链接、行内代码、代码块和系统提示样式。';
+        if (!html.includes('id="context_story_string"')) {
+          throw new Error('missing formatting drawer context story textarea');
+        }
+        if (!html.includes(expectedPrompt)) {
+          throw new Error('missing style-demo scene-aware context story copy');
+        }
+        if (html.includes('{{system}}')) {
+          throw new Error('legacy generic context story placeholder should not remain');
+        }
+        '''
+    )
+
+
 def test_build_beautify_preview_sample_markup_keeps_example_link_as_marked_real_anchor():
     run_preview_document_check(
         '''
-        const html = module.buildBeautifyPreviewSampleMarkup('pc');
+        const html = module.buildBeautifyPreviewSampleMarkup('pc', {}, {}, 'style-demo');
 
         if (!html.includes('Example link')) throw new Error('missing example link text');
         if (html.includes('<a role="link" aria-disabled="true">Example link</a>')) throw new Error('example link should not use fake link semantics');
@@ -989,7 +1042,7 @@ def test_build_beautify_preview_document_uses_host_owned_active_scene_for_initia
         for (const forbidden of [
           'data-preview-scene-button=',
           'data-preview-scene-template=',
-          '轻松自然的日常聊天',
+          '更自然的日常多轮聊天',
           '日常节奏不需要铺满屏幕，留一些安静给角色的呼吸。',
         ]) {
           if (html.includes(forbidden)) throw new Error(`unexpected in-frame runtime scene token: ${forbidden}`);
@@ -1086,13 +1139,13 @@ def test_build_beautify_preview_sample_markup_separates_timestamp_from_generatio
         const nextMessageStart = html.indexOf('mesid="3"', messageStart);
         const messageHtml = html.slice(messageStart, nextMessageStart === -1 ? undefined : nextMessageStart);
 
-        if (!messageHtml.includes('<small class="timestamp">2026年4月27日 08:14</small>')) {
+        if (!messageHtml.includes('<small class="timestamp">2026年4月27日 20:11</small>')) {
           throw new Error('expected full timestamp in visible timestamp slot');
         }
         if (!messageHtml.includes('<div class="mes_timer"></div>')) {
           throw new Error('expected empty mes_timer slot for static preview scene');
         }
-        if (messageHtml.includes('<div class="mes_timer">2026年4月27日 08:14</div>')) {
+        if (messageHtml.includes('<div class="mes_timer">2026年4月27日 20:11</div>')) {
           throw new Error('preview should not mirror timestamp into mes_timer');
         }
         '''
@@ -1132,14 +1185,18 @@ def test_build_beautify_preview_sample_markup_uses_full_date_time_seed_values_fo
           flirty: module.buildBeautifyPreviewSampleMarkup('pc', {}, {}, 'flirty'),
           lore: module.buildBeautifyPreviewSampleMarkup('pc', {}, {}, 'lore'),
           story: module.buildBeautifyPreviewSampleMarkup('pc', {}, {}, 'story'),
+          styleDemo: module.buildBeautifyPreviewSampleMarkup('pc', {}, {}, 'style-demo'),
         };
 
         for (const [sceneId, token] of [
-          ['daily', '2026年4月27日 08:14'],
-          ['daily', '2026年4月27日 08:15'],
+          ['daily', '2026年4月27日 20:11'],
+          ['daily', '2026年4月27日 20:12'],
+          ['daily', '2026年4月27日 20:13'],
           ['flirty', '2026年4月27日 22:06'],
           ['lore', '2026年4月27日 19:25'],
           ['story', '2026年4月27日 23:11'],
+          ['styleDemo', '2026年4月27日 21:40'],
+          ['styleDemo', '2026年4月27日 21:41'],
         ]) {
           if (!sceneMarkup[sceneId].includes(token)) throw new Error(`missing full timestamp seed in ${sceneId}: ${token}`);
         }
@@ -1150,7 +1207,7 @@ def test_build_beautify_preview_sample_markup_uses_full_date_time_seed_values_fo
 def test_build_beautify_preview_sample_markup_contains_st_reasoning_controls():
     run_preview_document_check(
         '''
-        const html = module.buildBeautifyPreviewSampleMarkup('pc');
+        const html = module.buildBeautifyPreviewSampleMarkup('pc', {}, {}, 'style-demo');
 
         for (const token of [
           'class="mes_reasoning_actions flex-container"',

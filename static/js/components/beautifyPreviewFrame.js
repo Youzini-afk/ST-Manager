@@ -75,6 +75,16 @@ function resolveSettingsPreviewTheme(platform) {
   };
 }
 
+function resolvePreviewShellPlatform(previewDevice, viewportWidth) {
+  if (previewDevice === 'mobile') {
+    return 'mobile';
+  }
+  if (previewDevice === 'dual') {
+    return viewportWidth <= 900 ? 'mobile' : 'pc';
+  }
+  return 'pc';
+}
+
 export default function beautifyPreviewFrame() {
   return {
     isPreviewLoaded: false,
@@ -252,7 +262,14 @@ export default function beautifyPreviewFrame() {
       const packageIdentities = detail.identity_overrides || {};
       const globalIdentities = globalSettings.identities || {};
       const useGlobalOnly = workspace === "settings";
-      const platform = this.previewShellMode === "mobile" ? "mobile" : "pc";
+      const reactiveWidth = Number(this.$store?.global?.windowWidth);
+      const viewportWidth = Number.isFinite(reactiveWidth) && reactiveWidth > 0
+        ? reactiveWidth
+        : (typeof window !== 'undefined' ? Number(window.innerWidth || 0) : 0);
+      const platform = resolvePreviewShellPlatform(
+        this.previewShellMode,
+        viewportWidth,
+      );
       const resolvedWallpaperFile = useGlobalOnly
         ? globalWallpaper.file
         : variantWallpaper?.file || globalWallpaper.file;

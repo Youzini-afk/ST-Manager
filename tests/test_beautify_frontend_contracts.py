@@ -2671,6 +2671,78 @@ def test_beautify_preview_frame_resolve_preview_state_includes_host_owned_active
     )
 
 
+def test_beautify_preview_frame_resolve_preview_state_uses_viewport_aware_shell_for_dual_target():
+    run_beautify_preview_frame_runtime_check(
+        '''
+        globalThis.window = { innerWidth: 390 };
+
+        const mobileComponent = module.default();
+        mobileComponent.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'dual',
+            windowWidth: 390,
+            beautifyActiveDetail: {
+              identity_overrides: {},
+              wallpapers: {},
+            },
+            beautifyActiveVariant: {
+              id: 'mobile_fallback',
+              platform: 'mobile',
+              theme_data: { name: 'Mobile Fallback' },
+              selected_wallpaper_id: '',
+            },
+            beautifyGlobalSettings: {
+              wallpaper: null,
+              identities: {
+                character: { name: '全局角色', avatar_file: '' },
+                user: { name: '全局用户', avatar_file: '' },
+              },
+            },
+          },
+        };
+
+        const mobileState = mobileComponent.resolvePreviewState();
+        if (mobileState.platform !== 'mobile') {
+          throw new Error(`dual target on mobile viewport should render mobile shell, got ${mobileState.platform}`);
+        }
+
+        globalThis.window.innerWidth = 1280;
+
+        const desktopComponent = module.default();
+        desktopComponent.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyPreviewDevice: 'dual',
+            windowWidth: 1280,
+            beautifyActiveDetail: {
+              identity_overrides: {},
+              wallpapers: {},
+            },
+            beautifyActiveVariant: {
+              id: 'pc_fallback',
+              platform: 'pc',
+              theme_data: { name: 'PC Fallback' },
+              selected_wallpaper_id: '',
+            },
+            beautifyGlobalSettings: {
+              wallpaper: null,
+              identities: {
+                character: { name: '全局角色', avatar_file: '' },
+                user: { name: '全局用户', avatar_file: '' },
+              },
+            },
+          },
+        };
+
+        const desktopState = desktopComponent.resolvePreviewState();
+        if (desktopState.platform !== 'pc') {
+          throw new Error(`dual target on desktop viewport should render pc shell, got ${desktopState.platform}`);
+        }
+        '''
+    )
+
+
 def test_beautify_preview_frame_reuses_document_scene_catalog_for_host_switcher():
     preview_frame_source = read_project_file('static/js/components/beautifyPreviewFrame.js')
 
