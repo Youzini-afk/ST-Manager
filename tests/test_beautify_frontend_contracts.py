@@ -444,7 +444,14 @@ def test_beautify_api_exposes_package_scoped_variant_import_helper():
             'export async function importBeautifyVariant(file, packageId, options={})',
         ),
     )
-    assert 'return importBeautifyTheme(file, { package_id: packageId, ...options });' in beautify_api
+    assert_contains_any(
+        beautify_api,
+        (
+            'if (!packageId) throw new Error("packageId is required");',
+            "if (!packageId) throw new Error('packageId is required');",
+        ),
+    )
+    assert 'return importBeautifyTheme(file, { ...options, package_id: packageId });' in beautify_api
 
 
 def test_beautify_api_exports_shared_preview_wallpaper_helpers():

@@ -40,7 +40,8 @@ export async function importBeautifyTheme(file, options = {}) {
 }
 
 export async function importBeautifyVariant(file, packageId, options = {}) {
-  return importBeautifyTheme(file, { package_id: packageId, ...options });
+  if (!packageId) throw new Error("packageId is required");
+  return importBeautifyTheme(file, { ...options, package_id: packageId });
 }
 
 export async function importBeautifyWallpaper(file, packageId, variantId) {
