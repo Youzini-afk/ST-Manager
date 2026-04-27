@@ -370,6 +370,13 @@ class BeautifyService:
                 theme_filename = variant_basename
             else:
                 theme_filename = f'{resolved_platform}.json'
+                for sibling_id, sibling in (package_info.get('variants') or {}).items():
+                    if sibling_id == variant_id:
+                        continue
+                    sibling_theme_file = str((sibling or {}).get('theme_file') or '').replace('\\', '/').strip()
+                    if sibling_theme_file.endswith(f'/themes/{theme_filename}'):
+                        theme_filename = f'{variant_id}.json'
+                        break
             new_theme_path = os.path.join(self.library_root, 'packages', package_info['id'], 'themes', theme_filename)
             os.makedirs(os.path.dirname(new_theme_path), exist_ok=True)
             if old_theme_path and os.path.exists(old_theme_path) and os.path.abspath(old_theme_path) != os.path.abspath(new_theme_path):

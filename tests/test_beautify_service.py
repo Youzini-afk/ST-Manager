@@ -784,6 +784,73 @@ def test_update_variant_allows_same_platform_sibling_variants(tmp_path):
     assert sorted(variant['platform'] for variant in package_detail['variants'].values()) == ['pc', 'pc']
 
 
+def test_update_variant_does_not_overwrite_existing_legacy_same_platform_theme_file(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+
+    package_id = 'pkg_legacy_demo'
+    themes_dir = tmp_path / 'data' / 'library' / 'beautify' / 'packages' / package_id / 'themes'
+    themes_dir.mkdir(parents=True)
+    pc_theme_path = themes_dir / 'pc.json'
+    mobile_theme_path = themes_dir / 'mobile.json'
+    pc_theme_path.write_text(
+        json.dumps({'name': 'First Demo', 'main_text_color': '#ffffff'}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    mobile_theme_path.write_text(
+        json.dumps({'name': 'Second Demo', 'main_text_color': '#dbeafe'}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+
+    ui_data['_beautify_library_v1'] = {
+        'packages': {
+            package_id: {
+                'id': package_id,
+                'name': 'Legacy Demo',
+                'cover_variant_id': 'var_pc_legacy',
+                'variants': {
+                    'var_pc_legacy': {
+                        'id': 'var_pc_legacy',
+                        'platform': 'pc',
+                        'theme_name': 'First Demo',
+                        'theme_file': f'data/library/beautify/packages/{package_id}/themes/pc.json',
+                        'wallpaper_ids': [],
+                        'selected_wallpaper_id': '',
+                        'preview_hint': {
+                            'needs_platform_review': False,
+                            'preview_accuracy': 'approx',
+                        },
+                    },
+                    'var_mobile_legacy': {
+                        'id': 'var_mobile_legacy',
+                        'platform': 'mobile',
+                        'theme_name': 'Second Demo',
+                        'theme_file': f'data/library/beautify/packages/{package_id}/themes/mobile.json',
+                        'wallpaper_ids': [],
+                        'selected_wallpaper_id': '',
+                        'preview_hint': {
+                            'needs_platform_review': False,
+                            'preview_accuracy': 'approx',
+                        },
+                    },
+                },
+                'wallpapers': {},
+                'screenshots': {},
+                'identity_overrides': {},
+            },
+        },
+    }
+
+    first_theme_payload = json.loads(pc_theme_path.read_text(encoding='utf-8'))
+    updated_variant = service.update_variant(package_id, 'var_mobile_legacy', platform='pc')
+    package_detail = service.get_package(package_id)
+
+    assert package_detail['variants']['var_pc_legacy']['theme_file'].endswith('/themes/pc.json')
+    assert json.loads(pc_theme_path.read_text(encoding='utf-8')) == first_theme_payload
+    assert updated_variant['theme_file'] != 'data/library/beautify/packages/pkg_legacy_demo/themes/pc.json'
+    assert updated_variant['theme_file'].endswith('/themes/var_mobile_legacy.json')
+
+
 def test_get_global_settings_reads_preview_wallpaper_id_from_shared_library_even_when_beautify_state_has_stale_value(tmp_path):
     shared_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
     shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)
