@@ -621,13 +621,16 @@ export default function beautifyGrid() {
       device = this.selectedVariantPlatform,
     ) {
       const platform = String(variant?.platform || "");
+      if (device === "dual") {
+        return platform === "dual";
+      }
       if (device === "mobile") {
         return platform === "mobile" || platform === "dual";
       }
       if (device === "pc") {
         return platform === "pc" || platform === "dual";
       }
-      return platform === "dual" || platform === "pc" || platform === "mobile";
+      return false;
     },
 
     setPreviewUnavailable(reason = "") {
@@ -806,9 +809,7 @@ export default function beautifyGrid() {
         return;
       }
       const previewPlatform = this.resolvePackagePreviewPlatform();
-      const nextVariant =
-        this.resolveRememberedVariant(previewPlatform) ||
-        this.findVariantForPreviewPlatform(previewPlatform);
+      const nextVariant = this.resolvePreferredVariantForDevice(previewPlatform);
       if (nextVariant) {
         this.applyActiveVariant(nextVariant);
         this.selectedVariantPlatform = previewPlatform;

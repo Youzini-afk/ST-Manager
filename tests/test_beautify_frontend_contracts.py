@@ -2892,11 +2892,13 @@ def test_beautify_grid_preview_platform_change_preserves_compatible_selected_var
         const component = module.default();
         component.$store = {
           global: {
+            beautifyWorkspace: 'packages',
             beautifyPreviewDevice: 'pc',
             beautifyPreviewUnavailableReason: '',
             beautifyVariantSelectionByDevice: {
               pc: 'pc_b',
               mobile: 'mobile_a',
+              dual: 'dual_a',
             },
             beautifySelectedVariantId: 'pc_b',
             beautifySelectedWallpaperId: '',
@@ -2920,9 +2922,14 @@ def test_beautify_grid_preview_platform_change_preserves_compatible_selected_var
               selected_wallpaper_id: '',
             },
             beautifyActiveWallpaper: null,
+            beautifyGlobalSettings: {},
             showToast: () => {},
           },
         };
+        component.closePackageDetailDrawer = () => {};
+        component.closeMobilePreviewAndReset = () => {};
+        component.closeMobileFullscreen = () => {};
+        component.fetchGlobalSettings = () => {};
 
         await component.previewPlatform('pc');
         if (component.$store.global.beautifyActiveVariant?.id !== 'pc_b') {
@@ -2945,6 +2952,24 @@ def test_beautify_grid_preview_platform_change_preserves_compatible_selected_var
         await component.previewPlatform('mobile');
         if (component.$store.global.beautifyActiveVariant?.id !== 'dual_a') {
           throw new Error(`expected compatible dual variant to remain selected on mobile target, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+
+        component.switchBeautifyWorkspace('settings');
+        component.switchBeautifyWorkspace('packages');
+        if (component.$store.global.beautifyActiveVariant?.id !== 'dual_a') {
+          throw new Error(`expected settings return to preserve compatible dual selection, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+
+        component.$store.global.beautifySelectedVariantId = 'pc_b';
+        component.$store.global.beautifyActiveVariant = component.$store.global.beautifyActiveDetail.variants.pc_b;
+        component.$store.global.beautifyPreviewDevice = 'pc';
+
+        await component.previewPlatform('dual');
+        if (component.$store.global.beautifyActiveVariant?.id !== 'dual_a') {
+          throw new Error(`expected dual target to resolve a dual-capable variant, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+        if (component.$store.global.beautifyPreviewDevice !== 'dual') {
+          throw new Error(`expected preview target to remain dual, got ${component.$store.global.beautifyPreviewDevice}`);
         }
         '''
     )
