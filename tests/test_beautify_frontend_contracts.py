@@ -2884,6 +2884,83 @@ def test_beautify_grid_mobile_viewport_keeps_mobile_preview_target_unavailable_f
     )
 
 
+def test_beautify_grid_preview_platform_change_preserves_compatible_selected_variant():
+    run_beautify_grid_runtime_check(
+        '''
+        globalThis.window = { innerWidth: 1280, addEventListener: () => {} };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyPreviewDevice: 'pc',
+            beautifyPreviewUnavailableReason: '',
+            beautifyVariantSelectionByDevice: {
+              pc: 'pc_b',
+              mobile: 'mobile_a',
+            },
+            beautifySelectedVariantId: 'pc_b',
+            beautifySelectedWallpaperId: '',
+            beautifyActiveDetail: {
+              id: 'pkg_demo',
+              variants: {
+                pc_a: { id: 'pc_a', name: 'PC A', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+                pc_b: { id: 'pc_b', name: 'PC B', platform: 'pc', wallpaper_ids: [], selected_wallpaper_id: '' },
+                mobile_a: { id: 'mobile_a', name: 'Mobile A', platform: 'mobile', wallpaper_ids: [], selected_wallpaper_id: '' },
+                dual_a: { id: 'dual_a', name: 'Dual A', platform: 'dual', wallpaper_ids: [], selected_wallpaper_id: '' },
+              },
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+            beautifyActiveVariant: {
+              id: 'pc_b',
+              name: 'PC B',
+              platform: 'pc',
+              wallpaper_ids: [],
+              selected_wallpaper_id: '',
+            },
+            beautifyActiveWallpaper: null,
+            showToast: () => {},
+          },
+        };
+
+        await component.previewPlatform('pc');
+        if (component.$store.global.beautifyActiveVariant?.id !== 'pc_b') {
+          throw new Error(`expected compatible selected pc variant to stay active, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+
+        await component.previewPlatform('mobile');
+        if (component.$store.global.beautifyActiveVariant?.id !== 'mobile_a') {
+          throw new Error(`expected remembered mobile variant on mobile target, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+
+        component.$store.global.beautifySelectedVariantId = 'dual_a';
+        component.$store.global.beautifyActiveVariant = component.$store.global.beautifyActiveDetail.variants.dual_a;
+
+        await component.previewPlatform('pc');
+        if (component.$store.global.beautifyActiveVariant?.id !== 'dual_a') {
+          throw new Error(`expected compatible dual variant to remain selected on pc target, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+
+        await component.previewPlatform('mobile');
+        if (component.$store.global.beautifyActiveVariant?.id !== 'dual_a') {
+          throw new Error(`expected compatible dual variant to remain selected on mobile target, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+        '''
+    )
+
+
+def test_beautify_grid_exposes_variant_selector_markup():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert 'x-show="variantOptions.length > 0"' in template
+    assert 'x-model="selectedVariantId"' in template
+    assert '@change="selectVariant($event.target.value)"' in template
+    assert '<option value="">选择具体变体</option>' in template
+    assert 'x-for="variant in variantOptions"' in template
+    assert 'x-text="variant.label"' in template
+
+
 def test_beautify_preview_frame_falls_back_to_global_wallpaper_when_variant_selection_has_no_resolved_wallpaper():
     run_beautify_preview_frame_runtime_check(
         '''

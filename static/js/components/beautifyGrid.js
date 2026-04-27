@@ -285,6 +285,23 @@ export default function beautifyGrid() {
         .filter(Boolean);
     },
 
+    get variantOptions() {
+      const detail = this.activeDetail;
+      if (!detail?.variants) return [];
+      return Object.values(detail.variants).map((variant) => ({
+        ...variant,
+        label:
+          String(variant?.name || variant?.theme_name || '').trim() ||
+          `${variant.platform || 'pc'} · ${variant.id}`,
+      }));
+    },
+
+    compatibleVariantOptions(device = this.selectedVariantPlatform) {
+      return this.variantOptions.filter((variant) =>
+        this.isVariantCompatibleWithDevice(variant, device),
+      );
+    },
+
     mergeSharedWallpaperIntoStore(wallpaper) {
       if (!wallpaper?.id) return;
       const current = Array.isArray(this.$store.global.sharedWallpapers)
@@ -495,8 +512,7 @@ export default function beautifyGrid() {
       if (!detail || !detail.variants) return null;
       const previewPlatform = this.resolvePackagePreviewPlatform(detail);
       return (
-        this.resolveRememberedVariant(previewPlatform, detail) ||
-        this.findVariantForPreviewPlatform(previewPlatform, detail) ||
+        this.resolvePreferredVariantForDevice(previewPlatform, detail) ||
         Object.values(detail.variants)[0] ||
         null
       );
@@ -574,6 +590,22 @@ export default function beautifyGrid() {
         return variant.platform === "dual" ? variant : null;
       }
       return null;
+    },
+
+    resolvePreferredVariantForDevice(
+      device,
+      detail = this.activeDetail,
+    ) {
+      const selectedVariant = detail?.variants?.[this.selectedVariantId] || null;
+      if (selectedVariant && this.isVariantCompatibleWithDevice(selectedVariant, device)) {
+        return selectedVariant;
+      }
+
+      return (
+        this.resolveRememberedVariant(device, detail) ||
+        this.compatibleVariantOptions(device)[0] ||
+        null
+      );
     },
 
     recordVariantSelectionForDevice(device, variantId) {
@@ -712,9 +744,7 @@ export default function beautifyGrid() {
     },
 
     async previewPlatform(platform) {
-      const variant =
-        this.resolveRememberedVariant(platform) ||
-        this.findVariantByPlatform(platform);
+      const variant = this.resolvePreferredVariantForDevice(platform);
       if (variant) {
         this.applyActiveVariant(variant);
         this.selectedVariantPlatform = platform;

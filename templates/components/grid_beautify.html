@@ -499,6 +499,18 @@
               双端
             </button>
           </div>
+          <select
+            class="beautify-filter-select"
+            x-show="variantOptions.length > 0"
+            x-model="selectedVariantId"
+            :disabled="stageMode === 'screenshot'"
+            @change="selectVariant($event.target.value)"
+          >
+            <option value="">选择具体变体</option>
+            <template x-for="variant in variantOptions" :key="variant.id">
+              <option :value="variant.id" x-text="variant.label"></option>
+            </template>
+          </select>
           <div class="beautify-stage-actions">
             <button
               type="button"
