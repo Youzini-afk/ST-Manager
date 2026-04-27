@@ -331,6 +331,8 @@ export function initState() {
     beautifySelectedScreenshotId: "",
     beautifyStageMode: "preview",
     beautifyPreviewDevice: "pc",
+    beautifyVariantSelectionByDevice: {},
+    beautifyPreviewUnavailableReason: "",
     beautifyMobileFullscreenOpen: false,
     beautifyPreviewResetToken: 0,
     beautifyPackageDetailCollapsed: false,

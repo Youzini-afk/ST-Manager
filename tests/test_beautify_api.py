@@ -229,6 +229,31 @@ def test_import_theme_endpoint_forwards_optional_target_package_and_platform(mon
     assert fake_service.calls[0][2:4] == ('pkg_demo', 'pc')
 
 
+def test_import_theme_endpoint_forwards_package_scoped_variant_import_fields(monkeypatch):
+    app = _make_test_app()
+    client = app.test_client()
+    fake_service = FakeBeautifyService()
+    monkeypatch.setattr(beautify_api, 'get_beautify_service', lambda: fake_service)
+
+    response = client.post(
+        '/api/beautify/import-theme',
+        data={
+            'file': (io.BytesIO(b'{"name": "Variant Demo", "main_text_color": "#fff"}'), 'variant-demo.json'),
+            'package_id': 'pkg_variant_demo',
+            'platform': 'mobile',
+        },
+        content_type='multipart/form-data',
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload['success'] is True
+    assert fake_service.calls[0][0] == 'import_theme'
+    assert fake_service.calls[0][2] == 'pkg_variant_demo'
+    assert fake_service.calls[0][3] == 'mobile'
+    assert fake_service.calls[0][4] == 'variant-demo.json'
+
+
 def test_import_wallpaper_endpoint_requires_package_and_variant(monkeypatch):
     app = _make_test_app()
     client = app.test_client()

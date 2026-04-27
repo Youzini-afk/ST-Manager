@@ -434,6 +434,20 @@ def test_beautify_api_exports_settings_and_screenshot_helpers():
     assert 'formData.append("target", target);' in beautify_api
 
 
+def test_beautify_api_exposes_package_scoped_variant_import_helper():
+    beautify_api = read_project_file('static/js/api/beautify.js')
+
+    assert_contains_any(
+        beautify_api,
+        (
+            'export async function importBeautifyVariant(file, packageId, options = {})',
+            'export async function importBeautifyVariant(file, packageId, options={})',
+        ),
+    )
+    assert 'formData.append("package_id", packageId);' in beautify_api
+    assert '/api/beautify/import-theme' in beautify_api
+
+
 def test_beautify_api_exports_shared_preview_wallpaper_helpers():
     beautify_api = read_project_file('static/js/api/beautify.js')
 
@@ -1327,6 +1341,16 @@ def test_state_js_keeps_extended_beautify_store_keys():
     assert 'beautifyPackageDetailCollapsed: false' in state_js
     assert 'beautifyPackageDetailDrawerOpen: false' in state_js
     assert 'beautifyGlobalSettings: null' in state_js
+
+
+def test_state_js_tracks_explicit_beautify_variant_selection_keys():
+    state_js = read_project_file('static/js/state.js')
+
+    assert 'beautifyVariantSelectionByDevice: {}' in state_js
+    assert_contains_any(
+        state_js,
+        ('beautifyPreviewUnavailableReason: ""', "beautifyPreviewUnavailableReason: ''"),
+    )
 
 
 def test_state_js_keeps_mobile_beautify_fullscreen_store_keys():

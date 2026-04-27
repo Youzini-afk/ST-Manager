@@ -39,6 +39,19 @@ export async function importBeautifyTheme(file, options = {}) {
   return parseJson(res);
 }
 
+export async function importBeautifyVariant(file, packageId, options = {}) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("package_id", packageId);
+  if (options.platform) formData.append("platform", options.platform);
+
+  const res = await fetch("/api/beautify/import-theme", {
+    method: "POST",
+    body: formData,
+  });
+  return parseJson(res);
+}
+
 export async function importBeautifyWallpaper(file, packageId, variantId) {
   const formData = new FormData();
   formData.append("file", file);
