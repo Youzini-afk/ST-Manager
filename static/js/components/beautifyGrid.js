@@ -487,6 +487,7 @@ export default function beautifyGrid() {
       if (!detail || !detail.variants) return null;
       const previewPlatform = this.resolvePackagePreviewPlatform(detail);
       return (
+        this.resolveRememberedVariant(previewPlatform, detail) ||
         this.findVariantForPreviewPlatform(previewPlatform, detail) ||
         Object.values(detail.variants)[0] ||
         null
@@ -538,6 +539,23 @@ export default function beautifyGrid() {
         this.findVariantByPlatform(platform, detail) ||
         this.findVariantByPlatform("dual", detail)
       );
+    },
+
+    resolveRememberedVariant(device, detail = this.activeDetail) {
+      const variantId = this.variantSelectionByDevice?.[device] || "";
+      const variant = detail?.variants?.[variantId] || null;
+      if (!variant) return null;
+
+      if (device === "pc") {
+        return ["pc", "dual"].includes(variant.platform) ? variant : null;
+      }
+      if (device === "mobile") {
+        return ["mobile", "dual"].includes(variant.platform) ? variant : null;
+      }
+      if (device === "dual") {
+        return variant.platform === "dual" ? variant : null;
+      }
+      return null;
     },
 
     recordVariantSelectionForDevice(device, variantId) {
@@ -616,7 +634,9 @@ export default function beautifyGrid() {
     },
 
     async previewPlatform(platform) {
-      const variant = this.findVariantByPlatform(platform);
+      const variant =
+        this.resolveRememberedVariant(platform) ||
+        this.findVariantByPlatform(platform);
       if (variant) {
         this.applyActiveVariant(variant);
         this.selectedVariantPlatform = platform;
