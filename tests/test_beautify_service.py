@@ -851,6 +851,35 @@ def test_update_variant_does_not_overwrite_existing_legacy_same_platform_theme_f
     assert updated_variant['theme_file'].endswith('/themes/var_mobile_legacy.json')
 
 
+def test_update_variant_preserves_sibling_safe_platform_after_disk_recovery(tmp_path):
+    ui_data = {}
+    service = _build_service(tmp_path, ui_data)
+
+    first = _import_theme_for_package(service, tmp_path, filename='first-pc.json', name='First Demo', platform='pc')
+    package_id = first['package']['id']
+
+    second_theme = tmp_path / 'second-mobile.json'
+    second_theme.write_text(
+        json.dumps({'name': 'Second Demo', 'main_text_color': '#dbeafe'}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    second = service.import_theme(str(second_theme), package_id=package_id, platform='mobile')
+
+    updated_variant = service.update_variant(package_id, second['variant']['id'], platform='pc')
+    assert updated_variant['theme_file'].endswith(f"/{second['variant']['id']}.json")
+
+    ui_data.clear()
+
+    recovered_library = service.load_library()
+    recovered_variant = next(
+        variant
+        for variant in recovered_library['packages'][package_id]['variants'].values()
+        if variant['theme_file'] == updated_variant['theme_file']
+    )
+
+    assert recovered_variant['platform'] == 'pc'
+
+
 def test_get_global_settings_reads_preview_wallpaper_id_from_shared_library_even_when_beautify_state_has_stale_value(tmp_path):
     shared_wallpaper = tmp_path / 'data' / 'library' / 'wallpapers' / 'imported' / 'preview.png'
     shared_wallpaper.parent.mkdir(parents=True, exist_ok=True)

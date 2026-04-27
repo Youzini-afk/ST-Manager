@@ -365,6 +365,7 @@ class BeautifyService:
         library, package_info, variant = self._load_package_variant(ui_data, package_id, variant_id)
         if resolved_platform and variant.get('platform') != resolved_platform:
             old_theme_path = self._resolve_project_relative_path(variant.get('theme_file', ''))
+            theme_payload = self._load_theme_data(variant.get('theme_file', '')) or {}
             variant_basename = os.path.basename(str(variant.get('theme_file') or '').replace('\\', '/'))
             if variant_basename.startswith('var_'):
                 theme_filename = variant_basename
@@ -383,6 +384,10 @@ class BeautifyService:
                 if os.path.exists(new_theme_path):
                     os.remove(new_theme_path)
                 shutil.move(old_theme_path, new_theme_path)
+            if theme_payload:
+                theme_payload['platform'] = resolved_platform
+                with open(new_theme_path, 'w', encoding='utf-8') as f:
+                    json.dump(theme_payload, f, ensure_ascii=False, indent=2)
             variant['platform'] = resolved_platform
             variant['theme_file'] = os.path.relpath(new_theme_path, self._project_root_for_library()).replace('\\', '/')
 
@@ -811,7 +816,7 @@ class BeautifyService:
                 continue
             theme_name = str(theme_payload.get('name') or '').strip()
             platform_name = os.path.splitext(filename)[0]
-            platform = self._normalize_platform(platform_name)
+            platform = self._normalize_platform(theme_payload.get('platform')) or self._normalize_platform(platform_name)
             needs_platform_review = False
             if not platform_name:
                 platform, needs_platform_review = self.guess_platform(filename, theme_name=theme_name, package_name=package_info.get('name', ''))
