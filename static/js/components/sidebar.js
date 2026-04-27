@@ -7,6 +7,43 @@ import { createFolder, moveFolder } from "../api/system.js";
 import { moveCard } from "../api/card.js";
 import { migrateLorebooks } from "../api/wi.js";
 
+const TAG_PANE_RATIO_STORAGE_KEY = "st_manager_card_tags_split_ratio";
+const DEFAULT_TAG_PANE_RATIO = 0.34;
+const DEFAULT_VISIBLE_TAG_COUNT = 30;
+const MIN_CARD_TAG_PANE_HEIGHT = 112;
+const MIN_CARD_CATEGORY_PANE_HEIGHT = 220;
+const MAX_CARD_TAG_PANE_RATIO = 0.6;
+const ESTIMATED_TAG_ROW_HEIGHT = 34;
+const ESTIMATED_TAG_CHIP_WIDTH = 96;
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getMaxTagPaneHeight(totalHeight) {
+  return Math.max(
+    MIN_CARD_TAG_PANE_HEIGHT,
+    Math.min(
+      totalHeight * MAX_CARD_TAG_PANE_RATIO,
+      totalHeight - MIN_CARD_CATEGORY_PANE_HEIGHT,
+    ),
+  );
+}
+
+function readStoredTagPaneRatio() {
+  try {
+    const raw = localStorage.getItem(TAG_PANE_RATIO_STORAGE_KEY);
+    if (raw === null) return DEFAULT_TAG_PANE_RATIO;
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return DEFAULT_TAG_PANE_RATIO;
+
+    return clamp(parsed, 0.18, MAX_CARD_TAG_PANE_RATIO);
+  } catch (e) {
+    return DEFAULT_TAG_PANE_RATIO;
+  }
+}
+
 async function moveWorldInfoItems(items, targetCategory) {
   for (const item of items) {
     const resp = await fetch("/api/world_info/category/move", {
@@ -121,6 +158,13 @@ export default function sidebar() {
         return true;
       }
     })(),
+    tagPaneRatio: readStoredTagPaneRatio(),
+    dynamicVisibleTagCount: DEFAULT_VISIBLE_TAG_COUNT,
+    tagPaneResizeState: null,
+    _tagPaneLayoutRaf: 0,
+    _syncTagPaneLayoutHandler: null,
+    _handleTagPaneResizeMove: null,
+    _handleTagPaneResizeEnd: null,
 
     // 设备类型和模式
     get deviceType() {
@@ -129,6 +173,19 @@ export default function sidebar() {
 
     get currentMode() {
       return this.$store.global.currentMode;
+    },
+
+    get shouldShowCardTagSplitter() {
+      return (
+        this.currentMode === "cards" &&
+        this.deviceType !== "mobile" &&
+        this.tagsSectionExpanded
+      );
+    },
+
+    get desktopTagPaneStyle() {
+      if (!this.shouldShowCardTagSplitter) return "";
+      return `--card-tags-pane-basis: ${(this.tagPaneRatio * 100).toFixed(2)}%;`;
     },
 
     get visibleSidebar() {
@@ -367,10 +424,14 @@ export default function sidebar() {
     init() {
       this.handleMobileUploadRequest =
         this.handleMobileUploadRequest.bind(this);
+      this._syncTagPaneLayoutHandler = this.scheduleTagPaneLayoutSync.bind(this);
+      this._handleTagPaneResizeMove = this.handleTagPaneResize.bind(this);
+      this._handleTagPaneResizeEnd = this.endTagPaneResize.bind(this);
       window.addEventListener(
         "request-mobile-upload",
         this.handleMobileUploadRequest,
       );
+      window.addEventListener("resize", this._syncTagPaneLayoutHandler);
 
       // 监听标签索引展开状态变化，保存到本地存储
       this.$watch("tagsSectionExpanded", (value) => {
@@ -382,10 +443,36 @@ export default function sidebar() {
         } catch (e) {
           console.warn("Failed to save tags section expanded state:", e);
         }
+
+        if (!value) {
+          this.endTagPaneResize();
+          this.dynamicVisibleTagCount = DEFAULT_VISIBLE_TAG_COUNT;
+          return;
+        }
+
+        this.$nextTick(() => this.scheduleTagPaneLayoutSync());
       });
 
       window.addEventListener("refresh-folder-list", () => {
         window.dispatchEvent(new CustomEvent("refresh-card-list"));
+      });
+
+      this.$watch("$store.global.currentMode", () => {
+        this.endTagPaneResize();
+        this.$nextTick(() => this.scheduleTagPaneLayoutSync());
+      });
+
+      this.$watch("$store.global.deviceType", () => {
+        this.endTagPaneResize();
+        this.$nextTick(() => this.scheduleTagPaneLayoutSync());
+      });
+
+      this.$watch("$store.global.tagIndexActiveCategory", () => {
+        this.$nextTick(() => this.scheduleTagPaneLayoutSync());
+      });
+
+      this.$watch("$store.global.allTagsPool", () => {
+        this.$nextTick(() => this.scheduleTagPaneLayoutSync());
       });
 
       // === 监听当前分类变化，自动展开目录树并滚动 ===
@@ -448,6 +535,8 @@ export default function sidebar() {
       if (this.$store.global.deviceType === "mobile") {
         this.$store.global.visibleSidebar = false;
       }
+
+      this.$nextTick(() => this.scheduleTagPaneLayoutSync());
     },
 
     destroy() {
@@ -455,6 +544,13 @@ export default function sidebar() {
         "request-mobile-upload",
         this.handleMobileUploadRequest,
       );
+      window.removeEventListener("resize", this._syncTagPaneLayoutHandler);
+      window.removeEventListener("pointermove", this._handleTagPaneResizeMove);
+      window.removeEventListener("pointerup", this._handleTagPaneResizeEnd);
+      window.removeEventListener("pointercancel", this._handleTagPaneResizeEnd);
+      if (this._tagPaneLayoutRaf) {
+        cancelAnimationFrame(this._tagPaneLayoutRaf);
+      }
     },
 
     // 切换侧边栏可见性
@@ -800,6 +896,138 @@ export default function sidebar() {
 
       // 触发全局清理
       window.dispatchEvent(new CustomEvent("global-drag-end"));
+    },
+
+    persistTagPaneRatio() {
+      try {
+        localStorage.setItem(TAG_PANE_RATIO_STORAGE_KEY, String(this.tagPaneRatio));
+      } catch (e) {
+        console.warn("Failed to save card tag pane ratio:", e);
+      }
+    },
+
+    normalizeTagPaneHeight(totalHeight, requestedHeight) {
+      const maxHeight = getMaxTagPaneHeight(totalHeight);
+      return clamp(requestedHeight, MIN_CARD_TAG_PANE_HEIGHT, maxHeight);
+    },
+
+    scheduleTagPaneLayoutSync() {
+      if (this._tagPaneLayoutRaf) {
+        cancelAnimationFrame(this._tagPaneLayoutRaf);
+      }
+      this._tagPaneLayoutRaf = requestAnimationFrame(() => {
+        this._tagPaneLayoutRaf = 0;
+        this.syncTagPaneLayout();
+      });
+    },
+
+    syncTagPaneLayout() {
+      if (!this.shouldShowCardTagSplitter) {
+        this.dynamicVisibleTagCount = DEFAULT_VISIBLE_TAG_COUNT;
+        return;
+      }
+
+      const shell = this.$refs.cardSidebarShell;
+      const tagsPane = this.$refs.cardTagsPane;
+      if (!shell || !tagsPane) {
+        this.dynamicVisibleTagCount = DEFAULT_VISIBLE_TAG_COUNT;
+        return;
+      }
+
+      const totalHeight = shell.getBoundingClientRect().height;
+      if (!Number.isFinite(totalHeight) || totalHeight <= 0) {
+        this.dynamicVisibleTagCount = DEFAULT_VISIBLE_TAG_COUNT;
+        return;
+      }
+
+      const normalizedHeight = this.normalizeTagPaneHeight(
+        totalHeight,
+        totalHeight * this.tagPaneRatio,
+      );
+      this.tagPaneRatio = normalizedHeight / totalHeight;
+      this.dynamicVisibleTagCount = this.computeDynamicVisibleTagCount();
+    },
+
+    computeDynamicVisibleTagCount() {
+      const tagsPane = this.$refs.cardTagsPane;
+      const tagsHeader = this.$refs.cardTagsHeader;
+      const categoryStrip = this.$refs.cardTagCategoryStrip;
+      const tagCloud = this.$refs.cardTagCloud;
+      if (!tagsPane || !tagCloud) return DEFAULT_VISIBLE_TAG_COUNT;
+
+      const tagCloudWidth = tagCloud.clientWidth || 0;
+      const tagsPaneHeight = tagsPane.getBoundingClientRect().height || 0;
+      if (!tagCloudWidth || !tagsPaneHeight) return DEFAULT_VISIBLE_TAG_COUNT;
+
+      const headerHeight = tagsHeader
+        ? tagsHeader.getBoundingClientRect().height
+        : 0;
+      const categoryHeight = categoryStrip
+        ? categoryStrip.getBoundingClientRect().height
+        : 0;
+      const availableTagHeight = Math.max(
+        ESTIMATED_TAG_ROW_HEIGHT,
+        tagsPaneHeight - headerHeight - categoryHeight - 16,
+      );
+      const chipsPerRow = Math.max(
+        1,
+        Math.floor((tagCloudWidth + 6) / ESTIMATED_TAG_CHIP_WIDTH),
+      );
+      const visibleRows = Math.max(
+        1,
+        Math.floor((availableTagHeight + 6) / ESTIMATED_TAG_ROW_HEIGHT),
+      );
+      return visibleRows * chipsPerRow;
+    },
+
+    beginTagPaneResize(event) {
+      if (!this.shouldShowCardTagSplitter) return;
+
+      const shell = this.$refs.cardSidebarShell;
+      const tagsPane = this.$refs.cardTagsPane;
+      if (!shell || !tagsPane) return;
+
+      const totalHeight = shell.getBoundingClientRect().height;
+      const startHeight = tagsPane.getBoundingClientRect().height;
+      if (!Number.isFinite(totalHeight) || !Number.isFinite(startHeight)) return;
+
+      this.tagPaneResizeState = {
+        startY: event.clientY,
+        startHeight,
+        totalHeight,
+      };
+      shell.classList.add("is-resizing");
+      window.addEventListener("pointermove", this._handleTagPaneResizeMove);
+      window.addEventListener("pointerup", this._handleTagPaneResizeEnd);
+      window.addEventListener("pointercancel", this._handleTagPaneResizeEnd);
+    },
+
+    handleTagPaneResize(event) {
+      if (!this.tagPaneResizeState) return;
+
+      const deltaY = event.clientY - this.tagPaneResizeState.startY;
+      const nextHeight = this.tagPaneResizeState.startHeight - deltaY;
+      const normalizedHeight = this.normalizeTagPaneHeight(
+        this.tagPaneResizeState.totalHeight,
+        nextHeight,
+      );
+      this.tagPaneRatio = normalizedHeight / this.tagPaneResizeState.totalHeight;
+      this.$nextTick(() => this.scheduleTagPaneLayoutSync());
+    },
+
+    endTagPaneResize() {
+      if (this.$refs.cardSidebarShell) {
+        this.$refs.cardSidebarShell.classList.remove("is-resizing");
+      }
+      window.removeEventListener("pointermove", this._handleTagPaneResizeMove);
+      window.removeEventListener("pointerup", this._handleTagPaneResizeEnd);
+      window.removeEventListener("pointercancel", this._handleTagPaneResizeEnd);
+
+      if (!this.tagPaneResizeState) return;
+
+      this.tagPaneResizeState = null;
+      this.persistTagPaneRatio();
+      this.$nextTick(() => this.scheduleTagPaneLayoutSync());
     },
 
     // === 标签云 ===

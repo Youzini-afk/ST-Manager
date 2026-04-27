@@ -1865,6 +1865,29 @@ def test_mobile_card_sidebar_layout_css_hides_desktop_splitter_and_keeps_tag_bod
     assert 'max-height: min(34vh, 16rem);' in mobile_tags_block
 
 
+def test_sidebar_js_supports_desktop_tag_pane_resize_and_dynamic_visible_tag_count():
+    sidebar_source = read_project_file('static/js/components/sidebar.js')
+
+    assert 'TAG_PANE_RATIO_STORAGE_KEY = "st_manager_card_tags_split_ratio"' in sidebar_source
+    assert 'dynamicVisibleTagCount: DEFAULT_VISIBLE_TAG_COUNT' in sidebar_source
+    assert 'get shouldShowCardTagSplitter() {' in sidebar_source
+    assert 'get desktopTagPaneStyle() {' in sidebar_source
+    assert 'scheduleTagPaneLayoutSync() {' in sidebar_source
+    assert 'computeDynamicVisibleTagCount() {' in sidebar_source
+    assert 'beginTagPaneResize(event) {' in sidebar_source
+    assert 'handleTagPaneResize(event) {' in sidebar_source
+    assert 'endTagPaneResize() {' in sidebar_source
+    assert 'window.addEventListener("resize", this._syncTagPaneLayoutHandler);' in sidebar_source
+    assert 'localStorage.setItem(TAG_PANE_RATIO_STORAGE_KEY, String(this.tagPaneRatio));' in sidebar_source
+
+    compute_block = extract_js_function_block(
+        sidebar_source,
+        'computeDynamicVisibleTagCount() {',
+    )
+    assert 'Math.floor((tagCloudWidth + 6) / ESTIMATED_TAG_CHIP_WIDTH)' in compute_block
+    assert 'Math.floor((availableTagHeight + 6) / ESTIMATED_TAG_ROW_HEIGHT)' in compute_block
+
+
 def test_card_pagination_css_keeps_mobile_footer_compact_with_safe_area_spacing():
     cards_css = read_project_file('static/css/modules/view-cards.css')
     mobile_cards_css = extract_media_block(cards_css, '@media (max-width: 768px)')
