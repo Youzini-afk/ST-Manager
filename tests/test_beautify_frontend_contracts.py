@@ -1871,6 +1871,87 @@ def test_beautify_grid_closes_package_detail_drawer_when_reloading_same_package_
     )
 
 
+def test_beautify_grid_closes_stale_package_detail_drawer_on_mobile_resize_transition():
+    run_beautify_grid_runtime_check(
+        '''
+        globalThis.window = {
+          matchMedia: () => ({ matches: true }),
+          innerWidth: 390,
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifyActiveDetail: {
+              id: 'pkg_demo',
+              variants: {},
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+            beautifyPackageDetailCollapsed: true,
+            beautifyPackageDetailDrawerOpen: true,
+            beautifyMobileFullscreenOpen: false,
+            showToast: () => {},
+          },
+        };
+
+        component.syncMobileFullscreenState();
+
+        if (component.packageDetailDrawerOpen !== false) {
+          throw new Error('mobile viewport transition should close stale desktop detail drawer state');
+        }
+        if (component.packageDetailCollapsed !== true) {
+          throw new Error('mobile viewport transition should preserve collapsed state');
+        }
+        '''
+    )
+
+
+def test_beautify_grid_preserves_current_package_detail_rail_when_next_package_fetch_fails():
+    run_beautify_grid_runtime_check(
+        '''
+        globalThis.__gridStubs = {
+          getBeautifyPackage: async () => ({ success: false, error: 'load failed' }),
+        };
+
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyWorkspace: 'packages',
+            beautifySelectedPackageId: 'pkg_a',
+            beautifyPackageDetailCollapsed: true,
+            beautifyPackageDetailDrawerOpen: true,
+            beautifyActiveDetail: {
+              id: 'pkg_a',
+              variants: {},
+              wallpapers: {},
+              screenshots: {},
+              identity_overrides: {},
+            },
+            showToast: () => {},
+          },
+        };
+
+        const loaded = await component.selectPackage('pkg_b');
+
+        if (loaded !== false) {
+          throw new Error('failed package fetch should return false');
+        }
+        if (component.selectedPackageId !== 'pkg_a') {
+          throw new Error(`failed package switch should preserve current package id, got ${component.selectedPackageId}`);
+        }
+        if (component.packageDetailCollapsed !== true) {
+          throw new Error('failed package switch should preserve current collapse state');
+        }
+        if (component.packageDetailDrawerOpen !== true) {
+          throw new Error('failed package switch should preserve current drawer session');
+        }
+        '''
+    )
+
+
 def test_beautify_grid_opens_mobile_fullscreen_for_screenshot_empty_state_without_images():
     run_beautify_grid_runtime_check(
         '''

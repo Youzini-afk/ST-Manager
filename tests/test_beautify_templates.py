@@ -323,6 +323,8 @@ def test_beautify_grid_template_adds_package_detail_collapse_toggle_and_reopen_a
     assert '收起详情' in template
     assert 'openPackageDetailDrawer()' in template
     assert 'beautify-package-detail-drawer' in template
+    assert 'x-if="!packageDetailCollapsed"' in template or "x-if='!packageDetailCollapsed'" in template
+    assert 'x-if="packageDetailCollapsed && packageDetailDrawerOpen && !isMobileBeautifyViewport()"' in template or "x-if='packageDetailCollapsed && packageDetailDrawerOpen && !isMobileBeautifyViewport()'" in template
 
 
 def test_beautify_layout_css_keeps_mobile_fullscreen_stage_without_drawer_rules():

@@ -224,6 +224,9 @@ export default function beautifyGrid() {
 
     syncMobileFullscreenState() {
       this.alignSettingsPreviewDeviceToViewport();
+      if (this.isMobileBeautifyViewport()) {
+        this.closePackageDetailDrawer();
+      }
       if (this.mobileFullscreenOpen && !this.isMobileFullscreenEnabled()) {
         this.closeMobilePreviewAndReset();
       }
@@ -441,11 +444,12 @@ export default function beautifyGrid() {
     async selectPackage(packageId, options = {}) {
       const targetId = String(packageId || "").trim();
       if (!targetId) return false;
-      this.normalizePackageDetailRailState(targetId);
       const res = await getBeautifyPackage(targetId);
       if (!res?.success || !res.item) {
         return false;
       }
+
+      this.normalizePackageDetailRailState(targetId);
 
       this.selectedPackageId = targetId;
       this.$store.global.beautifyActiveDetail = res.item;

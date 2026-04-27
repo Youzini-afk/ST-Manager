@@ -625,31 +625,36 @@
               </template>
             </div>
 
-            <div class="beautify-detail-column" x-show="!packageDetailCollapsed">
-              {{ package_detail_cards() }}
-            </div>
-          </div>
-
-          <div
-            class="beautify-package-detail-drawer"
-            x-show="packageDetailCollapsed && packageDetailDrawerOpen && !isMobileBeautifyViewport()"
-            @click.self="closePackageDetailDrawer()"
-          >
-            <div class="beautify-package-detail-drawer-panel">
-              <div class="beautify-stage-header-actions">
-                <button
-                  type="button"
-                  class="beautify-soft-btn"
-                  @click="closePackageDetailDrawer()"
-                >
-                  关闭详情
-                </button>
-              </div>
+            <template x-if="!packageDetailCollapsed">
               <div class="beautify-detail-column">
                 {{ package_detail_cards() }}
               </div>
-            </div>
+            </template>
           </div>
+
+          <template
+            x-if="packageDetailCollapsed && packageDetailDrawerOpen && !isMobileBeautifyViewport()"
+          >
+            <div
+              class="beautify-package-detail-drawer"
+              @click.self="closePackageDetailDrawer()"
+            >
+              <div class="beautify-package-detail-drawer-panel">
+                <div class="beautify-stage-header-actions">
+                  <button
+                    type="button"
+                    class="beautify-soft-btn"
+                    @click="closePackageDetailDrawer()"
+                  >
+                    关闭详情
+                  </button>
+                </div>
+                <div class="beautify-detail-column">
+                  {{ package_detail_cards() }}
+                </div>
+              </div>
+            </div>
+          </template>
         </template>
       </div>
     </template>
