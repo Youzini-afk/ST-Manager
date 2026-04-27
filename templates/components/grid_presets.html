@@ -237,6 +237,18 @@
                 </div>
               </div>
 
+              <button
+                type="button"
+                x-show="canSendPresetToST(item)"
+                class="card-send-st-btn"
+                :class="{ 'has-sent': Number(item.last_sent_to_st || 0) > 0, 'is-sending': isSendingPresetToST(getPresetActionTargetId(item)) }"
+                :disabled="isSendingPresetToST(getPresetActionTargetId(item))"
+                :title="getPresetSendToSTTitle(item)"
+                @click.stop="sendPresetToST(item, $event)"
+              >
+                发送到 ST
+              </button>
+
               <span
                 class="text-[10px] text-[var(--text-dim)] whitespace-nowrap"
                 x-text="formatDate(item.mtime)"

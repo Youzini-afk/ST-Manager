@@ -13,9 +13,11 @@ from flask import Blueprint, request, jsonify, send_file
 from core.config import BASE_DIR, load_config
 from core.context import ctx
 from core.data.ui_store import (
+    get_last_sent_to_st,
     get_resource_item_categories,
     load_ui_data,
     save_ui_data,
+    set_last_sent_to_st,
     set_resource_item_categories,
 )
 from core.services.preset_editor_schema import normalize_preset_content_for_save
@@ -37,6 +39,8 @@ from core.services.preset_storage import (
     write_preset_json,
 )
 from core.services.scan_service import suppress_fs_events
+from core.services.st_auth import STAuthError, build_st_http_client
+from core.api.v1.system import _format_st_auth_error, _format_st_response_error
 from core.utils.filesystem import sanitize_filename
 from core.utils.regex import extract_regex_from_preset_data
 from core.utils.source_revision import build_file_source_revision
@@ -391,6 +395,38 @@ def _build_canonical_preset_id(file_path, preset_type, source_folder, presets_ro
 
     rel_path = os.path.basename(file_abs)
     return f'global::{rel_path}'
+
+
+def _build_preset_ui_key(preset_type: str, file_path: str, preset_id: str, presets_root: str) -> str:
+    if str(preset_type or '').strip().lower() == 'resource':
+        path_key = os.path.abspath(str(file_path or '')).replace('\\', '/') if file_path else ''
+        return f'preset::resource::{path_key}' if path_key else ''
+
+    canonical_id = _build_canonical_preset_id(file_path, preset_type, None, presets_root)
+    if canonical_id.startswith('global::'):
+        return f'preset::{canonical_id}'
+
+    if str(preset_id or '').startswith('global::'):
+        return f'preset::{preset_id}'
+
+    return ''
+
+
+def _get_preset_last_sent_to_st(ui_data: dict, preset_type: str, file_path: str, preset_id: str, presets_root: str) -> float:
+    ui_key = _build_preset_ui_key(preset_type, file_path, preset_id, presets_root)
+    return get_last_sent_to_st(ui_data, ui_key) if ui_key else 0.0
+
+
+def _build_st_openai_preset_payload(preset_data, file_path: str = '') -> dict:
+    payload = preset_data if isinstance(preset_data, dict) else {}
+    preset_name = str(payload.get('name') or payload.get('title') or '').strip()
+    if not preset_name and file_path:
+        preset_name = os.path.splitext(os.path.basename(file_path))[0].strip()
+    return {
+        'apiId': 'openai',
+        'name': preset_name or 'Preset',
+        'preset': payload,
+    }
 
 
 def _build_preset_kind_source_hint(preset_id: str, source_folder):
@@ -1132,6 +1168,74 @@ def _build_family_context_for_detail(file_path, preset_type, source_folder, pres
     return None, None, None
 
 
+def _resolve_family_default_version_id(preset_id: str, presets_root: str) -> str:
+    preset_id = str(preset_id or '').strip()
+    if not preset_id or '::' not in preset_id:
+        return ''
+
+    parts = preset_id.split('::')
+    if not parts:
+        return ''
+
+    source_type = parts[0]
+    source_folder = None
+
+    if source_type == 'resource':
+        if len(parts) < 4 or parts[1] != 'resource':
+            return ''
+        source_folder = parts[2]
+        family_id = '::'.join(parts[3:]).strip()
+    elif source_type == 'global':
+        if len(parts) < 3:
+            return ''
+        root_scope_key = parts[1]
+        source_folder = root_scope_key if root_scope_key and root_scope_key != 'global' else None
+        family_id = '::'.join(parts[2:]).strip()
+    else:
+        return ''
+
+    if not family_id:
+        return ''
+
+    source_items = _scan_preset_scope_items(source_type, source_folder, presets_root)
+    if not source_items:
+        return ''
+
+    for entry in group_preset_list_items(source_items):
+        if entry.get('entry_type') != 'family':
+            continue
+        if entry.get('id') != preset_id:
+            continue
+        return str(entry.get('default_version_id') or '').strip()
+
+    return ''
+
+
+def _inherit_family_default_version_fields(grouped_items):
+    for item in grouped_items:
+        if not isinstance(item, dict) or item.get('entry_type') != 'family':
+            continue
+
+        default_version_id = str(item.get('default_version_id') or '').strip()
+        if not default_version_id:
+            continue
+
+        default_version = next(
+            (
+                version for version in (item.get('versions') or [])
+                if str(version.get('id') or '').strip() == default_version_id
+            ),
+            None,
+        )
+        if not default_version:
+            continue
+
+        item['last_sent_to_st'] = default_version.get('last_sent_to_st', item.get('last_sent_to_st', 0))
+        item['preset_kind'] = default_version.get('preset_kind', item.get('preset_kind', ''))
+
+    return grouped_items
+
+
 @bp.route('/api/presets/list', methods=['GET'])
 def list_presets():
     """
@@ -1186,6 +1290,30 @@ def list_presets():
                         if canonical_id in seen_global_ids:
                             continue
                         seen_global_ids.add(canonical_id)
+                        if config_key:
+                            item['id'] = canonical_id
+                            item['source_folder'] = config_key
+                        else:
+                            item['id'] = canonical_id
+                            item['source_folder'] = None
+                        item['type'] = 'global'
+                        item['source_type'] = 'global'
+                        item['last_sent_to_st'] = _get_preset_last_sent_to_st(
+                            ui_data,
+                            'global',
+                            full_path,
+                            canonical_id,
+                            presets_root,
+                        )
+                        item['path'] = os.path.relpath(full_path, BASE_DIR)
+                        item['display_category'] = physical_category
+                        item['physical_category'] = physical_category
+                        item['category_mode'] = 'physical'
+                        item['category_override'] = ''
+                        item['owner_card_id'] = ''
+                        item['owner_card_name'] = ''
+                        item['owner_card_category'] = ''
+
                         source_items.append(item)
         
         # 2. 扫描资源目录
@@ -1235,6 +1363,13 @@ def list_presets():
                                     owner_card_category=owner_category,
                                 )
                             if item:
+                                item['last_sent_to_st'] = _get_preset_last_sent_to_st(
+                                    ui_data,
+                                    'resource',
+                                    full_path,
+                                    item.get('id', ''),
+                                    presets_root,
+                                )
                                 source_items.append(item)
                                 
                 except Exception as e:
@@ -1242,7 +1377,7 @@ def list_presets():
         
         folder_meta = _add_physical_folder_nodes(_build_folder_metadata(source_items), presets_root)
 
-        grouped_items = group_preset_list_items(source_items)
+        grouped_items = _inherit_family_default_version_fields(group_preset_list_items(source_items))
 
         for item in grouped_items:
             if not _item_matches_category(item, selected_category):
@@ -1314,6 +1449,13 @@ def get_preset_detail(preset_id):
         details['family_info'] = family_info
         details['current_version'] = current_version
         details['available_versions'] = available_versions or []
+        details['last_sent_to_st'] = _get_preset_last_sent_to_st(
+            load_ui_data(),
+            preset_type,
+            file_path,
+            details.get('id', preset_id),
+            presets_root,
+        )
         
         return jsonify({
             "success": True,
@@ -1644,6 +1786,80 @@ def export_preset():
         )
     except Exception as e:
         logger.error(f"Error exporting preset: {e}")
+        return jsonify({'success': False, 'msg': str(e)}), 500
+
+
+@bp.route('/api/presets/send_to_st', methods=['POST'])
+def send_preset_to_st():
+    try:
+        data = request.get_json(silent=True) or {}
+        requested_preset_id = str(data.get('id') or '').strip()
+        preset_id = requested_preset_id
+        presets_root = _get_presets_path()
+
+        if requested_preset_id.startswith('global-alt::'):
+            return jsonify({'success': False, 'msg': '仅管理器预设库中的预设支持发送到 ST'}), 400
+
+        resolved_family_version_id = _resolve_family_default_version_id(requested_preset_id, presets_root)
+        if resolved_family_version_id:
+            preset_id = resolved_family_version_id
+
+        if preset_id.startswith('global-alt::'):
+            return jsonify({'success': False, 'msg': '仅管理器预设库中的预设支持发送到 ST'}), 400
+
+        file_path, preset_type, source_folder = _resolve_preset_file_path(preset_id, presets_root)
+
+        if not file_path:
+            return jsonify({'success': False, 'msg': 'Invalid preset ID'}), 400
+
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'msg': '预设文件不存在'}), 404
+
+        preset_data = load_preset_json(file_path)
+        preset_kind = _resolve_requested_preset_kind(
+            '',
+            preset_data,
+            source_folder=source_folder,
+            file_path=file_path,
+        )
+        if preset_kind != 'openai':
+            return jsonify({'success': False, 'msg': '仅 OpenAI/对话补全预设可发送到 ST'}), 400
+
+        cfg = load_config()
+        auth_type = str(cfg.get('st_auth_type') or 'basic').strip().lower()
+        st_client = build_st_http_client(cfg, timeout=10)
+
+        try:
+            response = st_client.post(
+                '/api/presets/save',
+                json=_build_st_openai_preset_payload(preset_data, file_path),
+                timeout=10,
+            )
+        except STAuthError as error:
+            return jsonify({'success': False, 'msg': _format_st_auth_error(error)})
+
+        if response.status_code != 200:
+            return jsonify({'success': False, 'msg': _format_st_response_error(response, auth_type)})
+
+        st_response = 'OK'
+        if response.content:
+            try:
+                st_response = response.json()
+            except (ValueError, TypeError):
+                st_response = response.text or 'OK'
+        ui_data = load_ui_data()
+        ui_key = _build_preset_ui_key(preset_type, file_path, preset_id, presets_root)
+        _, last_sent_to_st = set_last_sent_to_st(ui_data, ui_key, time.time())
+        if not save_ui_data(ui_data):
+            return jsonify({'success': False, 'msg': '保存发送时间失败'}), 500
+
+        return jsonify({
+            'success': True,
+            'st_response': st_response,
+            'last_sent_to_st': last_sent_to_st,
+        })
+    except Exception as e:
+        logger.error('Send preset to ST error: %s', e)
         return jsonify({'success': False, 'msg': str(e)}), 500
 
 

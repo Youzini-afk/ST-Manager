@@ -83,6 +83,16 @@
       class="preset-reader-mobile-more-menu"
     >
       <button
+        x-show="canSendActivePresetToST()"
+        @click="sendActivePresetToST(); showMobileMoreMenu = false"
+        class="btn-secondary py-1.5 px-3 text-xs"
+        title="发送到 ST（对话补全预设，同名将直接覆盖 ST 中现有预设）"
+        :title="getActivePresetSendToSTTitle()"
+        :disabled="isSendingPresetToST"
+      >
+        发送到 ST
+      </button>
+      <button
         @click="exportActivePreset(); showMobileMoreMenu = false"
         class="btn-secondary py-1.5 px-3 text-xs"
       >
@@ -138,6 +148,16 @@
             </template>
           </select>
         </div>
+        <button
+          x-show="canSendActivePresetToST()"
+          @click="sendActivePresetToST()"
+          class="btn-secondary py-1.5 px-3 text-xs"
+          title="发送到 ST（对话补全预设，同名将直接覆盖 ST 中现有预设）"
+          :title="getActivePresetSendToSTTitle()"
+          :disabled="isSendingPresetToST"
+        >
+          发送到 ST
+        </button>
         <button
           x-show="$store.global.deviceType !== 'mobile'"
           @click="exportActivePreset()"

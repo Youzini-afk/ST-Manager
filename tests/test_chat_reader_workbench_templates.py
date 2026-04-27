@@ -271,7 +271,8 @@ def test_preset_grid_and_detail_expose_export_actions():
 
     assert 'downloadFileFromApi(' in export_grid_block
     assert '/api/presets/export' in export_grid_block
-    assert 'id: item.id' in export_grid_block
+    assert 'const targetId = this.getPresetActionTargetId(item)' in export_grid_block
+    assert 'id: targetId' in export_grid_block
     assert 'event?.stopPropagation?.()' in export_grid_block
     assert '@click.stop="exportPresetItem(item, $event)"' in preset_grid_template
     assert 'title="导出预设 JSON"' in preset_grid_template
@@ -2875,7 +2876,9 @@ def test_preset_grid_js_delegates_detail_rendering_to_reader_without_local_detai
     ]
 
     assert 'new CustomEvent("open-preset-reader"' in open_preset_detail_block
-    assert 'detail: item' in open_preset_detail_block
+    assert 'detail: {' in open_preset_detail_block
+    assert '...item,' in open_preset_detail_block
+    assert 'id: openId,' in open_preset_detail_block
 
     for dead_state_field in (
         'selectedPreset:',
@@ -2936,6 +2939,25 @@ def test_preset_grid_template_uses_selection_without_card_level_category_actions
     assert '<span>分类：</span>' not in preset_template
     assert 'locatePresetOwnerCard(item)' in preset_template
     assert 'class="text-[10px] text-[var(--text-dim)] space-y-1 mb-3"' not in preset_template
+
+
+def test_preset_grid_js_exposes_send_to_st_state_and_event_sync_contracts():
+    preset_grid_source = read_project_file('static/js/components/presetGrid.js')
+
+    assert 'sendingPresetToStIds:' in preset_grid_source
+    assert 'canSendPresetToST(item)' in preset_grid_source
+    assert 'getPresetSendToSTTitle(item)' in preset_grid_source
+    assert 'applyPresetSentState(detail)' in preset_grid_source
+    assert 'window.addEventListener("preset-sent-to-st"' in preset_grid_source or "window.addEventListener('preset-sent-to-st'" in preset_grid_source
+    assert 'async sendPresetToST(item, event = null)' in preset_grid_source
+
+
+def test_preset_grid_template_footer_exposes_send_to_st_button_contract():
+    preset_template = read_project_file('templates/components/grid_presets.html')
+
+    assert 'card-send-st-btn' in preset_template
+    assert '@click.stop="sendPresetToST(item, $event)"' in preset_template
+    assert ':title="getPresetSendToSTTitle(item)"' in preset_template
 
 
 def test_sidebar_template_uses_scrollable_worldinfo_and_preset_category_sections():

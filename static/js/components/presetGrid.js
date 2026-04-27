@@ -2,6 +2,11 @@
  * static/js/components/presetGrid.js
  * 预设网格组件 - 对齐 extensionGrid.js 风格
  */
+import {
+  sendPresetToSillyTavern,
+  isPresetSendToStPending,
+  setPresetSendToStPending,
+} from "../api/presets.js";
 import { downloadFileFromApi } from "../utils/download.js";
 
 export default function presetGrid() {
@@ -9,6 +14,7 @@ export default function presetGrid() {
     items: [],
     isLoading: false,
     dragOver: false,
+    sendingPresetToStIds: {},
     get selectedIds() {
       return this.$store.global.viewState.selectedIds;
     },
@@ -79,6 +85,84 @@ export default function presetGrid() {
 
     getPresetOwnerId(item) {
       return item?.owner_card_id || "";
+    },
+
+    setPresetSendingState(itemId, sending) {
+      const key = String(itemId || "").trim();
+      if (!key) return;
+      if (sending) {
+        this.sendingPresetToStIds = {
+          ...this.sendingPresetToStIds,
+          [key]: true,
+        };
+        return;
+      }
+
+      const next = { ...this.sendingPresetToStIds };
+      delete next[key];
+      this.sendingPresetToStIds = next;
+    },
+
+    canSendPresetToST(item) {
+      const source_folder = String(item?.source_folder || "").trim();
+      const root_scope_key = String(item?.root_scope_key || "").trim();
+      const targetId = String(this.getPresetActionTargetId(item) || "").trim();
+      if (
+        source_folder.includes("global-alt::") ||
+        source_folder === "st_openai_preset_dir" ||
+        root_scope_key === "st_openai_preset_dir" ||
+        String(item?.id || "").startsWith("global-alt::") ||
+        targetId.startsWith("global-alt::")
+      ) {
+        return false;
+      }
+      return item?.preset_kind === "openai";
+    },
+
+    isSendingPresetToST(itemId) {
+      return (
+        !!this.sendingPresetToStIds[String(itemId)] ||
+        isPresetSendToStPending(itemId)
+      );
+    },
+
+    getPresetSendToSTTitle(item) {
+      const targetId = this.getPresetActionTargetId(item);
+      if (!this.canSendPresetToST(item)) {
+        return "仅 OpenAI/对话补全预设可发送到 ST";
+      }
+      if (this.isSendingPresetToST(targetId)) return "正在发送到 ST";
+      if (Number(item?.last_sent_to_st || 0) > 0) {
+        return `已发送到 ST：${new Date(item.last_sent_to_st * 1000).toLocaleString()}`;
+      }
+      return "发送到 ST（对话补全预设，同名将直接覆盖 ST 中现有预设）";
+    },
+
+    applyPresetSentState(detail) {
+      if (!detail?.id) return;
+      const sentAt = Number(detail.last_sent_to_st || 0);
+      const patchItems = (items) => {
+        if (!Array.isArray(items)) return items;
+        let changed = false;
+        const nextItems = items.map((item) => {
+          const targetId = this.getPresetActionTargetId(item);
+          if (
+            !item ||
+            (item.id !== detail.id && targetId !== detail.id)
+          ) {
+            return item;
+          }
+          changed = true;
+          return {
+            ...item,
+            last_sent_to_st: sentAt,
+          };
+        });
+        return changed ? nextItems : items;
+      };
+
+      this.items = patchItems(this.items);
+      this.$store.global.presetList = patchItems(this.$store.global.presetList);
     },
 
     getPresetItemById(id) {
@@ -267,6 +351,20 @@ export default function presetGrid() {
         this.moveSelectedPresets(e.detail?.target_category || "");
       });
 
+      window.addEventListener("preset-sent-to-st", (e) => {
+        this.applyPresetSentState(e.detail || {});
+      });
+
+      window.addEventListener("preset-send-to-st-pending", (e) => {
+        setPresetSendToStPending(e.detail?.id, true);
+        this.setPresetSendingState(e.detail?.id, true);
+      });
+
+      window.addEventListener("preset-send-to-st-finished", (e) => {
+        setPresetSendToStPending(e.detail?.id, false);
+        this.setPresetSendingState(e.detail?.id, false);
+      });
+
       // 初始加载
       if (this.$store.global.currentMode === "presets") {
         this.fetchItems();
@@ -421,6 +519,44 @@ export default function presetGrid() {
         });
       } catch (err) {
         this.$store.global.showToast(err.message || "导出失败", "error");
+      }
+    },
+
+    async sendPresetToST(item, event = null) {
+      event?.stopPropagation?.();
+      const targetId = this.getPresetActionTargetId(item);
+      if (!targetId) return;
+      if (!this.canSendPresetToST(item)) return;
+      if (isPresetSendToStPending(targetId)) return;
+
+      const key = String(targetId);
+      setPresetSendToStPending(key, true);
+      window.dispatchEvent(new CustomEvent("preset-send-to-st-pending", {
+        detail: { id: key, sending: true },
+      }));
+
+      try {
+        const res = await sendPresetToSillyTavern({ id: targetId });
+        if (res?.success) {
+          const sentDetail = {
+            id: key,
+            last_sent_to_st: Number(res.last_sent_to_st || Date.now() / 1000),
+          };
+          this.applyPresetSentState(sentDetail);
+          window.dispatchEvent(new CustomEvent("preset-sent-to-st", {
+            detail: sentDetail,
+          }));
+          this.$store.global.showToast("🚀 已发送到 ST", 1800);
+        } else {
+          this.$store.global.showToast(`❌ ${res?.msg || "发送失败"}`, 2600);
+        }
+      } catch (error) {
+        this.$store.global.showToast(`❌ ${error?.message || "发送失败"}`, 2600);
+      } finally {
+        setPresetSendToStPending(key, false);
+        window.dispatchEvent(new CustomEvent("preset-send-to-st-finished", {
+          detail: { id: key, sending: false },
+        }));
       }
     },
 

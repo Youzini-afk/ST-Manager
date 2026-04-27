@@ -70,6 +70,27 @@ def extract_media_block(css_source, media_query):
     return css_source[block_start + 1:index - 1]
 
 
+def extract_js_function_block(source, signature):
+    start = source.find(signature)
+    assert start != -1
+
+    block_start = source.find('{', start)
+    assert block_start != -1
+
+    depth = 1
+    index = block_start + 1
+    while depth > 0 and index < len(source):
+        current_char = source[index]
+        if current_char == '{':
+            depth += 1
+        elif current_char == '}':
+            depth -= 1
+        index += 1
+
+    assert depth == 0
+    return source[start:index]
+
+
 def run_preset_detail_reader_runtime_check(script_body):
     source_path = PROJECT_ROOT / 'static/js/components/presetDetailReader.js'
     node_script = textwrap.dedent(
@@ -87,6 +108,23 @@ def run_preset_detail_reader_runtime_check(script_body):
             return globalThis.getPresetDetail(...args);
           }}
           return {{ success: true, preset: {{}} }};
+        }};
+
+        let __sendPresetToSillyTavernImpl = async () => ({{ success: true, last_sent_to_st: 0 }});
+        const sendPresetToSillyTavern = (...args) => __sendPresetToSillyTavernImpl(...args);
+        globalThis.__setSendPresetToSillyTavern = (fn) => {{
+          __sendPresetToSillyTavernImpl = fn;
+        }};
+        const __presetSendToStInFlightIds = new Set();
+        const isPresetSendToStPending = (presetId) => __presetSendToStInFlightIds.has(String(presetId || '').trim());
+        const setPresetSendToStPending = (presetId, sending) => {{
+          const key = String(presetId || '').trim();
+          if (!key) return;
+          if (sending) {{
+            __presetSendToStInFlightIds.add(key);
+            return;
+          }}
+          __presetSendToStInFlightIds.delete(key);
         }};
         const apiSavePresetExtensions = async () => ({{ success: true }});
         const clearActiveRuntimeContext = () => {{}};
@@ -455,6 +493,40 @@ def test_preset_detail_reader_js_exposes_mobile_header_state_and_helpers():
     assert 'getMobileHeaderCountLabel() {' in source
 
 
+def test_preset_detail_reader_js_exposes_send_to_st_contracts():
+    source = read_project_file('static/js/components/presetDetailReader.js')
+    can_send_block = extract_js_function_block(source, 'canSendActivePresetToST() {')
+
+    assert 'sendPresetToSillyTavern,' in source
+    assert 'isSendingPresetToST: false,' in source
+    assert 'canSendActivePresetToST() {' in source
+    assert 'getActivePresetSendToSTTitle() {' in source
+    assert 'async sendActivePresetToST() {' in source
+    assert 'window.dispatchEvent(new CustomEvent("preset-sent-to-st", {' in source or "window.dispatchEvent(new CustomEvent('preset-sent-to-st', {" in source
+    assert 'id:' in source
+    assert 'last_sent_to_st:' in source
+
+    assert ('global-alt::' in can_send_block) or ('st_openai_preset_dir' in can_send_block)
+    assert (
+        'source_folder.includes("global-alt::")' in can_send_block
+        or "source_folder.includes('global-alt::')" in can_send_block
+        or 'startsWith("global-alt::")' in can_send_block
+        or "startsWith('global-alt::')" in can_send_block
+        or 'source_folder === "st_openai_preset_dir"' in can_send_block
+        or "source_folder === 'st_openai_preset_dir'" in can_send_block
+        or 'source_folder !== "st_openai_preset_dir"' in can_send_block
+        or "source_folder !== 'st_openai_preset_dir'" in can_send_block
+    )
+
+
+def test_preset_detail_reader_template_exposes_send_to_st_buttons_contracts():
+    source = read_project_file('templates/modals/detail_preset_popup.html')
+
+    assert '@click="sendActivePresetToST()"' in source
+    assert 'x-show="canSendActivePresetToST()"' in source
+    assert '发送到 ST（对话补全预设，同名将直接覆盖 ST 中现有预设）' in source
+
+
 def test_preset_detail_reader_css_adds_mobile_hidden_header_contracts():
     source = read_project_file('static/css/modules/modal-detail.css')
     root_block = extract_exact_css_block(source, '.preset-reader-modal')
@@ -603,6 +675,55 @@ def test_preset_detail_reader_runtime_reveals_mobile_header_for_sidebar_and_more
     )
 
 
+def test_preset_detail_reader_runtime_tracks_shared_send_state_for_active_preset():
+    run_preset_detail_reader_runtime_check(
+        """
+        const listeners = {};
+        globalThis.window = {
+          addEventListener(type, handler) {
+            listeners[type] = listeners[type] || [];
+            listeners[type].push(handler);
+          },
+          removeEventListener(type, handler) {
+            listeners[type] = (listeners[type] || []).filter((entry) => entry !== handler);
+          },
+          dispatchEvent(event) {
+            (listeners[event.type] || []).forEach((handler) => handler(event));
+            return true;
+          },
+        };
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(name, options = {}) {
+            this.type = name;
+            this.detail = options.detail;
+          }
+        };
+
+        reader.$store = { global: { deviceType: 'desktop', showToast() {} } };
+        reader.init();
+        reader.activePresetDetail = {
+          id: 'preset-1',
+          preset_kind: 'openai',
+          last_sent_to_st: 0,
+        };
+
+        window.dispatchEvent(new CustomEvent('preset-send-to-st-pending', {
+          detail: { id: 'preset-1', sending: true },
+        }));
+        if (reader.isSendingPresetToST !== true) {
+          throw new Error('expected shared pending event to set active preset sending state');
+        }
+
+        window.dispatchEvent(new CustomEvent('preset-send-to-st-finished', {
+          detail: { id: 'preset-1' },
+        }));
+        if (reader.isSendingPresetToST !== false) {
+          throw new Error('expected shared finished event to clear active preset sending state');
+        }
+        """
+    )
+
+
 def test_preset_detail_reader_runtime_clears_mobile_header_state_on_close():
     run_preset_detail_reader_runtime_check(
         """
@@ -618,6 +739,128 @@ def test_preset_detail_reader_runtime_clears_mobile_header_state_on_close():
 
         if (reader.showMobileSidebar || reader.showRightPanel || reader.showMobileMoreMenu || reader.presetMobileHeaderHidden) {
           throw new Error('expected closeModal to clear mobile header state');
+        }
+        """
+    )
+
+
+def test_preset_detail_reader_runtime_send_active_preset_keeps_submitted_id_after_async_switch():
+    run_preset_detail_reader_runtime_check(
+        """
+        const events = [];
+        let resolveSend;
+        globalThis.window = {
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent(event) {
+            events.push(event);
+            return true;
+          },
+        };
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(name, options = {}) {
+            this.type = name;
+            this.detail = options.detail;
+          }
+        };
+
+        globalThis.__setSendPresetToSillyTavern(() => new Promise((resolve) => {
+          resolveSend = resolve;
+        }));
+
+        reader.$store = { global: { showToast() {} } };
+        reader.activePresetDetail = {
+          id: 'preset-1',
+          preset_kind: 'openai',
+          last_sent_to_st: 0,
+        };
+
+        const pending = reader.sendActivePresetToST();
+        reader.activePresetDetail = {
+          id: 'preset-2',
+          preset_kind: 'openai',
+          last_sent_to_st: 0,
+        };
+
+        resolveSend({ success: true, last_sent_to_st: 321.5 });
+        await pending;
+
+        if (reader.activePresetDetail.id !== 'preset-2') {
+          throw new Error(`expected reader to keep switched preset active, got ${reader.activePresetDetail.id}`);
+        }
+        if (Number(reader.activePresetDetail.last_sent_to_st || 0) !== 0) {
+          throw new Error(`expected switched preset timestamp to stay unchanged, got ${reader.activePresetDetail.last_sent_to_st}`);
+        }
+
+        const sentEvent = events.find((event) => event.type === 'preset-sent-to-st');
+        if (!sentEvent) {
+          throw new Error('expected sendActivePresetToST to dispatch preset-sent-to-st event');
+        }
+        if (sentEvent.detail?.id !== 'preset-1') {
+          throw new Error(`expected event to report submitted preset id, got ${sentEvent.detail?.id}`);
+        }
+        if (Number(sentEvent.detail?.last_sent_to_st || 0) !== 321.5) {
+          throw new Error(`expected event to report returned timestamp, got ${sentEvent.detail?.last_sent_to_st}`);
+        }
+        """
+    )
+
+
+def test_preset_detail_reader_runtime_send_active_preset_uses_current_version_id():
+    run_preset_detail_reader_runtime_check(
+        """
+        const sendCalls = [];
+        globalThis.__setSendPresetToSillyTavern(async (payload) => {
+          sendCalls.push(payload);
+          return { success: true, last_sent_to_st: 654.25 };
+        });
+
+        const events = [];
+        globalThis.window = {
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent(event) {
+            events.push(event);
+            return true;
+          },
+        };
+        globalThis.CustomEvent = class CustomEvent {
+          constructor(name, options = {}) {
+            this.type = name;
+            this.detail = options.detail;
+          }
+        };
+
+        reader.$store = { global: { showToast() {} } };
+        reader.activePresetDetail = {
+          id: 'global::companion-v2.json',
+          preset_kind: 'openai',
+          last_sent_to_st: 0,
+          family_info: {
+            entry_type: 'family',
+            default_version_id: 'global::companion-v1.json',
+          },
+          current_version: {
+            id: 'global::companion-v2.json',
+            version_label: 'V2',
+          },
+          available_versions: [
+            { id: 'global::companion-v1.json', version_label: 'V1', is_default_version: true },
+            { id: 'global::companion-v2.json', version_label: 'V2', is_default_version: false },
+          ],
+        };
+
+        await reader.sendActivePresetToST();
+
+        if (sendCalls.length !== 1 || sendCalls[0].id !== 'global::companion-v2.json') {
+          throw new Error(`expected detail send to use current active version id, got ${JSON.stringify(sendCalls)}`);
+        }
+        const sentEvent = events.find((event) => event.type === 'preset-sent-to-st');
+        if (!sentEvent || sentEvent.detail?.id !== 'global::companion-v2.json') {
+          throw new Error(`expected sent event to keep current active version id, got ${JSON.stringify(sentEvent?.detail || null)}`);
+        }
+        if (Number(reader.activePresetDetail.last_sent_to_st || 0) !== 654.25) {
+          throw new Error(`expected active version timestamp to update, got ${reader.activePresetDetail.last_sent_to_st}`);
         }
         """
     )
