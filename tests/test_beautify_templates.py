@@ -303,10 +303,26 @@ def test_beautify_grid_template_simplifies_mobile_fullscreen_shell_and_uses_rese
 def test_beautify_grid_template_places_mobile_fullscreen_shell_outside_package_only_branch():
     template = read_project_file('templates/components/grid_beautify.html')
 
-    assert re.search(
-        r'''<template x-if="beautifyWorkspace !== 'settings' && activePackage">[\s\S]*?savePackageIdentityOverrides\(\)[\s\S]*?</template>\s*<template x-if="showMobileFullscreen">''',
-        template,
+    package_branch_index = template.index(
+        '<template x-if="beautifyWorkspace !== \'settings\' && activePackage">'
     )
+    mobile_fullscreen_index = template.index('<template x-if="showMobileFullscreen">')
+    package_branch = template[package_branch_index:mobile_fullscreen_index]
+
+    assert '{% macro package_detail_cards() %}' in template
+    assert 'savePackageIdentityOverrides()' in template
+    assert '{{ package_detail_cards() }}' in package_branch
+    assert 'beautify-package-detail-drawer' in package_branch
+
+
+def test_beautify_grid_template_adds_package_detail_collapse_toggle_and_reopen_affordance():
+    template = read_project_file('templates/components/grid_beautify.html')
+
+    assert '@click="togglePackageDetailCollapsed()"' in template or "@click='togglePackageDetailCollapsed()'" in template
+    assert '展开详情' in template
+    assert '收起详情' in template
+    assert 'openPackageDetailDrawer()' in template
+    assert 'beautify-package-detail-drawer' in template
 
 
 def test_beautify_layout_css_keeps_mobile_fullscreen_stage_without_drawer_rules():
@@ -537,6 +553,18 @@ def test_beautify_layout_css_keeps_single_column_stage_rows_content_sized():
 
     assert_has_css_declaration(stage_body_block, 'flex', '0 0 auto')
     assert_has_css_declaration(stage_body_block, 'align-content', 'start')
+
+
+def test_beautify_layout_css_supports_package_detail_collapsed_stage_state():
+    css = read_project_file('static/css/modules/view-beautify.css')
+
+    assert '.beautify-stage-body.is-detail-collapsed {' in css
+    collapsed_block = extract_css_block_for_selector(css, '.beautify-stage-body.is-detail-collapsed')
+    assert_has_css_declaration(collapsed_block, 'grid-template-columns', 'minmax(0, 1fr)')
+
+    assert '.beautify-package-detail-reopen {' in css
+    reopen_block = extract_css_block_for_selector(css, '.beautify-package-detail-reopen')
+    assert_has_css_declaration(reopen_block, 'position', 'absolute')
 
 
 def test_beautify_stage_header_actions_keep_delete_button_horizontal():

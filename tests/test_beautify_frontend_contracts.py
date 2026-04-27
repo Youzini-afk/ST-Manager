@@ -1300,6 +1300,8 @@ def test_state_js_keeps_extended_beautify_store_keys():
     assert 'beautifyWorkspace: "packages"' in state_js
     assert 'beautifySelectedScreenshotId: ""' in state_js
     assert 'beautifyStageMode: "preview"' in state_js
+    assert 'beautifyPackageDetailCollapsed: false' in state_js
+    assert 'beautifyPackageDetailDrawerOpen: false' in state_js
     assert 'beautifyGlobalSettings: null' in state_js
 
 
@@ -1692,6 +1694,66 @@ def test_beautify_grid_switching_back_to_packages_realigns_active_variant_with_m
         }
         if (component.$store.global.beautifyActiveVariant?.id !== 'mobile') {
           throw new Error(`expected package workspace to reactivate the mobile variant for the mobile shell, got ${component.$store.global.beautifyActiveVariant?.id}`);
+        }
+        '''
+    )
+
+
+def test_beautify_grid_exposes_package_detail_collapse_state_and_toggle_helpers():
+    run_beautify_grid_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyPackageDetailCollapsed: false,
+            beautifyWorkspace: 'packages',
+            beautifyActiveDetail: { id: 'pkg_v06' },
+          },
+        };
+
+        if (component.packageDetailCollapsed !== false) {
+          throw new Error('expected default collapse state to be false');
+        }
+
+        component.togglePackageDetailCollapsed();
+        if (component.packageDetailCollapsed !== true) {
+          throw new Error('toggle should collapse package details');
+        }
+
+        component.openPackageDetailDrawer();
+        if (component.packageDetailDrawerOpen !== true) {
+          throw new Error('openPackageDetailDrawer should open the overlay drawer');
+        }
+        '''
+    )
+
+
+def test_beautify_grid_forces_package_detail_drawer_closed_when_workspace_switches_to_settings():
+    run_beautify_grid_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            beautifyPackageDetailCollapsed: true,
+            beautifyPackageDetailDrawerOpen: true,
+            beautifyWorkspace: 'packages',
+            beautifyActiveDetail: { id: 'pkg_v06' },
+          },
+        };
+        component.closeMobileFullscreen = () => {};
+        component.closeMobilePreviewAndReset = () => {};
+        component.alignSettingsPreviewDeviceToViewport = () => {};
+        component.fetchGlobalSettings = () => {};
+        component.resolvePackagePreviewPlatform = () => 'pc';
+        component.findVariantForPreviewPlatform = () => null;
+
+        component.switchBeautifyWorkspace('settings');
+
+        if (component.$store.global.beautifyWorkspace !== 'settings') {
+          throw new Error('expected workspace switch to settings');
+        }
+        if (component.packageDetailDrawerOpen !== false) {
+          throw new Error('settings workspace should close the package detail drawer');
         }
         '''
     )

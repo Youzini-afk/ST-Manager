@@ -147,6 +147,24 @@ export default function beautifyGrid() {
       return true;
     },
 
+    get packageDetailCollapsed() {
+      return !!this.$store.global.beautifyPackageDetailCollapsed;
+    },
+
+    set packageDetailCollapsed(val) {
+      this.$store.global.beautifyPackageDetailCollapsed = !!val;
+      return true;
+    },
+
+    get packageDetailDrawerOpen() {
+      return !!this.$store.global.beautifyPackageDetailDrawerOpen;
+    },
+
+    set packageDetailDrawerOpen(val) {
+      this.$store.global.beautifyPackageDetailDrawerOpen = !!val;
+      return true;
+    },
+
     get showMobileFullscreen() {
       return this.mobileFullscreenOpen && this.isMobileFullscreenEnabled();
     },
@@ -596,6 +614,7 @@ export default function beautifyGrid() {
     },
 
     switchBeautifyWorkspace(workspace) {
+      this.closePackageDetailDrawer();
       if (this.mobileFullscreenOpen) {
         this.closeMobilePreviewAndReset();
       } else {
@@ -625,6 +644,28 @@ export default function beautifyGrid() {
         return;
       }
       this.stageMode = nextMode;
+    },
+
+    togglePackageDetailCollapsed() {
+      if (this.workspace !== "packages" || !this.activePackage) {
+        return;
+      }
+      const nextCollapsed = !this.packageDetailCollapsed;
+      this.packageDetailCollapsed = nextCollapsed;
+      if (!nextCollapsed) {
+        this.packageDetailDrawerOpen = false;
+      }
+    },
+
+    openPackageDetailDrawer() {
+      if (this.workspace !== "packages" || !this.activePackage) {
+        return;
+      }
+      this.packageDetailDrawerOpen = true;
+    },
+
+    closePackageDetailDrawer() {
+      this.packageDetailDrawerOpen = false;
     },
 
     selectScreenshot(screenshotId) {

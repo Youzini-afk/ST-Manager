@@ -333,6 +333,8 @@ export function initState() {
     beautifyPreviewDevice: "pc",
     beautifyMobileFullscreenOpen: false,
     beautifyPreviewResetToken: 0,
+    beautifyPackageDetailCollapsed: false,
+    beautifyPackageDetailDrawerOpen: false,
     beautifyGlobalSettings: null,
     beautifyActiveDetail: null,
     beautifyActiveVariant: null,
