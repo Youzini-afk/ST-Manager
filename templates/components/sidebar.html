@@ -117,7 +117,7 @@
     x-show="currentMode === 'cards' && visibleSidebar"
     class="flex-1 card-sidebar-shell"
     x-ref="cardSidebarShell"
-    :style="desktopTagPaneStyle"
+    :style="cardTagPaneBasisStyle ? {'--card-tags-pane-basis': cardTagPaneBasisStyle} : {}"
   >
     <div class="card-sidebar-categories">
       <div class="sidebar-section-header">

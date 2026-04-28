@@ -159,6 +159,144 @@ def run_layout_runtime_check(script_body):
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def run_sidebar_runtime_check(script_body):
+    source_path = PROJECT_ROOT / 'static/js/components/sidebar.js'
+    node_script = textwrap.dedent(
+        f"""
+        import {{ readFileSync }} from 'node:fs';
+
+        const sourcePath = {json.dumps(str(source_path))};
+        let source = readFileSync(sourcePath, 'utf8');
+        source = source.replace(/^import[\\s\\S]*?;\\r?\\n/gm, '');
+        source = source.replace('export default function sidebar()', 'function sidebar()');
+
+        const stubs = `
+        const createFolder = async () => ({{ success: true }});
+        const moveFolder = async () => ({{ success: true }});
+        const moveCard = async () => ({{ success: true }});
+        const migrateLorebooks = async () => ({{ count: 0 }});
+        globalThis.fetch = async () => ({{ json: async () => ({{ success: true }}) }});
+        globalThis.window = {{
+          addEventListener() {{}},
+          removeEventListener() {{}},
+          dispatchEvent() {{}},
+        }};
+        globalThis.document = {{
+          body: {{ style: {{}} }},
+          querySelectorAll() {{ return []; }},
+        }};
+        globalThis.localStorage = {{
+          getItem() {{ return null; }},
+          setItem() {{}},
+          removeItem() {{}},
+        }};
+        globalThis.requestAnimationFrame = (cb) => {{ cb(); return 1; }};
+        globalThis.cancelAnimationFrame = () => {{}};
+        globalThis.CustomEvent = class CustomEvent {{
+          constructor(type, options = {{}}) {{
+            this.type = type;
+            this.detail = options.detail;
+          }}
+        }};
+        `;
+
+        const module = await import(
+          'data:text/javascript,' + encodeURIComponent(stubs + source + '\\nexport default sidebar;'),
+        );
+
+        {textwrap.dedent(script_body)}
+        """
+    )
+    result = subprocess.run(
+        ['node', '--input-type=module', '-e', node_script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_sidebar_card_tag_basis_binding_returns_plain_value_for_non_card_modes():
+    run_sidebar_runtime_check(
+        '''
+        const component = module.default();
+        component.$store = {
+          global: {
+            currentMode: 'regex',
+            visibleSidebar: true,
+            deviceType: 'desktop',
+            viewState: {
+              filterCategory: '',
+              filterTags: [],
+              draggedCards: [],
+              draggedFolder: null,
+              selectedIds: [],
+              excludedTags: [],
+            },
+            allFoldersList: [],
+            isolatedCategories: [],
+            allTagsPool: [],
+            tagIndexActiveCategory: '',
+            wiAllFolders: [],
+            presetAllFolders: [],
+          },
+        };
+
+        component.tagPaneRatio = 0.34;
+        if (component.cardTagPaneBasisStyle !== null) {
+          throw new Error(`expected null for non-card mode, got ${component.cardTagPaneBasisStyle}`);
+        }
+        if (typeof component.desktopTagPaneStyle !== 'undefined') {
+          throw new Error(`expected legacy desktopTagPaneStyle whole-style contract to be removed, got ${component.desktopTagPaneStyle}`);
+        }
+        '''
+    )
+
+
+def test_sidebar_card_tag_basis_style_returns_percent_only_for_active_card_splitter():
+    run_sidebar_runtime_check(
+        '''
+        const baseStore = {
+          global: {
+            currentMode: 'cards',
+            visibleSidebar: true,
+            deviceType: 'desktop',
+            viewState: {
+              filterCategory: '',
+              filterTags: [],
+              draggedCards: [],
+              draggedFolder: null,
+              selectedIds: [],
+              excludedTags: [],
+            },
+            allFoldersList: [],
+            isolatedCategories: [],
+            allTagsPool: [],
+            tagIndexActiveCategory: '',
+            wiAllFolders: [],
+            presetAllFolders: [],
+          },
+        };
+
+        const component = module.default();
+        component.$store = baseStore;
+        component.tagPaneRatio = 0.34;
+        component.tagsSectionExpanded = false;
+
+        if (component.cardTagPaneBasisStyle !== null) {
+          throw new Error(`expected null when splitter is inactive, got ${component.cardTagPaneBasisStyle}`);
+        }
+
+        component.tagsSectionExpanded = true;
+
+        if (component.cardTagPaneBasisStyle !== '34.00%') {
+          throw new Error(`expected 34.00% for active cards desktop splitter, got ${component.cardTagPaneBasisStyle}`);
+        }
+        '''
+    )
+
+
 def run_render_runtime_check(script_body):
     source_path = PROJECT_ROOT / 'static/js/runtime/renderRuntime.js'
     node_script = textwrap.dedent(

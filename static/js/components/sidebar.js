@@ -186,9 +186,9 @@ export default function sidebar() {
       );
     },
 
-    get desktopTagPaneStyle() {
-      if (!this.shouldShowCardTagSplitter) return "";
-      return `--card-tags-pane-basis: ${(this.tagPaneRatio * 100).toFixed(2)}%;`;
+    get cardTagPaneBasisStyle() {
+      if (!this.shouldShowCardTagSplitter) return null;
+      return `${(this.tagPaneRatio * 100).toFixed(2)}%`;
     },
 
     get visibleSidebar() {

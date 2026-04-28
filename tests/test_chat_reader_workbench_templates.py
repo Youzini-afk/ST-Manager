@@ -1975,6 +1975,22 @@ def test_card_sidebar_template_adds_stable_split_layout_hooks():
     assert 'tagIndexVisibleTags.slice(0, dynamicVisibleTagCount)' in compact_template
 
 
+def test_card_sidebar_root_uses_css_variable_binding_without_full_style_attribute_override():
+    sidebar_template = read_project_file('templates/components/sidebar.html')
+    root_match = re.search(
+        r'<div\s+[^>]*x-show="currentMode === \'cards\' && visibleSidebar"[^>]*class="flex-1 card-sidebar-shell"[^>]*>',
+        sidebar_template,
+        re.DOTALL,
+    )
+
+    assert root_match is not None
+    root_element = compact_whitespace(root_match.group(0))
+
+    assert ':style="desktopTagPaneStyle"' not in sidebar_template
+    assert '--card-tags-pane-basis' in root_element
+    assert 'cardTagPaneBasisStyle' in root_element
+
+
 def test_card_sidebar_template_removes_expansion_only_lower_pane_layout_styles():
     sidebar_template = read_project_file('templates/components/sidebar.html')
     compact_template = compact_whitespace(sidebar_template)
@@ -2028,7 +2044,7 @@ def test_sidebar_js_supports_desktop_tag_pane_resize_and_dynamic_visible_tag_cou
     assert 'TAG_PANE_RATIO_STORAGE_KEY = "st_manager_card_tags_split_ratio"' in sidebar_source
     assert 'dynamicVisibleTagCount: DEFAULT_VISIBLE_TAG_COUNT' in sidebar_source
     assert 'get shouldShowCardTagSplitter() {' in sidebar_source
-    assert 'get desktopTagPaneStyle() {' in sidebar_source
+    assert 'get cardTagPaneBasisStyle() {' in sidebar_source
     assert 'scheduleTagPaneLayoutSync() {' in sidebar_source
     assert 'computeDynamicVisibleTagCount() {' in sidebar_source
     assert 'beginTagPaneResize(event) {' in sidebar_source
@@ -2048,8 +2064,8 @@ def test_sidebar_js_supports_desktop_tag_pane_resize_and_dynamic_visible_tag_cou
 def test_sidebar_runtime_resizes_desktop_tag_pane_and_persists_ratio():
     run_sidebar_runtime_check(
         """
-        if (component.desktopTagPaneStyle !== '--card-tags-pane-basis: 34.00%;') {
-          throw new Error(`Expected desktop style to reflect default ratio, got ${component.desktopTagPaneStyle}`);
+        if (component.cardTagPaneBasisStyle !== '34.00%') {
+          throw new Error(`Expected desktop style to reflect default ratio, got ${component.cardTagPaneBasisStyle}`);
         }
 
         const visibleTagCount = component.computeDynamicVisibleTagCount();
