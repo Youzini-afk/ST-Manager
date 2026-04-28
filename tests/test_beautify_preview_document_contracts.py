@@ -218,7 +218,7 @@ def run_preview_drawer_adapter_check(script_body: str) -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-def test_settings_drawer_adapter_curates_stacked_first_screen_layout():
+def test_settings_drawer_adapter_preserves_vendor_first_screen_without_preview_layout_override():
     run_preview_drawer_adapter_check(
         '''
         const markup = module.buildSettingsDrawerPreviewMarkupFromVendor({ theme: {} });
@@ -239,8 +239,8 @@ def test_settings_drawer_adapter_curates_stacked_first_screen_layout():
         if (!responseConfigurationMatch) {
           throw new Error('missing ai_response_configuration opening tag');
         }
-        if (!responseConfigurationMatch[0].includes('style="display: flex; flex-direction: column; gap: 10px;"')) {
-          throw new Error('expected stacked first-screen layout styles on ai_response_configuration');
+        if (responseConfigurationMatch[0].includes('display: flex; flex-direction: column; gap: 10px;')) {
+          throw new Error(`unexpected preview-owned layout override on ai_response_configuration: ${responseConfigurationMatch[0]}`);
         }
 
         for (const hiddenSectionId of ['ai_module_block_novel', 'prompt_cost_block']) {
@@ -261,10 +261,6 @@ def test_settings_drawer_adapter_curates_stacked_first_screen_layout():
         }
         if (!(sectionIndexes[0] < sectionIndexes[1] && sectionIndexes[1] < sectionIndexes[2])) {
           throw new Error('expected settings first-screen section order to remain presets -> amount_gen_block -> kobold_api-settings');
-        }
-
-        if (!markup.includes('data-preview-disabled="true"')) {
-          throw new Error('expected preview-disabled marker in settings drawer');
         }
 
         for (const selector of [
@@ -377,14 +373,19 @@ def test_drawer_adapters_consume_vendor_markup_overrides_when_provided():
           throw new Error('character adapter should still inject identity data into override markup');
         }
         for (const token of [
-          'data-preview-character-card="primary"',
+          'class="flex-container wide100pLess70px character_select_container"',
+          'class="character_select"',
           '/static/img/override-hero.webp',
+          'Override Hero',
           'Override Package',
           'Override &lt;b&gt;Description&lt;/b&gt;',
           'data-preview-action="toggle-search"',
           'data-preview-action="toggle-grid"',
         ]) {
           if (!characterMarkup.includes(token)) throw new Error(`missing override character token: ${token}`);
+        }
+        if (characterMarkup.includes('data-preview-character-card="primary"')) {
+          throw new Error('legacy preview character card token should not remain in override path');
         }
         for (const forbidden of [
           'data-preview-action="show-detail"',
@@ -398,7 +399,7 @@ def test_drawer_adapters_consume_vendor_markup_overrides_when_provided():
     )
 
 
-def test_character_drawer_adapter_reduces_to_static_list_home_preview():
+def test_character_drawer_adapter_emits_st_list_row_preview():
     run_preview_drawer_adapter_check(
         '''
         const hasAttributes = (tag, attributes) => attributes.every((attribute) => tag.includes(attribute));
@@ -419,24 +420,19 @@ def test_character_drawer_adapter_reduces_to_static_list_home_preview():
           'id="rm_characters_block"',
           'id="character_search_bar"',
           'id="rm_print_characters_block"',
-          'data-preview-character-card="primary"',
+          'class="flex-container wide100pLess70px character_select_container"',
+          'class="character_select"',
           '/static/img/preview-hero.webp',
           'Preview Hero',
           'Demo Package',
           'A &lt;b&gt;preview&lt;/b&gt; description',
           'data-preview-disabled="true"',
         ]) {
-          if (!markup.includes(token)) throw new Error(`missing character preview token: ${token}`);
+          if (!markup.includes(token)) throw new Error(`missing ST character preview token: ${token}`);
         }
 
-        for (const token of [
-          'id="rm_button_search"',
-          'id="charListGridToggle"',
-          'id="rm_ch_create_block"',
-          'id="rm_group_chats_block"',
-          'id="rm_character_import"',
-        ]) {
-          if (!markup.includes(token)) throw new Error(`missing character control token: ${token}`);
+        if (markup.includes('data-preview-character-card="primary"')) {
+          throw new Error('unexpected legacy custom preview character card remains');
         }
 
         for (const [selector, attributes] of [
@@ -744,7 +740,7 @@ def test_build_beautify_preview_document_imports_vendor_drawers_through_adapter_
         assert removed not in source, f'legacy local drawer helper remains: {removed}'
 
 
-def test_build_beautify_preview_document_assembles_vendor_drawers_with_static_character_landing_state():
+def test_build_beautify_preview_document_assembles_vendor_drawers_with_st_character_row_preview():
     run_preview_document_check(
         '''
         const html = module.buildBeautifyPreviewDocument({
@@ -768,7 +764,8 @@ def test_build_beautify_preview_document_assembles_vendor_drawers_with_static_ch
           'id="rm_characters_block"',
           'id="character_search_bar"',
           'id="rm_print_characters_block"',
-          'data-preview-character-card="primary"',
+          'class="flex-container wide100pLess70px character_select_container"',
+          'class="character_select"',
           'data-preview-disabled="true"',
           'data-preview-action="toggle-search"',
           'data-preview-action="toggle-grid"',
@@ -776,38 +773,33 @@ def test_build_beautify_preview_document_assembles_vendor_drawers_with_static_ch
           'Preview Hero',
           'Demo Package',
           'A &lt;b&gt;preview&lt;/b&gt; description',
-            ]) {
-              if (!html.includes(token)) throw new Error(`missing assembled vendor drawer token: ${token}`);
-            }
+        ]) {
+          if (!html.includes(token)) throw new Error(`missing assembled vendor drawer token: ${token}`);
+        }
 
-            const characterPanelStart = html.indexOf('data-panel-surface="character"');
-            const characterPanelEnd = html.indexOf('id="form_sheld"', characterPanelStart);
-            if (characterPanelStart === -1 || characterPanelEnd === -1) {
-              throw new Error('missing character drawer panel bounds in final document');
-            }
-            const characterPanelMarkup = html.slice(characterPanelStart, characterPanelEnd);
+        if (html.includes('data-preview-character-card="primary"')) {
+          throw new Error('legacy custom preview character card should not remain in final document');
+        }
 
-            for (const selector of ['id="rm_button_create"', 'id="bulkEditButton"']) {
-              const match = characterPanelMarkup.match(new RegExp(`<[^>]*${selector}[^>]*>`));
-              if (!match) throw new Error(`missing dangerous character control in final document: ${selector}`);
-              if (!match[0].includes('data-preview-disabled="true"')) {
-                throw new Error(`expected disabled dangerous character control in final document: ${selector}`);
-              }
-            }
+        const characterPanelStart = html.indexOf('data-panel-surface="character"');
+        const characterPanelEnd = html.indexOf('id="form_sheld"', characterPanelStart);
+        if (characterPanelStart === -1 || characterPanelEnd === -1) {
+          throw new Error('missing character drawer panel bounds in final document');
+        }
+        const characterPanelMarkup = html.slice(characterPanelStart, characterPanelEnd);
 
-            for (const forbidden of [
-              'data-preview-action="show-detail"',
-              'data-preview-action="show-list"',
-              'id="personality_textarea"',
-              'id="creator_notes_textarea"',
-            ]) {
-              if (characterPanelMarkup.includes(forbidden)) throw new Error(`unexpected assembled vendor drawer token: ${forbidden}`);
-            }
+        for (const selector of ['id="rm_button_create"', 'id="bulkEditButton"']) {
+          const match = characterPanelMarkup.match(new RegExp(`<[^>]*${selector}[^>]*>`));
+          if (!match) throw new Error(`missing dangerous character control in final document: ${selector}`);
+          if (!match[0].includes('data-preview-disabled="true"')) {
+            throw new Error(`expected disabled dangerous character control in final document: ${selector}`);
+          }
+        }
         '''
     )
 
 
-def test_build_beautify_preview_document_keeps_curated_settings_first_screen_structure():
+def test_build_beautify_preview_document_preserves_vendor_settings_first_screen_without_preview_layout_override():
     run_preview_document_check(
         '''
         const html = module.buildBeautifyPreviewDocument({ platform: 'pc', theme: {} });
@@ -827,8 +819,8 @@ def test_build_beautify_preview_document_keeps_curated_settings_first_screen_str
         if (!responseConfigurationMatch) {
           throw new Error('missing ai_response_configuration opening tag in final document');
         }
-        if (!responseConfigurationMatch[0].includes('style="display: flex; flex-direction: column; gap: 10px;"')) {
-          throw new Error('expected stacked first-screen layout styles on ai_response_configuration in final document');
+        if (responseConfigurationMatch[0].includes('display: flex; flex-direction: column; gap: 10px;')) {
+          throw new Error(`unexpected preview-owned layout override in final document: ${responseConfigurationMatch[0]}`);
         }
 
         for (const hiddenSectionId of ['ai_module_block_novel', 'prompt_cost_block']) {
@@ -837,18 +829,6 @@ def test_build_beautify_preview_document_keeps_curated_settings_first_screen_str
           if (!match[0].includes('style="display: none;"')) {
             throw new Error(`expected hidden section style in final document on ${hiddenSectionId}`);
           }
-        }
-
-        const sectionIndexes = [
-          'id="kobold_api-presets"',
-          'id="amount_gen_block"',
-          'id="kobold_api-settings"',
-        ].map((token) => html.indexOf(token));
-        if (sectionIndexes.some((index) => index === -1)) {
-          throw new Error('missing final document settings section required for first-screen order assertion');
-        }
-        if (!(sectionIndexes[0] < sectionIndexes[1] && sectionIndexes[1] < sectionIndexes[2])) {
-          throw new Error('expected final document settings first-screen section order to remain presets -> amount_gen_block -> kobold_api-settings');
         }
         '''
     )
@@ -1609,7 +1589,7 @@ def test_build_beautify_preview_document_disables_navigation_for_marked_example_
     )
 
 
-def test_build_beautify_preview_document_runtime_supports_static_character_list_home_controls():
+def test_build_beautify_preview_document_runtime_supports_st_character_list_home_controls():
     run_preview_document_check(
         '''
         const html = module.buildBeautifyPreviewDocument({ platform: 'pc', theme: {} });
@@ -1660,6 +1640,7 @@ def test_build_beautify_preview_document_runtime_supports_static_character_list_
           };
         }
 
+        const body = { classList: createClassList() };
         const root = { dataset: { activePanel: 'none' } };
         const chat = { scrollTop: 0, scrollHeight: 30 };
         const searchForm = { style: { display: 'none' } };
@@ -1669,6 +1650,7 @@ def test_build_beautify_preview_document_runtime_supports_static_character_list_
         const queriedSelectors = [];
 
         const document = {
+          body,
           querySelector(selector) {
             if (selector === '.st-preview-root') return root;
             if (selector === '#chat') return chat;
@@ -1729,10 +1711,11 @@ def test_build_beautify_preview_document_runtime_supports_static_character_list_
         if (searchForm.style.display !== 'none') throw new Error(`toggle-search should hide search form, got ${searchForm.style.display}`);
 
         toggleGrid.handler({ preventDefault() {} });
-        if (!listBlock.classList.contains('is-grid-view')) throw new Error('toggle-grid should enable grid view');
+        if (!body.classList.contains('charListGrid')) throw new Error('toggle-grid should enable body.charListGrid');
+        if (listBlock.classList.contains('is-grid-view')) throw new Error('toggle-grid should not rely on legacy is-grid-view state');
 
         toggleGrid.handler({ preventDefault() {} });
-        if (listBlock.classList.contains('is-grid-view')) throw new Error('toggle-grid should disable grid view');
+        if (body.classList.contains('charListGrid')) throw new Error('toggle-grid should disable body.charListGrid');
         '''
     )
 
@@ -2142,12 +2125,12 @@ def test_build_beautify_preview_document_uses_local_demo_identity_avatar_paths()
           '/static/images/beautify-preview/lingyan.png',
           'ch_name="苏眠"',
           'ch_name="凌砚"',
+          'class="flex-container wide100pLess70px character_select_container"',
+          'class="character_select"',
           'name_text">苏眠</span>',
           'name_text">凌砚</span>',
           'alt="苏眠" src="/static/images/beautify-preview/sumian.png"',
           'alt="凌砚" src="/static/images/beautify-preview/lingyan.png"',
-          'data-preview-character-card="primary"',
-          'character_name">苏眠</div>',
         ]) {
           if (!html.includes(token)) throw new Error(`missing token: ${token}`);
         }

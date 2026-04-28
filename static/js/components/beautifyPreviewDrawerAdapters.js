@@ -67,9 +67,6 @@ export function buildSettingsDrawerPreviewMarkupFromVendor({ theme = {}, vendorM
 
     let markup = vendorMarkup;
 
-    markup = addAttributesToOpeningTag(markup, 'id="ai_response_configuration"', {
-        style: 'display: flex; flex-direction: column; gap: 10px;',
-    });
     markup = addAttributesToOpeningTag(markup, 'id="ai_module_block_novel"', { style: 'display: none;' });
     markup = addAttributesToOpeningTag(markup, 'id="prompt_cost_block"', { style: 'display: none;' });
 
@@ -116,11 +113,15 @@ export function buildCharacterDrawerPreviewMarkupFromVendor({
     let markup = vendorMarkup;
 
     const cardMarkup = `
-                            <div class="menu_button" data-preview-character-card="primary">
-                                <div class="avatar"><img src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(name)}"></div>
-                                <div class="character_name">${escapeHtml(name)}</div>
-                                <div class="character_package">${escapeHtml(packageName)}</div>
-                                <div class="character_description">${escapeHtml(description)}</div>
+                            <div class="flex-container wide100pLess70px character_select_container">
+                                <div class="character_select" chid="preview-character" data-preview-character="primary">
+                                    <div class="avatar"><img src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(name)}"></div>
+                                    <div class="character_name_block">
+                                        <span class="ch_name">${escapeHtml(name)}</span>
+                                        <span class="character_version">${escapeHtml(packageName)}</span>
+                                        <span class="ch_description">${escapeHtml(description)}</span>
+                                    </div>
+                                </div>
                             </div>`;
     markup = replaceBetween(markup, '<div id="rm_print_characters_block" class="flexFlowColumn">', '</div>', cardMarkup);
 

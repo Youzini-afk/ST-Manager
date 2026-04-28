@@ -699,7 +699,6 @@ function buildPreviewBehaviorScript() {
 
       const bindCharacterDrawerControls = () => {
         const searchForm = document.querySelector('#form_character_search_form');
-        const characterList = document.querySelector('#rm_print_characters_block');
 
         document.querySelectorAll('[data-preview-action="toggle-search"]').forEach((node) => {
           if (node.__stPreviewToggleSearchBound) {
@@ -722,10 +721,10 @@ function buildPreviewBehaviorScript() {
           node.__stPreviewToggleGridBound = true;
           node.addEventListener('click', (event) => {
             event.preventDefault();
-            if (!characterList || !characterList.classList) {
+            if (!document.body || !document.body.classList) {
               return;
             }
-            characterList.classList.toggle('is-grid-view');
+            document.body.classList.toggle('charListGrid');
           });
         });
       };
@@ -968,35 +967,6 @@ ${stylesheetMarkup}
         pointer-events: auto;
       }
 
-      .flex-container {
-        display: flex;
-      }
-
-      .justifySpaceBetween {
-        justify-content: space-between;
-      }
-
-      .flex1 {
-        flex: 1;
-      }
-
-      .alignitemscenter,
-      .alignContentCenter,
-      .alignItemsBaseline {
-        align-items: center;
-      }
-
-      .alignItemsBaseline {
-        align-items: baseline;
-      }
-
-      .flexFlowColumn {
-        flex-direction: column;
-      }
-
-      .flexNoGap {
-        gap: 0;
-      }
     </style>
     <style>${customCss}</style><style>:root{--sheldWidth:var(--stPreviewShellWidth);}</style>
   </head>
