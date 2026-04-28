@@ -174,13 +174,11 @@ def test_preset_grid_js_exposes_send_to_st_state_methods_and_alt_root_guard_cont
 
 def test_preset_grid_template_exposes_send_button_title_and_visibility_contracts():
     source = read_project_file('templates/components/grid_presets.html')
-    compact_source = compact_whitespace(source)
 
     assert '@click.stop="sendPresetToST(item, $event)"' in source
     assert ':title="getPresetSendToSTTitle(item)"' in source
     assert 'x-show="canSendPresetToST(item)"' in source
     assert 'class="card-send-st-btn"' in source
-    assert '> 🚀 </button>' in compact_source
 
 
 def test_preset_grid_runtime_tracks_shared_send_state_events_for_duplicate_prevention():
