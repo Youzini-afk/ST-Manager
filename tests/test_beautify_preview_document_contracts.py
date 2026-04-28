@@ -1609,7 +1609,7 @@ def test_build_beautify_preview_document_disables_navigation_for_marked_example_
     )
 
 
-def test_build_beautify_preview_document_runtime_supports_character_search_grid_and_detail_toggles():
+def test_build_beautify_preview_document_runtime_supports_static_character_list_home_controls():
     run_preview_document_check(
         '''
         const html = module.buildBeautifyPreviewDocument({ platform: 'pc', theme: {} });
@@ -1664,11 +1664,9 @@ def test_build_beautify_preview_document_runtime_supports_character_search_grid_
         const chat = { scrollTop: 0, scrollHeight: 30 };
         const searchForm = { style: { display: 'none' } };
         const listBlock = { style: { display: 'block' }, classList: createClassList() };
-        const detailBlock = { style: { display: 'none' } };
         const toggleSearch = createClickableNode({ previewAction: 'toggle-search' });
         const toggleGrid = createClickableNode({ previewAction: 'toggle-grid' });
-        const showDetail = createClickableNode({ previewAction: 'show-detail' });
-        const showList = createClickableNode({ previewAction: 'show-list' });
+        const queriedSelectors = [];
 
         const document = {
           querySelector(selector) {
@@ -1676,10 +1674,10 @@ def test_build_beautify_preview_document_runtime_supports_character_search_grid_
             if (selector === '#chat') return chat;
             if (selector === '#form_character_search_form') return searchForm;
             if (selector === '#rm_print_characters_block') return listBlock;
-            if (selector === '#rm_ch_create_block') return detailBlock;
             return null;
           },
           querySelectorAll(selector) {
+            queriedSelectors.push(selector);
             if (selector === '[data-panel-target]' || selector === '.inline-drawer' || selector === '[data-preview-link="disabled"]' || selector === '[data-preview-disabled="true"]') {
               return [];
             }
@@ -1693,10 +1691,10 @@ def test_build_beautify_preview_document_runtime_supports_character_search_grid_
               return [toggleGrid];
             }
             if (selector === '[data-preview-action="show-detail"]') {
-              return [showDetail];
+              throw new Error('show-detail should not be queried');
             }
             if (selector === '[data-preview-action="show-list"]') {
-              return [showList];
+              throw new Error('show-list should not be queried');
             }
             return [];
           },
@@ -1721,8 +1719,8 @@ def test_build_beautify_preview_document_runtime_supports_character_search_grid_
 
         if (typeof toggleSearch.handler !== 'function') throw new Error('missing toggle-search click binding');
         if (typeof toggleGrid.handler !== 'function') throw new Error('missing toggle-grid click binding');
-        if (typeof showDetail.handler !== 'function') throw new Error('missing show-detail click binding');
-        if (typeof showList.handler !== 'function') throw new Error('missing show-list click binding');
+        if (!queriedSelectors.includes('[data-preview-action="toggle-search"]')) throw new Error('toggle-search selector was not queried');
+        if (!queriedSelectors.includes('[data-preview-action="toggle-grid"]')) throw new Error('toggle-grid selector was not queried');
 
         toggleSearch.handler({ preventDefault() {} });
         if (searchForm.style.display !== 'block') throw new Error(`toggle-search should show search form, got ${searchForm.style.display}`);
@@ -1735,14 +1733,6 @@ def test_build_beautify_preview_document_runtime_supports_character_search_grid_
 
         toggleGrid.handler({ preventDefault() {} });
         if (listBlock.classList.contains('is-grid-view')) throw new Error('toggle-grid should disable grid view');
-
-        showDetail.handler({ preventDefault() {} });
-        if (listBlock.style.display !== 'none') throw new Error(`show-detail should hide list block, got ${listBlock.style.display}`);
-        if (detailBlock.style.display !== 'block') throw new Error(`show-detail should show detail block, got ${detailBlock.style.display}`);
-
-        showList.handler({ preventDefault() {} });
-        if (listBlock.style.display !== 'block') throw new Error(`show-list should show list block, got ${listBlock.style.display}`);
-        if (detailBlock.style.display !== 'none') throw new Error(`show-list should hide detail block, got ${detailBlock.style.display}`);
         '''
     )
 
