@@ -83,6 +83,10 @@ bp = Blueprint('cards', __name__)
 TAG_ORDER_KEY = '_tag_order_v1'
 
 
+def _is_missing_card_metadata_table_error(exc):
+    return 'no such table: card_metadata' in str(exc)
+
+
 def _apply_card_index_increment_now(card_id, source_path, remove_entity_ids=None):
     try:
         with connect_index_db(DEFAULT_DB_PATH) as conn:
@@ -2496,7 +2500,12 @@ def api_change_image():
             # 6. 数据库清理 (删除旧 ID 记录)
             db_path = DEFAULT_DB_PATH
             with sqlite3.connect(db_path, timeout=30) as conn:
-                conn.execute("DELETE FROM card_metadata WHERE id = ?", (raw_id,))
+                try:
+                    conn.execute("DELETE FROM card_metadata WHERE id = ?", (raw_id,))
+                except sqlite3.OperationalError as exc:
+                    if not _is_missing_card_metadata_table_error(exc):
+                        raise
+                    logger.warning("card_metadata table missing during change_image cleanup: %s", raw_id)
             
             # 7. 内存缓存清理 (删除旧对象)
             # 注意：新对象将在后续步骤添加
@@ -3278,8 +3287,13 @@ def api_get_card_detail():
         row = None
         with sqlite3.connect(db_path, timeout=5) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute("SELECT * FROM card_metadata WHERE id = ?", (card_id,))
-            row = cursor.fetchone()
+            try:
+                cursor = conn.execute("SELECT * FROM card_metadata WHERE id = ?", (card_id,))
+                row = cursor.fetchone()
+            except sqlite3.OperationalError as exc:
+                if not _is_missing_card_metadata_table_error(exc):
+                    raise
+                row = None
 
         full_info = {}
         tags = []
@@ -3301,6 +3315,8 @@ def api_get_card_detail():
         if not file_info: return jsonify({"success": False})
         
         data_block = file_info.get('data', {}) if 'data' in file_info else file_info
+        if not row:
+            tags = data_block.get('tags', [])
         regex_only = bool(request.json.get('regex_only', False))
         # === 提取 V3 extensions (包含 regex_scripts, tavern_helper 等) ===
         extensions = data_block.get('extensions', {})

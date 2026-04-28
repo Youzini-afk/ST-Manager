@@ -700,7 +700,6 @@ function buildPreviewBehaviorScript() {
       const bindCharacterDrawerControls = () => {
         const searchForm = document.querySelector('#form_character_search_form');
         const characterList = document.querySelector('#rm_print_characters_block');
-        const characterDetail = document.querySelector('#rm_ch_create_block');
 
         document.querySelectorAll('[data-preview-action="toggle-search"]').forEach((node) => {
           if (node.__stPreviewToggleSearchBound) {
@@ -727,38 +726,6 @@ function buildPreviewBehaviorScript() {
               return;
             }
             characterList.classList.toggle('is-grid-view');
-          });
-        });
-
-        document.querySelectorAll('[data-preview-action="show-detail"]').forEach((node) => {
-          if (node.__stPreviewShowDetailBound) {
-            return;
-          }
-          node.__stPreviewShowDetailBound = true;
-          node.addEventListener('click', (event) => {
-            event.preventDefault();
-            if (characterList && characterList.style) {
-              characterList.style.display = 'none';
-            }
-            if (characterDetail && characterDetail.style) {
-              characterDetail.style.display = 'block';
-            }
-          });
-        });
-
-        document.querySelectorAll('[data-preview-action="show-list"]').forEach((node) => {
-          if (node.__stPreviewShowListBound) {
-            return;
-          }
-          node.__stPreviewShowListBound = true;
-          node.addEventListener('click', (event) => {
-            event.preventDefault();
-            if (characterList && characterList.style) {
-              characterList.style.display = 'block';
-            }
-            if (characterDetail && characterDetail.style) {
-              characterDetail.style.display = 'none';
-            }
           });
         });
       };

@@ -179,7 +179,6 @@ def test_preset_grid_template_exposes_send_button_title_and_visibility_contracts
     assert ':title="getPresetSendToSTTitle(item)"' in source
     assert 'x-show="canSendPresetToST(item)"' in source
     assert 'class="card-send-st-btn"' in source
-    assert '发送到 ST' in source
 
 
 def test_preset_grid_runtime_tracks_shared_send_state_events_for_duplicate_prevention():

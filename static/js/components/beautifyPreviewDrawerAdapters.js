@@ -22,18 +22,6 @@ function replaceTextareaValue(markup, id, value) {
 }
 
 
-function replaceInputValue(markup, id, value) {
-    const escapedValue = escapeHtml(value);
-    const pattern = new RegExp(`(<input[^>]*id="${id}"[^>]*value=")(.*?)("[^>]*>)`);
-    if (pattern.test(markup)) {
-        return markup.replace(pattern, `$1${escapedValue}$3`);
-    }
-
-    const openingTagPattern = new RegExp(`(<input[^>]*id="${id}"[^>]*)(>)`);
-    return markup.replace(openingTagPattern, `$1 value="${escapedValue}"$2`);
-}
-
-
 function addAttributesToOpeningTag(markup, selector, attributes) {
     const pattern = new RegExp(`(<[^>]*${selector}[^>]*)(>)`);
     return markup.replace(pattern, (_, openingTagStart, tagEnd) => {
@@ -74,20 +62,16 @@ function replaceBetween(markup, startToken, endToken, content) {
 }
 
 
-function insertBefore(markup, token, content) {
-    const index = markup.indexOf(token);
-    if (index === -1) {
-        return markup;
-    }
-
-    return `${markup.slice(0, index)}${content}${markup.slice(index)}`;
-}
-
-
 export function buildSettingsDrawerPreviewMarkupFromVendor({ theme = {}, vendorMarkup = SETTINGS_DRAWER_VENDOR_MARKUP } = {}) {
     void theme;
 
     let markup = vendorMarkup;
+
+    markup = addAttributesToOpeningTag(markup, 'id="ai_response_configuration"', {
+        style: 'display: flex; flex-direction: column; gap: 10px;',
+    });
+    markup = addAttributesToOpeningTag(markup, 'id="ai_module_block_novel"', { style: 'display: none;' });
+    markup = addAttributesToOpeningTag(markup, 'id="prompt_cost_block"', { style: 'display: none;' });
 
     for (const selector of [
         'data-preset-manager-import="kobold"',
@@ -124,45 +108,16 @@ export function buildCharacterDrawerPreviewMarkupFromVendor({
     detail = {},
     vendorMarkup = CHARACTER_DRAWER_VENDOR_MARKUP,
 } = {}) {
+    const avatarSrc = identities.character?.avatarSrc || '';
     const packageName = detail.packageName || '';
     const name = identities.character?.name || packageName || 'Preview Character';
     const description = detail.description || '';
-    const firstMessage = detail.firstMessage || '';
-    const personality = detail.personality || '';
-    const creatorNotes = detail.notes || '';
-    const tags = Array.isArray(detail.tags) ? detail.tags : [];
 
     let markup = vendorMarkup;
 
-    markup = replaceBetween(
-        markup,
-        '<div id="rm_button_selected_ch">',
-        '</div>',
-        `
-                            <h2 class="interactable">${escapeHtml(name)}</h2>
-                        `,
-    );
-    markup = replaceInputValue(markup, 'character_name_pole', name);
-    markup = replaceTextareaValue(markup, 'description_textarea', description);
-    markup = replaceTextareaValue(markup, 'firstmessage_textarea', firstMessage);
-
-    markup = insertBefore(
-        markup,
-        '                            <!-- these divs are invisible and used for server communication purposes -->',
-        `                            <div id="personality_div" class="title_restorable"><span>Personality</span></div>
-                            <textarea id="personality_textarea" name="personality">${escapeHtml(personality)}</textarea>
-                            <div id="creator_notes_divider" class="title_restorable"><span>Creator Notes</span></div>
-                            <textarea id="creator_notes_textarea" name="creator_notes">${escapeHtml(creatorNotes)}</textarea>
-`,
-    );
-
-    const tagMarkup = tags
-        .map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`)
-        .join('');
-    markup = replaceBetween(markup, '<div id="tagList" class="tags">', '</div>', tagMarkup);
-
     const cardMarkup = `
-                            <div class="menu_button" data-preview-character-card="primary" data-preview-action="show-detail">
+                            <div class="menu_button" data-preview-character-card="primary">
+                                <div class="avatar"><img src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(name)}"></div>
                                 <div class="character_name">${escapeHtml(name)}</div>
                                 <div class="character_package">${escapeHtml(packageName)}</div>
                                 <div class="character_description">${escapeHtml(description)}</div>
@@ -171,7 +126,6 @@ export function buildCharacterDrawerPreviewMarkupFromVendor({
 
     markup = addAttributesToOpeningTag(markup, 'id="rm_button_search"', { 'data-preview-action': 'toggle-search' });
     markup = addAttributesToOpeningTag(markup, 'id="charListGridToggle"', { 'data-preview-action': 'toggle-grid' });
-    markup = addAttributesToOpeningTag(markup, 'id="rm_button_back"', { 'data-preview-action': 'show-list' });
 
     for (const selector of [
         'id="rm_button_create"',
@@ -189,6 +143,8 @@ export function buildCharacterDrawerPreviewMarkupFromVendor({
     }
 
     markup = addAttributesToOpeningTag(markup, 'id="rm_ch_create_block"', { style: 'display: none;' });
+    markup = addAttributesToOpeningTag(markup, 'id="rm_group_chats_block"', { style: 'display: none;' });
+    markup = addAttributesToOpeningTag(markup, 'id="rm_character_import"', { style: 'display: none;' });
     markup = addAttributesToOpeningTag(markup, 'id="rm_characters_block"', { style: 'display: block;' });
 
     return markup;

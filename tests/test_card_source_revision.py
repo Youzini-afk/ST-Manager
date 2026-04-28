@@ -25,10 +25,17 @@ def test_get_card_detail_returns_source_revision(monkeypatch, tmp_path):
     cards_dir = tmp_path / 'cards'
     cards_dir.mkdir()
     card_path = cards_dir / 'hero.json'
-    card_path.write_text(json.dumps({'data': {'name': 'Hero', 'tags': []}}, ensure_ascii=False), encoding='utf-8')
+    card_path.write_text(
+        json.dumps({'data': {'name': 'Hero', 'tags': ['alpha', 'beta']}}, ensure_ascii=False),
+        encoding='utf-8',
+    )
 
     monkeypatch.setattr(cards_api, 'CARDS_FOLDER', str(cards_dir))
-    monkeypatch.setattr(cards_api, 'extract_card_info', lambda _path: {'data': {'name': 'Hero', 'tags': []}})
+    monkeypatch.setattr(
+        cards_api,
+        'extract_card_info',
+        lambda _path: {'data': {'name': 'Hero', 'tags': ['alpha', 'beta']}},
+    )
 
     class _FakeCache:
         bundle_map = {}
@@ -43,6 +50,7 @@ def test_get_card_detail_returns_source_revision(monkeypatch, tmp_path):
     payload = res.get_json()
     assert payload['success'] is True
     assert payload['card']['source_revision']
+    assert payload['card']['tags'] == ['alpha', 'beta']
 
 
 def test_update_card_rejects_stale_source_revision(monkeypatch, tmp_path):
