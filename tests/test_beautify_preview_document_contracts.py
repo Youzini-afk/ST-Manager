@@ -787,6 +787,14 @@ def test_build_beautify_preview_document_assembles_vendor_drawers_with_static_ch
             }
             const characterPanelMarkup = html.slice(characterPanelStart, characterPanelEnd);
 
+            for (const selector of ['id="rm_button_create"', 'id="bulkEditButton"']) {
+              const match = characterPanelMarkup.match(new RegExp(`<[^>]*${selector}[^>]*>`));
+              if (!match) throw new Error(`missing dangerous character control in final document: ${selector}`);
+              if (!match[0].includes('data-preview-disabled="true"')) {
+                throw new Error(`expected disabled dangerous character control in final document: ${selector}`);
+              }
+            }
+
             for (const forbidden of [
               'data-preview-action="show-detail"',
               'data-preview-action="show-list"',
@@ -2146,9 +2154,10 @@ def test_build_beautify_preview_document_uses_local_demo_identity_avatar_paths()
           'ch_name="凌砚"',
           'name_text">苏眠</span>',
           'name_text">凌砚</span>',
-          '<h2 class="interactable">苏眠</h2>',
           'alt="苏眠" src="/static/images/beautify-preview/sumian.png"',
           'alt="凌砚" src="/static/images/beautify-preview/lingyan.png"',
+          'data-preview-character-card="primary"',
+          'character_name">苏眠</div>',
         ]) {
           if (!html.includes(token)) throw new Error(`missing token: ${token}`);
         }
