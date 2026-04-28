@@ -5,7 +5,13 @@ import subprocess
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-TARGET_CHAT = PROJECT_ROOT / 'data' / 'library' / 'chats' / 'Imported' / '创世回廊！大型异世界幻想RPG1.5 - 2026-03-13@19h29m16s.jsonl'
+TARGET_CHAT = (
+    PROJECT_ROOT
+    / 'tests'
+    / 'fixtures'
+    / 'chat_reader_variable_merge_contracts'
+    / 'target_chat_first_message.jsonl'
+)
 
 
 def read_first_raw_message(path: Path):
