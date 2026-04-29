@@ -36,7 +36,8 @@ def _worldinfo_note_summary(ui_data: dict, source_type: str, *, file_path: str =
     if source_type == 'embedded':
         key = f'embedded::{card_id}'
     else:
-        key = f'{source_type}::{str(file_path).replace("\\", "/")}'
+        normalized_path = str(file_path).replace("\\", "/")
+        key = f'{source_type}::{normalized_path}'
     note = notes.get(key) or {}
     return str(note.get('summary') or '') if isinstance(note, dict) else ''
 
