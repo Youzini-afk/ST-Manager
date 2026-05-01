@@ -789,8 +789,50 @@
             />
           </div>
 
+          <div class="settings-row">
+            <label class="settings-label text-pink-400">远程备份连接方式</label>
+            <div class="flex flex-wrap gap-4 mt-2">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="remote_connection_mode"
+                  value="authority_bridge"
+                  x-model="settingsForm.remote_connection_mode"
+                  class="w-4 h-4"
+                />
+                <span class="text-sm">Authority Bridge</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="remote_connection_mode"
+                  value="st_auth"
+                  x-model="settingsForm.remote_connection_mode"
+                  class="w-4 h-4"
+                />
+                <span class="text-sm">SillyTavern 登录兼容</span>
+              </label>
+            </div>
+          </div>
+
+          <div
+            class="settings-row"
+            x-show="settingsForm.remote_connection_mode === 'authority_bridge'"
+            x-transition
+          >
+            <label class="settings-label text-pink-400">Authority Bridge Key</label>
+            <input
+              type="password"
+              x-model="settingsForm.remote_bridge_key"
+              class="form-input mt-1"
+              placeholder="stmb_..."
+            />
+          </div>
+
           <div
             class="settings-row p-4 rounded border border-[var(--border-light)] bg-[var(--bg-sub)]"
+            x-show="settingsForm.remote_connection_mode === 'st_auth'"
+            x-transition
           >
             <label class="settings-label mb-2 block">认证方式</label>
             <div class="flex gap-4 mb-4">

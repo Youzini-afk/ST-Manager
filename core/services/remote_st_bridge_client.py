@@ -1,17 +1,51 @@
 import base64
 import hashlib
 from typing import Any, Dict, Optional
+from urllib.parse import urljoin
 
+import requests
 from core.config import load_config
 from core.services.st_auth import build_st_http_client
 
 
 BRIDGE_BASE_PATH = '/api/plugins/authority/st-manager'
 DEFAULT_CHUNK_SIZE = 1024 * 1024
+VALID_REMOTE_CONNECTION_MODES = {'authority_bridge', 'st_auth'}
 
 
 class RemoteSTBridgeError(Exception):
     """Raised when the Authority ST-Manager bridge rejects or corrupts a transfer."""
+
+
+def _normalize_remote_connection_mode(value: Any) -> str:
+    return value if value in VALID_REMOTE_CONNECTION_MODES else 'authority_bridge'
+
+
+class SimpleBridgeHTTPClient:
+    def __init__(self, config: Optional[Dict[str, Any]] = None, timeout: int = 60):
+        self.config = config or load_config()
+        self.base_url = (self.config.get('st_url') or 'http://127.0.0.1:8000').rstrip('/')
+        self.timeout = timeout
+        proxy = (self.config.get('st_proxy', '') or '').strip()
+        self.proxies = {'http': proxy or None, 'https': proxy or None}
+        self.session = requests.Session()
+        if not proxy:
+            self.session.trust_env = False
+
+    def _resolve_url(self, path: str) -> str:
+        if path.startswith('http://') or path.startswith('https://'):
+            return path
+        return urljoin(f'{self.base_url}/', path.lstrip('/'))
+
+    def get(self, path: str, timeout: Optional[int] = None, **kwargs):
+        kwargs.setdefault('proxies', self.proxies)
+        kwargs.setdefault('timeout', timeout or self.timeout)
+        return self.session.get(self._resolve_url(path), **kwargs)
+
+    def post(self, path: str, json=None, timeout: Optional[int] = None, **kwargs):
+        kwargs.setdefault('proxies', self.proxies)
+        kwargs.setdefault('timeout', timeout or self.timeout)
+        return self.session.post(self._resolve_url(path), json=json, **kwargs)
 
 
 class RemoteSTBridgeClient:
@@ -28,11 +62,16 @@ class RemoteSTBridgeClient:
         self.bridge_key = bridge_key or self.config.get('remote_bridge_key', '') or ''
         self.chunk_size = int(chunk_size or DEFAULT_CHUNK_SIZE)
         self.timeout = timeout
-        self.http_client = http_client or build_st_http_client(
-            self.config,
-            st_url=self.config.get('st_url'),
-            timeout=timeout,
-        )
+        if http_client:
+            self.http_client = http_client
+        elif _normalize_remote_connection_mode(self.config.get('remote_connection_mode')) == 'st_auth':
+            self.http_client = build_st_http_client(
+                self.config,
+                st_url=self.config.get('st_url'),
+                timeout=timeout,
+            )
+        else:
+            self.http_client = SimpleBridgeHTTPClient(self.config, timeout=timeout)
 
     def _headers(self) -> Dict[str, str]:
         headers = {'X-ST-Manager-Key': self.bridge_key}

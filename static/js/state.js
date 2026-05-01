@@ -375,6 +375,8 @@ export function initState() {
       st_web_password: "",
       st_auth_type: "basic",
       st_proxy: "",
+      remote_connection_mode: "authority_bridge",
+      remote_bridge_key: "",
       host: "127.0.0.1",
       port: 5000,
       items_per_page: 0,
@@ -569,6 +571,9 @@ export function initState() {
             st_web_username: settings.st_web_username || "",
             st_web_password: settings.st_web_password || "",
             st_proxy: settings.st_proxy || "",
+            remote_connection_mode:
+              settings.remote_connection_mode || "authority_bridge",
+            remote_bridge_key: settings.remote_bridge_key || "",
             items_per_page: localPerPage
               ? parseInt(localPerPage)
               : settings.items_per_page || 0,

@@ -20,6 +20,35 @@ def _make_test_app():
     return app
 
 
+def test_config_defaults_to_authority_bridge_mode(tmp_path):
+    store = RemoteBackupConfigStore(base_dir=tmp_path / 'remote_backups')
+
+    public = store.public()
+
+    assert public['remote_connection_mode'] == 'authority_bridge'
+
+
+def test_config_endpoint_persists_connection_mode(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        remote_backups_api,
+        'RemoteBackupConfigStore',
+        lambda: RemoteBackupConfigStore(base_dir=tmp_path / 'remote_backups'),
+    )
+
+    response = _make_test_app().test_client().post(
+        '/api/remote_backups/config',
+        json={
+            'st_url': 'https://st.example',
+            'remote_connection_mode': 'st_auth',
+            'remote_bridge_key': 'secret',
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload['config']['remote_connection_mode'] == 'st_auth'
+
+
 def test_config_endpoint_masks_saved_bridge_key(tmp_path, monkeypatch):
     monkeypatch.setattr(
         remote_backups_api,

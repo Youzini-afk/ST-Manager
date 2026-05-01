@@ -21,6 +21,7 @@ REMOTE_BACKUP_RESOURCE_TYPES = [
 ]
 
 REMOTE_CONFIG_FILENAME = 'config.json'
+VALID_REMOTE_CONNECTION_MODES = {'authority_bridge', 'st_auth'}
 
 
 class RemoteBackupError(Exception):
@@ -29,6 +30,10 @@ class RemoteBackupError(Exception):
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def normalize_remote_connection_mode(value: Any) -> str:
+    return value if value in VALID_REMOTE_CONNECTION_MODES else 'authority_bridge'
 
 
 def normalize_remote_relative_path(path: str) -> str:
@@ -99,6 +104,7 @@ class RemoteBackupConfigStore:
         next_config = dict(current)
         for key in [
             'st_url',
+            'remote_connection_mode',
             'st_auth_type',
             'st_basic_username',
             'st_basic_password',
@@ -111,6 +117,9 @@ class RemoteBackupConfigStore:
         ]:
             if key in payload:
                 next_config[key] = payload[key]
+        next_config['remote_connection_mode'] = normalize_remote_connection_mode(
+            next_config.get('remote_connection_mode')
+        )
         if 'bridge_key' in payload:
             next_config['remote_bridge_key'] = payload['bridge_key']
 
@@ -122,6 +131,7 @@ class RemoteBackupConfigStore:
     def public(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         config = dict(config if config is not None else self.load_private())
         key = config.pop('remote_bridge_key', '') or config.pop('bridge_key', '')
+        config['remote_connection_mode'] = normalize_remote_connection_mode(config.get('remote_connection_mode'))
         config['bridge_key_masked'] = self._mask_key(key)
         config['bridge_key_fingerprint'] = hashlib.sha256(key.encode('utf-8')).hexdigest()[:12] if key else ''
         return config
@@ -165,7 +175,10 @@ class RemoteBackupService:
         return f'{stamp}-{uuid.uuid4().hex[:8]}'
 
     def _create_client(self):
+        mode = normalize_remote_connection_mode(self.config.get('remote_connection_mode'))
         bridge_key = self.config.get('remote_bridge_key') or self.config.get('bridge_key') or ''
+        if mode == 'authority_bridge' and not bridge_key:
+            raise RemoteBackupError('Bridge Key is required for Authority Bridge mode')
         if self.remote_client_factory:
             return self.remote_client_factory(self.config, bridge_key)
         return RemoteSTBridgeClient(self.config, bridge_key=bridge_key)

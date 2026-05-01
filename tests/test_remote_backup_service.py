@@ -145,6 +145,21 @@ def test_backup_rejects_illegal_remote_relative_path(tmp_path):
         service.create_backup(resource_types=['characters'], backup_id='backup-escape')
 
 
+def test_authority_bridge_mode_requires_bridge_key(tmp_path):
+    class FakeProbeClient:
+        def probe(self):
+            return {'success': True}
+
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config={**_config(tmp_path), 'remote_connection_mode': 'authority_bridge', 'remote_bridge_key': ''},
+        remote_client_factory=lambda _config, _bridge_key: FakeProbeClient(),
+    )
+
+    with pytest.raises(RemoteBackupError, match='Bridge Key is required'):
+        service.probe()
+
+
 def test_restore_skips_existing_remote_files_by_default_and_overwrites_explicitly(tmp_path):
     remote = FakeRemoteClient()
     service = RemoteBackupService(

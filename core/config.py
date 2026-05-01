@@ -76,6 +76,8 @@ DEFAULT_CONFIG = {
     "st_web_username": "",
     "st_web_password": "",
     "st_proxy": "",
+    "remote_connection_mode": "authority_bridge",
+    "remote_bridge_key": "",
     "items_per_page": 0,
     "items_per_page_wi": 0,
     "dark_mode": True,

@@ -90,3 +90,44 @@ def test_client_rejects_checksum_mismatch():
         assert 'sha256 mismatch' in str(exc)
     else:
         raise AssertionError('expected checksum mismatch')
+
+
+def test_authority_bridge_mode_uses_simple_http_client(monkeypatch):
+    created = []
+
+    class FakeSimpleHTTP:
+        def __init__(self, config, timeout=60):
+            created.append((config, timeout))
+
+        def get(self, path, **kwargs):
+            return FakeResponse({'ok': True})
+
+    monkeypatch.setattr('core.services.remote_st_bridge_client.SimpleBridgeHTTPClient', FakeSimpleHTTP)
+    monkeypatch.setattr(
+        'core.services.remote_st_bridge_client.build_st_http_client',
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('STHTTPClient should not be used')),
+    )
+
+    client = RemoteSTBridgeClient({
+        'st_url': 'https://st.example',
+        'remote_connection_mode': 'authority_bridge',
+    }, bridge_key='secret')
+
+    assert created
+    assert client.probe() == {'ok': True}
+
+
+def test_st_auth_mode_keeps_existing_st_http_client(monkeypatch):
+    fake_http = FakeHTTPClient([])
+    monkeypatch.setattr(
+        'core.services.remote_st_bridge_client.build_st_http_client',
+        lambda config, st_url=None, timeout=60: fake_http,
+    )
+
+    client = RemoteSTBridgeClient({
+        'st_url': 'https://st.example',
+        'remote_connection_mode': 'st_auth',
+    }, bridge_key='secret')
+
+    assert client.probe() == {'files': []}
+    assert fake_http.calls[0][0] == 'get'

@@ -291,6 +291,16 @@ def test_settings_template_exposes_user_db_backup_controls():
     assert '@change="handleUserDbImport($event)"' in source
 
 
+def test_settings_template_has_authority_bridge_mode():
+    source = read_project_file('templates/modals/settings.html')
+    state = read_project_file('static/js/state.js')
+
+    assert 'Authority Bridge' in source
+    assert 'remote_connection_mode' in source
+    assert "settingsForm.remote_connection_mode === 'st_auth'" in source
+    assert 'remote_connection_mode: "authority_bridge"' in state
+
+
 def test_resource_api_exposes_shared_wallpaper_import_and_select_helpers():
     source = read_project_file('static/js/api/resource.js')
 
