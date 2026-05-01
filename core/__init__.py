@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - temporary compatibility for Task 3
         logger.info('Index job worker not available yet; skipping startup.')
 
 # === API 蓝图 ===
-from core.api.v1 import cards, world_info, system, resources, automation, extensions, presets, st_sync, chats, beautify
+from core.api.v1 import cards, world_info, system, resources, automation, extensions, presets, st_sync, chats, beautify, remote_backups
 from core.api import views
 
 logger = logging.getLogger(__name__)
@@ -58,6 +58,7 @@ def create_app():
     app.register_blueprint(st_sync.bp)     # SillyTavern 资源同步
     app.register_blueprint(chats.bp)       # 聊天记录管理
     app.register_blueprint(beautify.bp)    # 美化库管理
+    app.register_blueprint(remote_backups.bp)  # 远程 ST 备份/恢复
     
     # 2. 页面视图
     app.register_blueprint(views.bp)       # 前端页面入口
