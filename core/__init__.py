@@ -14,6 +14,7 @@ from core.auth import init_auth
 from core.data.db_session import init_database, close_connection
 from core.services.index_upgrade_service import run_startup_upgrade_if_needed
 from core.services.scan_service import start_background_scanner
+from core.services.remote_backup_scheduler import start_remote_backup_scheduler
 
 try:
     from core.services.index_job_worker import start_index_job_worker
@@ -134,6 +135,9 @@ def init_services():
 
         # 5. 启动索引工作线程
         start_index_job_worker()
+
+        # 6. 启动远程备份定时器
+        start_remote_backup_scheduler()
 
         # 初始化完成
         ctx.set_status(status="ready", message="服务已就绪")

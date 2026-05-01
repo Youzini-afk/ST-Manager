@@ -21,6 +21,7 @@ from functools import wraps
 from flask import request, session, redirect, url_for, render_template_string, jsonify
 
 from core.config import load_config
+from core.services.remote_backup_control_auth import is_remote_backup_control_authorized
 
 logger = logging.getLogger(__name__)
 
@@ -852,6 +853,9 @@ def init_auth(app):
         for excluded in excluded_paths:
             if path.startswith(excluded):
                 return None
+
+        if is_remote_backup_control_authorized(path, request.headers):
+            return None
 
         # 锁定模式：需要手动重启
         if _is_hard_locked():

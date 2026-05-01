@@ -15,17 +15,6 @@ SAMPLE_PRESET_FILENAMES = (
 )
 
 
-def _resolve_workspace_root():
-    for candidate in (ROOT, *ROOT.parents):
-        sample_dir = candidate / 'data' / 'library' / 'presets'
-        if all((sample_dir / filename).exists() for filename in SAMPLE_PRESET_FILENAMES):
-            return candidate
-    return ROOT
-
-
-WORKSPACE_ROOT = _resolve_workspace_root()
-
-
 from core.api.v1 import presets as presets_api
 
 
@@ -53,21 +42,26 @@ def _configure(monkeypatch, tmp_path, presets_dir):
     )
 
 
-def _configure_workspace_samples(monkeypatch):
-    monkeypatch.setattr(presets_api, 'BASE_DIR', str(WORKSPACE_ROOT))
-    monkeypatch.setattr(
-        presets_api,
-        'load_config',
-        lambda: {
-            'presets_dir': 'data/library/presets',
-            'resources_dir': 'data/assets/card_assets',
-            'st_openai_preset_dir': '',
-        },
-    )
+def _write_sample_openai_presets(tmp_path: Path) -> Path:
+    presets_dir = tmp_path / 'presets'
+    for filename in SAMPLE_PRESET_FILENAMES:
+        _write_json(
+            presets_dir / filename,
+            {
+                'name': Path(filename).stem,
+                'chat_completion_source': 'openai',
+                'openai_model': 'gpt-4o',
+                'openai_max_context': 8192,
+                'openai_max_tokens': 1200,
+                'prompts': [{'identifier': 'main', 'role': 'system', 'content': 'hello'}],
+                'prompt_order': ['main'],
+            },
+        )
+    return presets_dir
 
 
-def test_sample_gemini_preset_is_detected_as_openai_profile(monkeypatch):
-    _configure_workspace_samples(monkeypatch)
+def test_sample_gemini_preset_is_detected_as_openai_profile(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path, _write_sample_openai_presets(tmp_path))
     client = _make_test_app().test_client()
 
     res = client.get('/api/presets/detail/global::Ny-Gemini-1.3.9-pro_Sigon.json')
@@ -79,8 +73,8 @@ def test_sample_gemini_preset_is_detected_as_openai_profile(monkeypatch):
     assert preset['reader_view']['family'] == 'prompt_manager'
 
 
-def test_sample_prismfox_preset_is_detected_as_openai_profile(monkeypatch):
-    _configure_workspace_samples(monkeypatch)
+def test_sample_prismfox_preset_is_detected_as_openai_profile(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path, _write_sample_openai_presets(tmp_path))
     client = _make_test_app().test_client()
 
     res = client.get('/api/presets/detail/global::双人成行 V3.5 光头强—PrismFox.json')

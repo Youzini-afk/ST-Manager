@@ -599,6 +599,13 @@
         🤖
       </button>
       <button
+        @click="$dispatch('open-remote-backup-modal')"
+        title="远程备份"
+        class="btn-secondary hover:scale-105 transition-transform text-pink-400"
+      >
+        ⇄
+      </button>
+      <button
         @click="openSettings()"
         title="系统设置"
         class="btn-secondary hover:scale-105 transition-transform"

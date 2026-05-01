@@ -11,6 +11,8 @@ if str(ROOT) not in sys.path:
 
 
 from core.api.v1 import remote_backups as remote_backups_api
+from core.services.remote_backup_control_auth import RemoteBackupControlStore
+from core.services.remote_backup_scheduler import RemoteBackupScheduleStore
 from core.services.remote_backup_service import RemoteBackupConfigStore
 
 
@@ -104,3 +106,51 @@ def test_start_endpoint_delegates_backup_request(monkeypatch):
             'ingest': False,
         }
     ]
+
+
+def test_control_key_rotate_returns_plaintext_once_and_masks_afterward(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        remote_backups_api,
+        'RemoteBackupControlStore',
+        lambda: RemoteBackupControlStore(base_dir=tmp_path / 'remote_backups'),
+    )
+
+    client = _make_test_app().test_client()
+    rotated = client.post('/api/remote_backups/control-key/rotate').get_json()
+    public = client.get('/api/remote_backups/control').get_json()
+
+    assert rotated['success'] is True
+    assert rotated['control']['control_key'].startswith('stmc_')
+    assert rotated['control']['control_key_masked'].startswith('stmc')
+    assert 'control_key_hash' not in json.dumps(rotated, ensure_ascii=False)
+    assert 'control_key' not in public['control']
+    assert public['control']['control_key_masked'] == rotated['control']['control_key_masked']
+    assert public['control']['control_key_fingerprint'] == rotated['control']['control_key_fingerprint']
+
+
+def test_schedule_endpoint_persists_normalized_schedule(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        remote_backups_api,
+        'RemoteBackupScheduleStore',
+        lambda: RemoteBackupScheduleStore(base_dir=tmp_path / 'remote_backups'),
+    )
+
+    client = _make_test_app().test_client()
+    saved = client.post(
+        '/api/remote_backups/schedule',
+        json={
+            'enabled': True,
+            'interval_minutes': 30,
+            'retention_limit': 3,
+            'resource_types': ['characters', 'regex', 'bad'],
+        },
+    ).get_json()
+    loaded = client.get('/api/remote_backups/schedule').get_json()
+
+    assert saved['success'] is True
+    assert saved['schedule']['enabled'] is True
+    assert saved['schedule']['interval_minutes'] == 30
+    assert saved['schedule']['retention_limit'] == 3
+    assert saved['schedule']['resource_types'] == ['characters', 'regex']
+    assert saved['schedule']['next_run_at']
+    assert loaded['schedule'] == saved['schedule']

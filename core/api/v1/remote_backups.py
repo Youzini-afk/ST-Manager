@@ -2,6 +2,8 @@ import logging
 
 from flask import Blueprint, jsonify, request
 
+from core.services.remote_backup_control_auth import RemoteBackupControlStore
+from core.services.remote_backup_scheduler import RemoteBackupScheduleStore
 from core.services.remote_backup_service import (
     RemoteBackupConfigStore,
     RemoteBackupError,
@@ -22,9 +24,42 @@ def _service():
     return RemoteBackupService()
 
 
+def _control_store():
+    return RemoteBackupControlStore()
+
+
+def _schedule_store():
+    return RemoteBackupScheduleStore()
+
+
 def _error_response(error, status=500):
     logger.exception('Remote backup API error: %s', error)
     return jsonify({'success': False, 'error': str(error)}), status
+
+
+@bp.route('/control', methods=['GET'])
+def control():
+    return jsonify({'success': True, 'control': _control_store().public()})
+
+
+@bp.route('/control', methods=['POST'])
+def save_control():
+    payload = _json_payload()
+    try:
+        public = _control_store().save({
+            'enabled': bool(payload.get('enabled')),
+        })
+        return jsonify({'success': True, 'control': public})
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@bp.route('/control-key/rotate', methods=['POST'])
+def rotate_control_key():
+    try:
+        return jsonify({'success': True, 'control': _control_store().rotate()})
+    except Exception as exc:
+        return _error_response(exc)
 
 
 @bp.route('/config', methods=['GET', 'POST'])
@@ -37,6 +72,18 @@ def config():
     try:
         public_config = store.save(payload)
         return jsonify({'success': True, 'config': public_config})
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@bp.route('/schedule', methods=['GET', 'POST'])
+def schedule():
+    store = _schedule_store()
+    if request.method == 'GET':
+        return jsonify({'success': True, 'schedule': store.load()})
+
+    try:
+        return jsonify({'success': True, 'schedule': store.save(_json_payload())})
     except Exception as exc:
         return _error_response(exc)
 

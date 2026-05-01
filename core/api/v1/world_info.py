@@ -345,17 +345,29 @@ def _format_st_response_error(response, auth_type):
     return f'ST Error: {response.status_code} - {response.text}'
 
 
+def _relative_path_under_base(file_path: str, base_dir: str) -> str:
+    try:
+        normalized_path = os.path.abspath(os.path.normpath(str(file_path or '')))
+        normalized_base = os.path.abspath(os.path.normpath(str(base_dir or '')))
+        if not normalized_path or not normalized_base:
+            return ''
+        if os.path.commonpath([normalized_path, normalized_base]) != normalized_base:
+            return ''
+        return os.path.relpath(normalized_path, normalized_base).replace('\\', '/')
+    except (OSError, ValueError):
+        return ''
+
+
 def _get_worldinfo_ui_key(source_type: str, file_path: str, cfg: dict) -> str:
     normalized_source = str(source_type or '').strip().lower()
-    normalized_path = os.path.normpath(str(file_path or ''))
 
     if normalized_source == 'global':
-        rel_path = os.path.relpath(normalized_path, _resolve_wi_dir(cfg)).replace('\\', '/')
-        return f'global::{rel_path}'
+        rel_path = _relative_path_under_base(file_path, _resolve_wi_dir(cfg))
+        return f'global::{rel_path}' if rel_path else ''
 
     if normalized_source == 'resource':
-        rel_path = os.path.relpath(normalized_path, _resolve_resources_dir(cfg)).replace('\\', '/')
-        return f'resource::{rel_path}'
+        rel_path = _relative_path_under_base(file_path, _resolve_resources_dir(cfg))
+        return f'resource::{rel_path}' if rel_path else ''
 
     return ''
 

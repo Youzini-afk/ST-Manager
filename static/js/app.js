@@ -37,6 +37,7 @@ import presetEditor from "./components/presetEditor.js";
 import presetVersionMergeModal from './components/presetVersionMergeModal.js';
 import beautifyGrid from "./components/beautifyGrid.js";
 import beautifyPreviewFrame from "./components/beautifyPreviewFrame.js";
+import remoteBackupPanel from "./components/remoteBackupPanel.js";
 
 // 3. 监听 Alpine 初始化事件
 const registerComponents = () => {
@@ -74,6 +75,7 @@ const registerComponents = () => {
   Alpine.data('presetVersionMergeModal', presetVersionMergeModal);
   Alpine.data("beautifyGrid", beautifyGrid);
   Alpine.data("beautifyPreviewFrame", beautifyPreviewFrame);
+  Alpine.data("remoteBackupPanel", remoteBackupPanel);
   console.log("✅ ST Manager Frontend: Modules Loaded & Alpine Initialized");
 };
 

@@ -1,0 +1,126 @@
+<div x-show="showRemoteBackupModal" x-data="remoteBackupPanel" x-cloak class="modal-overlay z-modal-std" @click.self="close()">
+  <div class="modal-container flex flex-col gap-4" style="width: min(1120px, 94vw); max-height: 88vh; overflow: auto;">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <h3 class="font-bold text-xl">远程备份</h3>
+        <p class="text-sm text-[var(--text-dim)]">通过 Authority Bridge 备份或恢复 SillyTavern 资源。</p>
+      </div>
+      <button type="button" class="btn-secondary" @click="close()">关闭</button>
+    </div>
+
+    <div x-show="error" class="p-3 rounded border border-red-500/40 bg-red-950/30 text-red-300" x-text="error"></div>
+
+    <section class="p-4 rounded-lg border border-[var(--border-light)] bg-[var(--bg-sub)]">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <h4 class="font-semibold text-pink-400">连接配置</h4>
+        <div class="flex gap-2">
+          <button type="button" class="btn-secondary" :disabled="busy" @click="testConnection()">测试连接</button>
+          <button type="button" class="btn-primary" :disabled="busy" @click="saveConfig()">保存配置</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label class="block">
+          <span class="text-sm text-[var(--text-dim)]">ST URL</span>
+          <input class="form-input mt-1" x-model="config.st_url" placeholder="https://your-st.example" />
+        </label>
+        <label class="block">
+          <span class="text-sm text-[var(--text-dim)]">Authority Bridge Key</span>
+          <input class="form-input mt-1" x-model="config.remote_bridge_key" type="password" placeholder="stmb_..." />
+        </label>
+      </div>
+      <div x-show="probe" class="mt-3 text-sm text-green-400">连接可用，Bridge 已响应。</div>
+    </section>
+
+    <section class="p-4 rounded-lg border border-[var(--border-light)] bg-[var(--bg-sub)]">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <h4 class="font-semibold text-pink-400">ST-Manager Control Key</h4>
+          <p class="text-sm text-[var(--text-dim)]">Authority 酒馆侧面板用这个 Key 远程触发 ST-Manager 备份和恢复。</p>
+        </div>
+        <button type="button" class="btn-primary" :disabled="busy" @click="rotateControlKey()">生成 / 轮换 Key</button>
+      </div>
+      <div class="text-sm text-[var(--text-dim)]">
+        <div>当前指纹：<span x-text="control.control_key_fingerprint || '未生成'"></span></div>
+        <div>当前 Key：<span x-text="control.control_key_masked || '未生成'"></span></div>
+      </div>
+      <div x-show="generatedControlKey" class="mt-3 p-3 rounded border border-yellow-500/40 bg-yellow-950/20">
+        <div class="text-sm text-yellow-300 mb-2">明文只显示这一次，请填入 Authority 的 ST-Manager 控制配置。</div>
+        <input class="form-input font-mono" readonly x-model="generatedControlKey" />
+      </div>
+    </section>
+
+    <section class="p-4 rounded-lg border border-[var(--border-light)] bg-[var(--bg-sub)]">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h4 class="font-semibold text-pink-400">手动备份</h4>
+        <button type="button" class="btn-primary" :disabled="busy" @click="startBackup()">立即备份</button>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm">
+        <template x-for="type in ['characters','chats','worlds','presets','regex','quick_replies']" :key="type">
+          <label class="flex items-center gap-2">
+            <input type="checkbox" :value="type" x-model="selectedResourceTypes" />
+            <span x-text="type"></span>
+          </label>
+        </template>
+      </div>
+    </section>
+
+    <section class="p-4 rounded-lg border border-[var(--border-light)] bg-[var(--bg-sub)]">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <h4 class="font-semibold text-pink-400">定时备份</h4>
+        <button type="button" class="btn-primary" :disabled="busy" @click="saveSchedule()">保存定时备份</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <label class="flex items-center gap-2">
+          <input type="checkbox" x-model="schedule.enabled" />
+          <span>启用定时备份</span>
+        </label>
+        <label>
+          <span class="text-sm text-[var(--text-dim)]">间隔分钟</span>
+          <input class="form-input mt-1" type="number" min="1" x-model.number="schedule.interval_minutes" />
+        </label>
+        <label>
+          <span class="text-sm text-[var(--text-dim)]">保留数量</span>
+          <input class="form-input mt-1" type="number" min="1" x-model.number="schedule.retention_limit" />
+        </label>
+        <div class="text-sm text-[var(--text-dim)]">
+          <div>上次：<span x-text="schedule.last_run_at || '未运行'"></span></div>
+          <div>下次：<span x-text="schedule.next_run_at || '未计划'"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="p-4 rounded-lg border border-[var(--border-light)] bg-[var(--bg-sub)]">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <h4 class="font-semibold text-pink-400">备份列表</h4>
+        <button type="button" class="btn-secondary" :disabled="busy" @click="refreshBackups()">刷新列表</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4">
+        <div class="space-y-2 max-h-80 overflow-auto">
+          <template x-for="backup in backups" :key="backup.backup_id">
+            <button type="button" class="w-full text-left p-3 rounded border border-[var(--border-light)] hover:border-pink-400" @click="selectBackup(backup)">
+              <div class="font-mono text-sm" x-text="backup.backup_id"></div>
+              <div class="text-xs text-[var(--text-dim)]" x-text="`${backup.total_files || 0} files · ${backup.created_at || ''}`"></div>
+            </button>
+          </template>
+          <div x-show="!backups.length" class="text-sm text-[var(--text-dim)]">暂无远程备份。</div>
+        </div>
+
+        <div class="space-y-3">
+          <div x-show="selectedBackup">
+            <div class="font-semibold" x-text="selectedBackup?.backup_id"></div>
+            <div class="text-sm text-[var(--text-dim)]" x-text="`${selectedBackup?.total_files || 0} files`"></div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" class="btn-secondary" :disabled="busy || !selectedBackup" @click="previewRestore()">恢复预览</button>
+            <label class="flex items-center gap-2 text-sm text-yellow-400">
+              <input type="checkbox" x-model="overwrite" />
+              <span>允许覆盖已有文件</span>
+            </label>
+            <button type="button" class="btn-primary" :disabled="busy || !selectedBackup" @click="restoreSelectedBackup()">恢复到酒馆</button>
+          </div>
+          <pre x-show="restorePreview" class="p-3 rounded bg-black/30 text-xs overflow-auto max-h-64" x-text="JSON.stringify(restorePreview, null, 2)"></pre>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
