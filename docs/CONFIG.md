@@ -347,7 +347,7 @@ STM_AUTH_PASS=change-me
 STM_SECRET_KEY=replace-with-a-long-random-secret
 ```
 
-项目根目录的 `zeabur.yaml` 声明了 `/data` 持久卷、`PORT`/`HOST`、`STM_DATA_DIR`、`STM_CONFIG_FILE`、`STM_SERVER_PROFILE` 和 `/healthz` 健康检查。部署后在界面中配置远程 SillyTavern URL 时要注意：Zeabur 内的 `127.0.0.1` 指 ST-Manager 容器自身，不是本地电脑。
+项目根目录的 `zeabur.yaml` 声明了 `/data` 持久卷、`PORT`/`HOST`、`STM_DATA_DIR`、`STM_CONFIG_FILE`、`STM_SERVER_PROFILE` 和 `/healthz` 健康检查。部署后只有在使用 ST-Manager 主动拉取酒馆资源时，才需要在界面中配置远程 SillyTavern URL；这时要注意 Zeabur 内的 `127.0.0.1` 指 ST-Manager 容器自身，不是本地电脑。若使用 Authority 酒馆侧主动推送备份/恢复，只需在 ST-Manager 生成 Control Key，并在 Authority 填写 ST-Manager URL 和 Control Key。
 
 ---
 

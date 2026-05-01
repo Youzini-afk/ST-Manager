@@ -43,3 +43,5 @@ def test_remote_backup_modal_contains_backup_restore_and_schedule_controls():
     assert '定时备份' in template
     assert 'ST-Manager Control Key' in template
     assert '生成 / 轮换 Key' in template
+    assert 'ST-Manager 主动拉取' in template
+    assert '酒馆侧主动推送不需要填写这里' in template

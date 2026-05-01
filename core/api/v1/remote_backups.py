@@ -3,6 +3,7 @@ import logging
 from flask import Blueprint, jsonify, request
 
 from core.services.remote_backup_control_auth import RemoteBackupControlStore
+from core.services.remote_backup_incoming_service import RemoteBackupIncomingService
 from core.services.remote_backup_scheduler import RemoteBackupScheduleStore
 from core.services.remote_backup_service import (
     RemoteBackupConfigStore,
@@ -30,6 +31,10 @@ def _control_store():
 
 def _schedule_store():
     return RemoteBackupScheduleStore()
+
+
+def _incoming_service():
+    return RemoteBackupIncomingService()
 
 
 def _error_response(error, status=500):
@@ -109,6 +114,74 @@ def start():
             ingest=payload.get('ingest', True),
         )
         return jsonify({'success': True, 'backup': result})
+    except RemoteBackupError as exc:
+        return _error_response(exc, 400)
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@bp.route('/incoming/start', methods=['POST'])
+def incoming_start():
+    try:
+        return jsonify({'success': True, 'backup': _incoming_service().start_backup(_json_payload())})
+    except RemoteBackupError as exc:
+        return _error_response(exc, 400)
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@bp.route('/incoming/file/write-init', methods=['POST'])
+def incoming_file_write_init():
+    try:
+        return jsonify({'success': True, 'transfer': _incoming_service().write_file_init(_json_payload())})
+    except RemoteBackupError as exc:
+        return _error_response(exc, 400)
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@bp.route('/incoming/file/write-chunk', methods=['POST'])
+def incoming_file_write_chunk():
+    try:
+        return jsonify({'success': True, 'transfer': _incoming_service().write_file_chunk(_json_payload())})
+    except RemoteBackupError as exc:
+        return _error_response(exc, 400)
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@bp.route('/incoming/file/write-commit', methods=['POST'])
+def incoming_file_write_commit():
+    try:
+        return jsonify({'success': True, 'file': _incoming_service().write_file_commit(_json_payload())})
+    except RemoteBackupError as exc:
+        return _error_response(exc, 400)
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@bp.route('/incoming/complete', methods=['POST'])
+def incoming_complete():
+    payload = _json_payload()
+    backup_id = payload.get('backup_id')
+    if not backup_id:
+        return jsonify({'success': False, 'error': 'backup_id is required'}), 400
+    try:
+        result = _incoming_service().complete_backup(
+            str(backup_id),
+            ingest=payload.get('ingest', True),
+        )
+        return jsonify({'success': True, 'backup': result})
+    except RemoteBackupError as exc:
+        return _error_response(exc, 400)
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@bp.route('/file/read', methods=['POST'])
+def read_backup_file():
+    try:
+        return jsonify({'success': True, 'file': _incoming_service().read_backup_file(_json_payload())})
     except RemoteBackupError as exc:
         return _error_response(exc, 400)
     except Exception as exc:

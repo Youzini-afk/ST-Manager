@@ -233,7 +233,9 @@ STM_SECRET_KEY: replace-with-a-long-random-secret
 - 服务端环境变量 `STM_SERVER_PROFILE=1`、`STM_DATA_DIR=/data`、`STM_CONFIG_FILE=/data/config.json`
 - 可选但强烈建议填写的 `STM_AUTH_USER`、`STM_AUTH_PASS`、`STM_SECRET_KEY`
 
-部署后先打开 ST-Manager，进入设置配置远程 SillyTavern URL 和 Authority Bridge Key。注意：Zeabur 中的 `127.0.0.1` 指 ST-Manager 容器自身，不是你的本地电脑；如果 SillyTavern 在另一台机器上，`st_url` 必须填写 Zeabur 容器可访问的公网或内网地址。
+部署后如果要让 ST-Manager 主动拉取酒馆资源，进入远程备份面板配置远程 SillyTavern URL 和 Authority Bridge Key。注意：Zeabur 中的 `127.0.0.1` 指 ST-Manager 容器自身，不是你的本地电脑；如果 SillyTavern 在另一台机器上，`st_url` 必须填写 Zeabur 容器可访问的公网或内网地址。
+
+如果只从 Authority 酒馆侧一键推送备份/恢复，则不需要配置这里的远程 SillyTavern URL；在 ST-Manager 生成 Control Key，再回到 Authority 填写 ST-Manager URL 和 Control Key 即可。
 
 ---
 

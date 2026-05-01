@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 
 from core.api.v1 import remote_backups as remote_backups_api
 from core.services.remote_backup_control_auth import RemoteBackupControlStore
+from core.services.remote_backup_incoming_service import RemoteBackupIncomingService
 from core.services.remote_backup_scheduler import RemoteBackupScheduleStore
 from core.services.remote_backup_service import RemoteBackupConfigStore
 
@@ -105,6 +106,54 @@ def test_start_endpoint_delegates_backup_request(monkeypatch):
             'description': 'manual',
             'ingest': False,
         }
+    ]
+
+
+def test_incoming_push_endpoints_delegate_to_incoming_service(monkeypatch):
+    calls = []
+
+    class FakeIncomingService:
+        def start_backup(self, payload):
+            calls.append(('start', payload))
+            return {'backup_id': 'push-api'}
+
+        def write_file_init(self, payload):
+            calls.append(('init', payload))
+            return {'upload_id': 'upload-1'}
+
+        def write_file_chunk(self, payload):
+            calls.append(('chunk', payload))
+            return {'offset': 4}
+
+        def write_file_commit(self, payload):
+            calls.append(('commit', payload))
+            return {'relative_path': 'Ava.png'}
+
+        def complete_backup(self, backup_id, *, ingest=True):
+            calls.append(('complete', backup_id, ingest))
+            return {'backup_id': backup_id, 'total_files': 1}
+
+        def read_backup_file(self, payload):
+            calls.append(('read', payload))
+            return {'data_base64': 'Y2FyZA==', 'bytes_read': 4, 'eof': True}
+
+    monkeypatch.setattr(remote_backups_api, 'RemoteBackupIncomingService', lambda: FakeIncomingService())
+    client = _make_test_app().test_client()
+
+    assert client.post('/api/remote_backups/incoming/start', json={'resource_types': ['characters']}).status_code == 200
+    assert client.post('/api/remote_backups/incoming/file/write-init', json={'backup_id': 'push-api'}).status_code == 200
+    assert client.post('/api/remote_backups/incoming/file/write-chunk', json={'upload_id': 'upload-1'}).status_code == 200
+    assert client.post('/api/remote_backups/incoming/file/write-commit', json={'upload_id': 'upload-1'}).status_code == 200
+    assert client.post('/api/remote_backups/incoming/complete', json={'backup_id': 'push-api', 'ingest': False}).status_code == 200
+    assert client.post('/api/remote_backups/file/read', json={'backup_id': 'push-api'}).status_code == 200
+
+    assert calls == [
+        ('start', {'resource_types': ['characters']}),
+        ('init', {'backup_id': 'push-api'}),
+        ('chunk', {'upload_id': 'upload-1'}),
+        ('commit', {'upload_id': 'upload-1'}),
+        ('complete', 'push-api', False),
+        ('read', {'backup_id': 'push-api'}),
     ]
 
 
