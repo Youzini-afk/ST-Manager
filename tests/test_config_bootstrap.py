@@ -1,5 +1,6 @@
 import json
 import logging
+import importlib
 import sys
 from io import StringIO
 from argparse import Namespace
@@ -46,6 +47,16 @@ def test_ensure_config_file_does_not_overwrite_existing_file(tmp_path, monkeypat
     assert target.read_text(encoding='utf-8') == original
 
 
+def test_ensure_config_file_creates_parent_directory(tmp_path, monkeypatch):
+    target = tmp_path / 'nested' / 'config.json'
+    monkeypatch.setattr(config_module, 'CONFIG_FILE', str(target))
+
+    created = config_module.ensure_config_file()
+
+    assert created is True
+    assert target.exists()
+
+
 def test_load_config_warns_when_existing_file_is_invalid(tmp_path, monkeypatch, caplog):
     target = tmp_path / 'config.json'
     target.write_text('{invalid json', encoding='utf-8')
@@ -60,11 +71,51 @@ def test_load_config_warns_when_existing_file_is_invalid(tmp_path, monkeypatch, 
     assert 'falling back to defaults for the current process' in caplog.text
 
 
-def test_get_default_config_overrides_uses_docker_host():
+def test_config_module_uses_env_config_file_and_data_dir(tmp_path, monkeypatch):
+    data_dir = tmp_path / 'persisted'
+    config_file = data_dir / 'config.json'
+    monkeypatch.setenv('STM_DATA_DIR', str(data_dir))
+    monkeypatch.setenv('STM_CONFIG_FILE', str(config_file))
+
+    reloaded = importlib.reload(config_module)
+    try:
+        assert reloaded.DATA_DIR == str(data_dir)
+        assert reloaded.CONFIG_FILE == str(config_file)
+        assert reloaded.SYSTEM_DIR == str(data_dir / 'system')
+        assert reloaded.TEMP_DIR == str(data_dir / 'temp')
+    finally:
+        monkeypatch.delenv('STM_DATA_DIR', raising=False)
+        monkeypatch.delenv('STM_CONFIG_FILE', raising=False)
+        importlib.reload(config_module)
+
+
+def test_build_default_config_is_data_root_aware(tmp_path, monkeypatch):
+    data_dir = tmp_path / 'data-root'
+    monkeypatch.setenv('STM_DATA_DIR', str(data_dir))
+
+    reloaded = importlib.reload(config_module)
+    try:
+        cfg = reloaded.build_default_config()
+        assert cfg['cards_dir'] == str(data_dir / 'library' / 'characters')
+        assert cfg['world_info_dir'] == str(data_dir / 'library' / 'lorebooks')
+        assert cfg['quick_replies_dir'] == str(data_dir / 'library' / 'extensions' / 'quick-replies')
+        assert cfg['resources_dir'] == str(data_dir / 'assets' / 'card_assets')
+    finally:
+        monkeypatch.delenv('STM_DATA_DIR', raising=False)
+        importlib.reload(config_module)
+
+
+def test_get_default_config_overrides_uses_docker_host(monkeypatch):
+    monkeypatch.delenv('PORT', raising=False)
+    monkeypatch.delenv('STM_SERVER_PROFILE', raising=False)
+
     assert app_module.get_default_config_overrides(True) == {'host': '0.0.0.0'}
 
 
-def test_get_default_config_overrides_uses_localhost_outside_docker():
+def test_get_default_config_overrides_uses_localhost_outside_docker(monkeypatch):
+    monkeypatch.delenv('PORT', raising=False)
+    monkeypatch.delenv('STM_SERVER_PROFILE', raising=False)
+
     assert app_module.get_default_config_overrides(False) is None
 
 
@@ -144,6 +195,45 @@ def test_resolve_server_settings_uses_flask_debug_env(monkeypatch):
     assert host == '127.0.0.1'
     assert port == 5000
     assert debug is True
+
+
+def test_resolve_server_settings_uses_env_between_cli_and_config(monkeypatch):
+    monkeypatch.setenv('HOST', '0.0.0.0')
+    monkeypatch.setenv('PORT', '8124')
+    monkeypatch.delenv('FLASK_DEBUG', raising=False)
+    cfg = {'host': '127.0.0.1', 'port': 5000}
+    cli_args = Namespace(debug=False, host=None, port=None)
+
+    host, port, debug = app_module.resolve_server_settings(cfg, cli_args)
+
+    assert host == '0.0.0.0'
+    assert port == 8124
+    assert debug is False
+
+
+def test_resolve_server_settings_cli_still_wins_over_env(monkeypatch):
+    monkeypatch.setenv('HOST', '0.0.0.0')
+    monkeypatch.setenv('PORT', '8124')
+    monkeypatch.delenv('FLASK_DEBUG', raising=False)
+    cfg = {'host': '127.0.0.1', 'port': 5000}
+    cli_args = Namespace(debug=False, host='127.0.0.2', port=9001)
+
+    host, port, debug = app_module.resolve_server_settings(cfg, cli_args)
+
+    assert (host, port, debug) == ('127.0.0.2', 9001, False)
+
+
+def test_resolve_server_settings_ignores_invalid_env_port(monkeypatch):
+    monkeypatch.setenv('PORT', 'nope')
+    monkeypatch.delenv('FLASK_DEBUG', raising=False)
+    cfg = {'host': '127.0.0.1', 'port': 5000}
+    cli_args = Namespace(debug=False, host=None, port=None)
+
+    host, port, debug = app_module.resolve_server_settings(cfg, cli_args)
+
+    assert host == '127.0.0.1'
+    assert port == 5000
+    assert debug is False
 
 
 def test_parse_cli_args_accepts_debug_host_and_port():

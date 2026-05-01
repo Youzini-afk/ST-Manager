@@ -1,0 +1,42 @@
+apiVersion: zeabur.com/v1
+kind: Template
+metadata:
+  name: ST-Manager
+spec:
+  description: SillyTavern resource manager and remote backup dashboard.
+  services:
+    - name: st-manager
+      template: GIT
+      spec:
+        source:
+          source: GITHUB
+          repoID: Youzini-afk/ST-Manager
+          branch: main
+        ports:
+          - id: web
+            port: 5000
+            type: HTTP
+        volumes:
+          - id: data
+            dir: /data
+        env:
+          HOST:
+            default: 0.0.0.0
+          PORT:
+            default: "5000"
+          STM_SERVER_PROFILE:
+            default: "1"
+          STM_DATA_DIR:
+            default: /data
+          STM_CONFIG_FILE:
+            default: /data/config.json
+          STM_DISABLE_BROWSER_OPEN:
+            default: "1"
+          STM_AUTH_USER:
+            default: ""
+          STM_AUTH_PASS:
+            default: ""
+          STM_SECRET_KEY:
+            default: ""
+        healthcheck:
+          path: /healthz

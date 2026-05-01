@@ -41,6 +41,10 @@ def create_app():
     app = Flask(__name__, 
                 static_folder=os.path.join(INTERNAL_DIR, 'static'),
                 template_folder=os.path.join(INTERNAL_DIR, 'templates'))
+
+    @app.route('/healthz')
+    def healthz():
+        return {'ok': True, 'service': 'st-manager'}
     
     # 注册数据库连接关闭钩子 (在请求结束时自动调用)
     app.teardown_appcontext(close_connection)

@@ -17,10 +17,23 @@ else:
     BASE_DIR = os.path.dirname(_current_dir)
     INTERNAL_DIR = BASE_DIR
 
-CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
+def _env_path(name):
+    raw = os.environ.get(name, '').strip()
+    return os.path.abspath(raw) if raw else None
+
+
+def _resolve_config_file():
+    return _env_path('STM_CONFIG_FILE') or os.path.join(BASE_DIR, 'config.json')
+
+
+def _resolve_data_dir():
+    return _env_path('STM_DATA_DIR') or os.path.join(BASE_DIR, 'data')
+
+
+CONFIG_FILE = _resolve_config_file()
 
 # === v2.0 目录结构定义 ===
-DATA_DIR = os.path.join(BASE_DIR, 'data')
+DATA_DIR = _resolve_data_dir()
 
 # 系统数据目录 (DB, Thumbnails, Trash)
 SYSTEM_DIR = os.path.join(DATA_DIR, 'system')
@@ -148,7 +161,7 @@ DEFAULT_CONFIG = {
 VALID_ST_AUTH_TYPES = {'basic', 'web', 'auth_web'}
 
 
-RUNTIME_DIR_DEFAULTS = {
+LEGACY_RUNTIME_DIR_DEFAULTS = {
     'cards_dir': 'data/library/characters',
     'world_info_dir': 'data/library/lorebooks',
     'chats_dir': 'data/library/chats',
@@ -159,6 +172,34 @@ RUNTIME_DIR_DEFAULTS = {
     'beautify_dir': 'data/library/beautify',
     'resources_dir': 'data/assets/card_assets',
 }
+
+
+def _data_root_runtime_defaults(data_dir):
+    root = os.path.abspath(data_dir)
+    return {
+        'cards_dir': os.path.join(root, 'library', 'characters'),
+        'world_info_dir': os.path.join(root, 'library', 'lorebooks'),
+        'chats_dir': os.path.join(root, 'library', 'chats'),
+        'presets_dir': os.path.join(root, 'library', 'presets'),
+        'regex_dir': os.path.join(root, 'library', 'extensions', 'regex'),
+        'scripts_dir': os.path.join(root, 'library', 'extensions', 'tavern_helper'),
+        'quick_replies_dir': os.path.join(root, 'library', 'extensions', 'quick-replies'),
+        'beautify_dir': os.path.join(root, 'library', 'beautify'),
+        'resources_dir': os.path.join(root, 'assets', 'card_assets'),
+    }
+
+
+def _is_external_data_dir_active():
+    return bool(os.environ.get('STM_DATA_DIR', '').strip())
+
+
+def get_runtime_dir_defaults():
+    if _is_external_data_dir_active():
+        return _data_root_runtime_defaults(DATA_DIR)
+    return dict(LEGACY_RUNTIME_DIR_DEFAULTS)
+
+
+RUNTIME_DIR_DEFAULTS = get_runtime_dir_defaults()
 
 
 def _normalize_st_auth_type(auth_type):
@@ -210,14 +251,17 @@ def _normalize_st_credentials(cfg):
 
 
 def normalize_config(cfg=None):
-    return _normalize_st_credentials({**DEFAULT_CONFIG, **(cfg or {})})
+    return _normalize_st_credentials({**DEFAULT_CONFIG, **get_runtime_dir_defaults(), **(cfg or {})})
 
 
 def build_default_config(default_overrides=None):
-    return normalize_config({**DEFAULT_CONFIG, **(default_overrides or {})})
+    return normalize_config(default_overrides or {})
 
 
 def write_config_file(path, cfg):
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent, exist_ok=True)
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(normalize_config(cfg), f, ensure_ascii=False, indent=2)
 

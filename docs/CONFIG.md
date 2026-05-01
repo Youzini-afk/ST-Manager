@@ -1,6 +1,6 @@
 # 配置说明
 
-ST-Manager 在仓库根目录使用 `config.json` 作为主配置文件。本文档按当前代码实现整理配置生成规则、默认值、认证说明与 Docker 注意事项。
+ST-Manager 默认在仓库根目录使用 `config.json` 作为主配置文件；服务端部署可通过 `STM_CONFIG_FILE` 改到持久卷路径。本文档按当前代码实现整理配置生成规则、默认值、认证说明与 Docker/Zeabur 注意事项。
 
 ---
 
@@ -9,7 +9,7 @@ ST-Manager 在仓库根目录使用 `config.json` 作为主配置文件。本文
 ### 1.1 首次生成
 
 - 本地直接运行 `python app.py` 时，如果根目录缺少 `config.json`，程序会自动生成默认配置
-- Docker Compose 首次启动时，会先通过 `init-config` 服务在宿主机项目根目录生成 `./config.json`
+- Docker Compose 首次启动时会在 `/data/config.json` 生成配置，宿主机默认映射为 `./data/config.json`
 - 自动生成只会在配置文件缺失时发生，不会覆盖已有文件
 
 ### 1.2 本地与 Docker 的默认监听差异
@@ -22,12 +22,14 @@ ST-Manager 在仓库根目录使用 `config.json` 作为主配置文件。本文
 `host` / `port` 的优先级为：
 
 1. 命令行参数 `--host` / `--port`
-2. `config.json`
-3. 内置默认值
+2. 环境变量 `HOST` / `PORT`
+3. `config.json`
+4. 内置默认值
 
 说明：
 
 - `python app.py --host ... --port ...` 只影响当前进程，不会写回 `config.json`
+- Zeabur 等平台注入的 `PORT` 会自动参与解析
 - `debug` 不来自配置文件，只由 `--debug` 或 `FLASK_DEBUG=1` 控制
 
 ### 1.4 配置损坏时的回退逻辑
@@ -38,9 +40,9 @@ ST-Manager 在仓库根目录使用 `config.json` 作为主配置文件。本文
 - 当前进程仅回退到内置默认配置继续运行
 - 不会自动修复或覆盖原文件
 
-Docker 额外注意：
+Docker / Zeabur 额外注意：
 
-- 如果宿主机上的 `config.json` 已损坏，`init-config` 不会覆盖它
+- 如果持久卷中的 `config.json` 已损坏，启动流程不会覆盖它
 - 主服务会仅在当前进程兜底回退到默认配置
 - 这种情况下 Flask 可能重新监听 `127.0.0.1`，从而导致容器外无法访问
 
@@ -49,6 +51,8 @@ Docker 额外注意：
 ## 2. 路径与目录规则
 
 - 相对路径都相对于项目根目录解析
+- 设置 `STM_DATA_DIR=/data` 后，新生成的默认资源目录会指向 `/data/library/...`
+- 设置 `STM_CONFIG_FILE=/data/config.json` 后，配置会保存在持久卷中
 - 目录型配置在启动时会自动创建对应目录
 - 系统内部固定目录位于：
 
@@ -258,7 +262,22 @@ Docker 额外注意：
 
 如果未提供 `STM_SECRET_KEY`，程序会尝试在 `data/.secret_key` 中持久化生成一份随机密钥。
 
-### 4.7 命令行工具
+### 4.7 服务端部署环境变量
+
+| 环境变量 | 说明 |
+| --- | --- |
+| `HOST` | 服务监听地址，低于 CLI、高于 `config.json` |
+| `PORT` | 服务监听端口，适配 Zeabur 等平台 |
+| `STM_SERVER_PROFILE` | 启用服务端运行提示和默认行为 |
+| `STM_DATA_DIR` | 运行数据根目录，推荐 `/data` |
+| `STM_CONFIG_FILE` | 配置文件路径，推荐 `/data/config.json` |
+| `STM_DISABLE_BROWSER_OPEN` | 禁止启动时自动打开浏览器 |
+
+当 `STM_SERVER_PROFILE=1` 或平台注入 `PORT` 时，ST-Manager 会视为服务端运行。如果此时未配置 `STM_AUTH_USER` / `STM_AUTH_PASS` 或配置文件中的 `auth_username` / `auth_password`，服务仍会启动，但日志和界面会显示公网部署未启用登录保护的警告。
+
+服务端健康检查路径为 `/healthz`，该路径不需要登录，适合 Zeabur、Docker 和反向代理探活。
+
+### 4.8 命令行工具
 
 ```bash
 # 查看当前认证状态
@@ -311,12 +330,24 @@ python -m core.auth --add-ip your-ddns.example.com
 
 当前 `docker-compose.yaml` 行为：
 
-- `init-config` 服务会先在宿主机生成 `./config.json`
-- 主服务将 `./data` 挂载到 `/app/data`
-- 主服务将 `./config.json` 挂载到 `/app/config.json`
+- 主服务将宿主机 `./data` 挂载到容器 `/data`
+- 主服务使用 `STM_CONFIG_FILE=/data/config.json`
+- 主服务使用 `STM_DATA_DIR=/data`
+- 主服务通过 Gunicorn 启动 `wsgi:app`
+- 容器健康检查访问 `/healthz`
 - `extra_hosts` 中已包含 `host.docker.internal:host-gateway`
 
 因此容器内访问宿主机服务时，可优先考虑 `host.docker.internal`。
+
+Docker 和 Zeabur 部署推荐设置：
+
+```text
+STM_AUTH_USER=admin
+STM_AUTH_PASS=change-me
+STM_SECRET_KEY=replace-with-a-long-random-secret
+```
+
+项目根目录的 `zeabur.yaml` 声明了 `/data` 持久卷、`PORT`/`HOST`、`STM_DATA_DIR`、`STM_CONFIG_FILE`、`STM_SERVER_PROFILE` 和 `/healthz` 健康检查。部署后在界面中配置远程 SillyTavern URL 时要注意：Zeabur 内的 `127.0.0.1` 指 ST-Manager 容器自身，不是本地电脑。
 
 ---
 

@@ -13,6 +13,12 @@ export default function layout() {
     get serverStatus() {
       return this.$store.global.serverStatus;
     },
+    get securityStatus() {
+      return this.serverStatus?.security || {};
+    },
+    get showPublicAuthWarning() {
+      return !!this.securityStatus.public_auth_warning;
+    },
     get isDarkMode() {
       return this.$store.global.isDarkMode;
     },

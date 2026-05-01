@@ -37,6 +37,8 @@ from core.services.st_client import refresh_st_client
 from core.services.st_auth import STAuthError, build_st_http_client
 from core.services.st_path_safety import evaluate_st_path_safety
 from core.services.user_db_backup_service import UserDbBackupService
+from core.auth import is_auth_enabled
+from core.deployment import build_security_status, is_server_profile
 
 # === 工具函数 ===
 from core.utils.filesystem import (
@@ -241,7 +243,12 @@ def _extract_settings_save_payload(raw_payload):
 
 @bp.route('/api/status')
 def api_status():
-    return jsonify(ctx.init_status)
+    payload = dict(ctx.init_status)
+    payload['security'] = build_security_status(
+        server_profile=is_server_profile(False),
+        auth_enabled=is_auth_enabled(),
+    )
+    return jsonify(payload)
 
 
 @bp.route('/api/index/status')

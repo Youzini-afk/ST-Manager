@@ -1,32 +1,21 @@
 services:
-  init-config:
-    build: .
-    working_dir: /app
-    volumes:
-      - .:/workspace
-    command:
-      - python
-      - -c
-      - |
-        import sys
-        sys.path.insert(0, '/app')
-        from core.config import ensure_config_file
-        ensure_config_file(
-            default_overrides={'host': '0.0.0.0'},
-            target_path='/workspace/config.json',
-        )
-
   st-manager:
     build: .
     container_name: st-manager
-    depends_on:
-      init-config:
-        condition: service_completed_successfully
     ports:
       - "5000:5000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    environment:
+      STM_SERVER_PROFILE: "1"
+      STM_DATA_DIR: /data
+      STM_CONFIG_FILE: /data/config.json
+      STM_DISABLE_BROWSER_OPEN: "1"
+      HOST: 0.0.0.0
+      PORT: "5000"
+      # STM_AUTH_USER: admin
+      # STM_AUTH_PASS: change-me
+      # STM_SECRET_KEY: replace-with-a-long-random-secret
     volumes:
-      - ./data:/app/data
-      - ./config.json:/app/config.json
+      - ./data:/data
     restart: unless-stopped

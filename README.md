@@ -184,27 +184,56 @@ docker-compose up -d
 http://localhost:5000
 ```
 
-Compose 部署包含两个服务：
+Compose 部署使用一个 `st-manager` 服务，容器内通过 Gunicorn 启动 `wsgi:app`，并默认启用服务端运行配置：
 
-| 服务 | 作用 |
-| --- | --- |
-| `init-config` | 首次启动前在宿主机项目根目录生成 `./config.json` |
-| `st-manager` | 启动主 Web 服务，暴露 `5000` 端口 |
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `HOST` | `0.0.0.0` | 容器对外监听地址 |
+| `PORT` | `5000` | Web 服务端口；Zeabur 等平台可注入覆盖 |
+| `STM_SERVER_PROFILE` | `1` | 启用服务端运行提示与默认行为 |
+| `STM_DATA_DIR` | `/data` | 持久化数据根目录 |
+| `STM_CONFIG_FILE` | `/data/config.json` | 主配置文件路径 |
+| `STM_DISABLE_BROWSER_OPEN` | `1` | 禁止容器启动时尝试打开浏览器 |
 
 默认挂载：
 
 | 宿主机路径 | 容器路径 | 说明 |
 | --- | --- | --- |
-| `./data` | `/app/data` | 运行时数据、数据库、缩略图、资源库 |
-| `./config.json` | `/app/config.json` | 主配置文件 |
+| `./data` | `/data` | 配置文件、运行时数据、数据库、缩略图、资源库、远程备份 |
 
-Docker 首次生成配置时会把 `host` 设为 `0.0.0.0`，便于容器对外监听。如果容器内需要访问宿主机上的 SillyTavern，可优先把 `st_url` 配成类似：
+容器提供 `/healthz` 用于健康检查。首次启动会在 `/data/config.json` 生成配置，并把资源库目录默认指向 `/data/library/...`。
+
+如果容器内需要访问宿主机上的 SillyTavern，可优先把 `st_url` 配成类似：
 
 ```json
 {
   "st_url": "http://host.docker.internal:8000"
 }
 ```
+
+公网部署建议在 compose 环境变量中设置：
+
+```yaml
+STM_AUTH_USER: admin
+STM_AUTH_PASS: change-me
+STM_SECRET_KEY: replace-with-a-long-random-secret
+```
+
+如果未设置登录账号密码，服务仍会启动，但日志和界面会显示公网部署未启用登录保护的警告。
+
+---
+
+## Zeabur 一键部署
+
+项目包含 `zeabur.yaml`，用于 Zeabur Template in Code 部署。模板会声明：
+
+- HTTP 服务端口 `5000`，运行时仍支持 Zeabur 注入的 `PORT`
+- 持久卷 `/data`
+- 健康检查路径 `/healthz`
+- 服务端环境变量 `STM_SERVER_PROFILE=1`、`STM_DATA_DIR=/data`、`STM_CONFIG_FILE=/data/config.json`
+- 可选但强烈建议填写的 `STM_AUTH_USER`、`STM_AUTH_PASS`、`STM_SECRET_KEY`
+
+部署后先打开 ST-Manager，进入设置配置远程 SillyTavern URL 和 Authority Bridge Key。注意：Zeabur 中的 `127.0.0.1` 指 ST-Manager 容器自身，不是你的本地电脑；如果 SillyTavern 在另一台机器上，`st_url` 必须填写 Zeabur 容器可访问的公网或内网地址。
 
 ---
 

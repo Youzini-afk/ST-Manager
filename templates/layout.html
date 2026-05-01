@@ -27,6 +27,14 @@
     x-data="layout"
     x-effect="document.documentElement.classList.toggle('light-mode', !isDarkMode)"
   >
+    <div
+      x-show="showPublicAuthWarning"
+      x-cloak
+      class="relative z-[10000] w-full bg-red-700 px-4 py-2 text-center text-sm font-semibold text-white shadow-lg"
+    >
+      公网部署未启用登录保护。请设置 STM_AUTH_USER / STM_AUTH_PASS 或在设置中配置外网访问账号密码。
+    </div>
+
     <!-- 1. 全局 Loading 遮罩 -->
     {% include "components/loading.html" %}
 

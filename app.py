@@ -29,7 +29,15 @@ if getattr(sys, 'frozen', False):
 # create_app: 创建 Flask 应用实例
 # init_services: 初始化数据库、缓存和后台扫描线程
 from core import create_app, init_services
+from core.auth import is_auth_enabled
 from core.config import ensure_config_file, ensure_runtime_dirs, load_config
+from core.deployment import (
+    get_env_host,
+    get_env_port,
+    is_server_profile,
+    log_public_auth_warning_if_needed,
+    should_auto_open_browser,
+)
 from core.utils.net import is_port_available
 
 
@@ -60,7 +68,7 @@ def parse_cli_args(argv=None):
 
 
 def get_default_config_overrides(in_docker):
-    return {'host': '0.0.0.0'} if in_docker else None
+    return {'host': '0.0.0.0'} if is_server_profile(in_docker) else None
 
 
 def ensure_startup_config(in_docker):
@@ -71,8 +79,12 @@ def ensure_startup_config(in_docker):
 
 
 def resolve_server_settings(cfg, cli_args):
-    host = cli_args.host if cli_args.host is not None else cfg.get('host', '127.0.0.1')
-    port = cli_args.port if cli_args.port is not None else cfg.get('port', 5000)
+    env_host = get_env_host()
+    env_port = get_env_port()
+    host = cli_args.host if cli_args.host is not None else (env_host or cfg.get('host', '127.0.0.1'))
+    port = cli_args.port if cli_args.port is not None else (
+        env_port if env_port is not None else cfg.get('port', 5000)
+    )
     debug = cli_args.debug or os.environ.get('FLASK_DEBUG') == '1'
     return host, port, debug
 
@@ -90,11 +102,16 @@ if __name__ == '__main__':
 
     # 1. 加载配置
     server_host, server_port, debug_mode = resolve_server_settings(cfg, cli_args)
+    server_profile = is_server_profile(in_docker)
+    log_public_auth_warning_if_needed(
+        server_profile=server_profile,
+        auth_enabled=is_auth_enabled(),
+    )
 
     # 2. 端口占用检测
     # 如果端口被占用，给出友好提示并暂停（防止窗口闪退）
     # 注意：在 Flask Debug 模式(Reload)下，子进程启动时端口可能已被保留，因此仅在主进程检测
-    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true" and should_auto_open_browser(in_docker):
         if not is_port_available(server_port, server_host):
             print(f"\n{'='*60}")
             print(f"❌ 启动失败：地址 {server_host}:{server_port} 已被占用！")

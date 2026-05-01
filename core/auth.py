@@ -844,6 +844,7 @@ def init_auth(app):
         excluded_paths = (
             '/static/',
             '/auth/',
+            '/healthz',
             '/favicon.ico',
         )
         
