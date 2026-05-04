@@ -1,6 +1,8 @@
 import base64
 import hashlib
 import json
+import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -21,6 +23,14 @@ MAX_CHUNK_READ_BYTES = 16 * 1024 * 1024
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _resource_types(values: Optional[Iterable[Any]]) -> List[str]:
@@ -144,10 +154,10 @@ class RemoteBackupIncomingService:
         upload_id = str(payload.get('upload_id') or '')
         state = self._load_upload_state(upload_id)
         temp_path = Path(state['temp_path'])
-        data = temp_path.read_bytes()
-        if len(data) != int(state['size']):
+        expected_size = int(state['size'])
+        if temp_path.stat().st_size != expected_size:
             raise RemoteBackupError('transfer size mismatch')
-        actual_sha256 = _sha256(data)
+        actual_sha256 = _sha256_file(temp_path)
         if actual_sha256 != state['sha256']:
             raise RemoteBackupError('sha256 mismatch')
 
@@ -156,34 +166,49 @@ class RemoteBackupIncomingService:
         relative_path = str(state['relative_path'])
         target = _safe_backup_file(backup_dir, resource_type, relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
+        reuse_source = self._find_verified_reuse_source(
+            str(state['backup_id']),
+            resource_type,
+            relative_path,
+            expected_size,
+            actual_sha256,
+        )
+        reused = reuse_source is not None
+        if reused:
+            self._materialize_file(reuse_source, target)
+            temp_path.unlink(missing_ok=True)
+        else:
+            temp_path.replace(target)
 
         manifest = self._load_manifest(backup_dir)
         metadata = state.get('metadata') if isinstance(state.get('metadata'), dict) else {}
         entry = {
             **metadata,
             'relative_path': relative_path,
-            'size': len(data),
+            'size': expected_size,
             'sha256': actual_sha256,
         }
         self._upsert_manifest_entry(manifest, resource_type, entry)
+        dedup = manifest.setdefault('dedup', {})
+        dedup['reused_files'] = int(dedup.get('reused_files') or 0) + (1 if reused else 0)
+        dedup['uploaded_files'] = int(dedup.get('uploaded_files') or 0) + (0 if reused else 1)
         self._write_manifest(backup_dir, manifest)
         self._append_log(backup_dir, {
-            'event': 'uploaded',
+            'event': 'reused' if reused else 'uploaded',
             'resource_type': resource_type,
             'relative_path': relative_path,
-            'size': len(data),
+            'size': expected_size,
         })
 
-        temp_path.unlink(missing_ok=True)
         self._upload_state_path(upload_id).unlink(missing_ok=True)
         return {
             'upload_id': upload_id,
             'backup_id': state['backup_id'],
             'resource_type': resource_type,
             'relative_path': relative_path,
-            'size': len(data),
+            'size': expected_size,
             'sha256': actual_sha256,
+            'reused': reused,
         }
 
     def complete_backup(self, backup_id: str, *, ingest: bool = True) -> Dict[str, Any]:
@@ -243,6 +268,63 @@ class RemoteBackupIncomingService:
 
     def _new_backup_id(self) -> str:
         return f'{now_iso().replace(":", "").replace("-", "").replace(".", "")}-{uuid.uuid4().hex[:8]}'
+
+    def _iter_reuse_candidates(self, current_backup_id: str, resource_type: str, relative_path: str):
+        if not self.base_dir.exists():
+            return
+        for child in self.base_dir.iterdir():
+            if not child.is_dir() or child.name == current_backup_id or child.name.startswith('_'):
+                continue
+            manifest_path = child / 'manifest.json'
+            if not manifest_path.is_file():
+                continue
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+            except Exception:
+                continue
+            if not isinstance(manifest, dict) or manifest.get('status') == 'receiving':
+                continue
+            for entry in manifest.get('resources', {}).get(resource_type, []) or []:
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    candidate_path = normalize_remote_relative_path(entry.get('relative_path') or entry.get('path'))
+                except RemoteBackupError:
+                    continue
+                if candidate_path == relative_path:
+                    yield child, entry
+
+    def _find_verified_reuse_source(
+        self,
+        current_backup_id: str,
+        resource_type: str,
+        relative_path: str,
+        expected_size: int,
+        expected_sha256: str,
+    ) -> Optional[Path]:
+        for backup_dir, entry in self._iter_reuse_candidates(current_backup_id, resource_type, relative_path):
+            if entry.get('size') != expected_size or entry.get('sha256') != expected_sha256:
+                continue
+            source = _safe_backup_file(backup_dir, resource_type, relative_path)
+            if not source.is_file():
+                continue
+            try:
+                if source.stat().st_size != expected_size:
+                    continue
+                if _sha256_file(source) != expected_sha256:
+                    continue
+            except OSError:
+                continue
+            return source
+        return None
+
+    def _materialize_file(self, source: Path, target: Path) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.unlink(missing_ok=True)
+        try:
+            os.link(source, target)
+        except OSError:
+            shutil.copy2(source, target)
 
     def _manifest_path(self, backup_dir: Path) -> Path:
         return backup_dir / 'manifest.json'
