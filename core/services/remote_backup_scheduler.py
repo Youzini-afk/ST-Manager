@@ -167,12 +167,18 @@ def prune_remote_backups(retention_limit: int, *, base_dir: Optional[Path] = Non
         return []
     backups = []
     for child in base.iterdir():
-        if child.is_dir() and (child / 'manifest.json').exists():
-            try:
-                manifest = json.loads((child / 'manifest.json').read_text(encoding='utf-8'))
-            except Exception:
-                manifest = {}
-            backups.append((manifest.get('created_at', ''), child))
+        if not child.is_dir() or child.name.startswith('_'):
+            continue
+        manifest_path = child / 'manifest.json'
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        except Exception:
+            manifest = {}
+        if manifest.get('status') == 'receiving':
+            continue
+        backups.append((manifest.get('created_at', ''), child))
     backups.sort(key=lambda item: item[0], reverse=True)
     removed = []
     for _created_at, path in backups[max(1, int(retention_limit)):]:
