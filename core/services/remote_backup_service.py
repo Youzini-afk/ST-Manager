@@ -1,14 +1,19 @@
 import hashlib
 import json
 import os
-import re
 import shutil
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from core.config import SYSTEM_DIR, load_config
+from core.services.remote_backup_storage import (
+    RemoteBackupStorageError,
+    normalize_remote_relative_path as _normalize_storage_relative_path,
+    read_backup_entry_bytes,
+    safe_backup_file as _safe_storage_backup_file,
+)
 from core.services.remote_st_bridge_client import RemoteSTBridgeClient
 
 
@@ -38,38 +43,17 @@ def normalize_remote_connection_mode(value: Any) -> str:
 
 
 def normalize_remote_relative_path(path: str) -> str:
-    if not isinstance(path, str):
-        raise RemoteBackupError('illegal relative_path: expected string')
-    raw = path.strip()
-    if not raw:
-        raise RemoteBackupError('illegal relative_path: empty')
-    if '\\' in raw:
-        raise RemoteBackupError(f'illegal relative_path: {path}')
-    if raw.startswith('/'):
-        raise RemoteBackupError(f'illegal relative_path: {path}')
-    if re.match(r'^[A-Za-z]:', raw):
-        raise RemoteBackupError(f'illegal relative_path: {path}')
-
-    posix_path = PurePosixPath(raw)
-    parts = posix_path.parts
-    if not parts or any(part in ('', '.', '..') for part in parts):
-        raise RemoteBackupError(f'illegal relative_path: {path}')
-    normalized = '/'.join(parts)
-    if normalized.startswith('../') or normalized == '..':
-        raise RemoteBackupError(f'illegal relative_path: {path}')
-    return normalized
+    try:
+        return _normalize_storage_relative_path(path)
+    except RemoteBackupStorageError as exc:
+        raise RemoteBackupError(str(exc)) from exc
 
 
 def _safe_backup_file(root: Path, resource_type: str, relative_path: str) -> Path:
-    normalized = normalize_remote_relative_path(relative_path)
-    target = root / 'resources' / resource_type / Path(*normalized.split('/'))
-    base = (root / 'resources' / resource_type).resolve()
-    resolved = target.resolve()
     try:
-        resolved.relative_to(base)
-    except ValueError as exc:
-        raise RemoteBackupError(f'illegal relative_path: {relative_path}') from exc
-    return target
+        return _safe_storage_backup_file(root, resource_type, relative_path)
+    except RemoteBackupStorageError as exc:
+        raise RemoteBackupError(str(exc)) from exc
 
 
 def _sha256(data: bytes) -> str:
@@ -236,7 +220,7 @@ class RemoteBackupService:
                     continue
                 try:
                     candidate_path = normalize_remote_relative_path(entry.get('relative_path') or entry.get('path'))
-                except RemoteBackupError:
+                except (RemoteBackupError, RemoteBackupStorageError):
                     continue
                 if candidate_path == relative_path:
                     yield child, entry
@@ -489,8 +473,9 @@ class RemoteBackupService:
             }
             for entry in backup_manifest.get('resources', {}).get(resource_type, []) or []:
                 relative_path = normalize_remote_relative_path(entry.get('relative_path') or entry.get('path'))
-                source = _safe_backup_file(backup_dir, resource_type, relative_path)
-                if not source.is_file():
+                try:
+                    data = read_backup_entry_bytes(backup_dir, resource_type, entry)
+                except RemoteBackupError:
                     result['failed'] += 1
                     result['items'].append({
                         'resource_type': resource_type,
@@ -507,7 +492,6 @@ class RemoteBackupService:
                     })
                     continue
 
-                data = source.read_bytes()
                 client.upload_file(
                     resource_type,
                     relative_path,

@@ -7,6 +7,7 @@ from core.api.v1.st_sync import _export_global_regex
 from core.config import BASE_DIR, load_config
 from core.services.cache_service import invalidate_wi_list_cache
 from core.services.remote_backup_service import normalize_remote_relative_path
+from core.services.remote_backup_storage import resolve_backup_entry_path
 from core.services.scan_service import request_scan
 
 
@@ -69,7 +70,7 @@ class RemoteLibraryIngestService:
                 if not relative_path:
                     continue
                 normalized = normalize_remote_relative_path(relative_path)
-                source = backup_dir / 'resources' / resource_type / Path(*normalized.split('/'))
+                source = resolve_backup_entry_path(backup_dir, resource_type, entry)
                 if not source.is_file():
                     result['failed'] += 1
                     continue

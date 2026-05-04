@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 
 
 from core.services.remote_backup_service import RemoteBackupError, RemoteBackupService
+from core.services.remote_backup_storage import read_backup_entry_bytes
 
 
 class FakeRemoteClient:
@@ -228,6 +229,20 @@ def test_deleting_old_backup_does_not_break_new_reused_backup(tmp_path):
     assert remote.downloads == []
     assert result['uploaded'] == 1
     assert remote.uploads == [('characters', 'Ava.png', b'pngdata', 'overwrite')]
+
+
+def test_backup_entry_resolver_reads_legacy_resource_file(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-resolver', ingest=False)
+    backup_dir = tmp_path / 'system' / 'remote_backups' / 'backup-resolver'
+    entry = {'relative_path': 'Ava.png'}
+
+    assert read_backup_entry_bytes(backup_dir, 'characters', entry) == b'pngdata'
 
 
 def test_authority_bridge_mode_requires_bridge_key(tmp_path):

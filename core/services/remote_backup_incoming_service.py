@@ -15,6 +15,7 @@ from core.services.remote_backup_service import (
     normalize_remote_relative_path,
     now_iso,
 )
+from core.services.remote_backup_storage import read_backup_entry_bytes
 
 
 UPLOADS_DIRNAME = '_incoming_uploads'
@@ -239,11 +240,7 @@ class RemoteBackupIncomingService:
             raise RemoteBackupError(f'unknown resource_type: {resource_type}')
         relative_path = normalize_remote_relative_path(str(payload.get('path') or payload.get('relative_path') or ''))
         backup_dir = self._backup_dir(backup_id)
-        file_path = _safe_backup_file(backup_dir, resource_type, relative_path)
-        if not file_path.is_file():
-            raise RemoteBackupError(f'backup file not found: {resource_type}/{relative_path}')
-
-        data = file_path.read_bytes()
+        data = read_backup_entry_bytes(backup_dir, resource_type, {'relative_path': relative_path})
         offset = max(0, int(payload.get('offset') or 0))
         limit = int(payload.get('limit') or 1024 * 1024)
         limit = max(1, min(limit, MAX_CHUNK_READ_BYTES))
