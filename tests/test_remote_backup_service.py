@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -143,6 +144,90 @@ def test_backup_rejects_illegal_remote_relative_path(tmp_path):
 
     with pytest.raises(RemoteBackupError, match='illegal relative_path'):
         service.create_backup(resource_types=['characters'], backup_id='backup-escape')
+
+
+def test_second_backup_reuses_verified_existing_file_without_download(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-source', ingest=False)
+    remote.downloads.clear()
+
+    service.create_backup(resource_types=['characters'], backup_id='backup-reused', ingest=False)
+
+    backup_dir = tmp_path / 'system' / 'remote_backups' / 'backup-reused'
+    manifest = json.loads((backup_dir / 'manifest.json').read_text(encoding='utf-8'))
+    assert remote.downloads == []
+    assert (backup_dir / 'resources' / 'characters' / 'Ava.png').read_bytes() == b'pngdata'
+    assert manifest['resources']['characters'][0]['relative_path'] == 'Ava.png'
+    assert manifest['resources']['characters'][0]['size'] == len(b'pngdata')
+    assert manifest['resources']['characters'][0]['sha256'] == hashlib.sha256(b'pngdata').hexdigest()
+    assert manifest['dedup']['reused_files'] == 1
+    assert manifest['dedup']['downloaded_files'] == 0
+
+
+def test_corrupt_reuse_source_falls_back_to_download(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-source', ingest=False)
+    (tmp_path / 'system' / 'remote_backups' / 'backup-source' / 'resources' / 'characters' / 'Ava.png').write_bytes(
+        b'corrupt'
+    )
+    remote.downloads.clear()
+
+    service.create_backup(resource_types=['characters'], backup_id='backup-fallback', ingest=False)
+
+    backup_dir = tmp_path / 'system' / 'remote_backups' / 'backup-fallback'
+    manifest = json.loads((backup_dir / 'manifest.json').read_text(encoding='utf-8'))
+    assert remote.downloads == [('characters', 'Ava.png', hashlib.sha256(b'pngdata').hexdigest())]
+    assert (backup_dir / 'resources' / 'characters' / 'Ava.png').read_bytes() == b'pngdata'
+    assert manifest['dedup']['reused_files'] == 0
+    assert manifest['dedup']['downloaded_files'] == 1
+
+
+def test_receiving_backup_is_not_used_as_reuse_source(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-source', ingest=False)
+    manifest_path = tmp_path / 'system' / 'remote_backups' / 'backup-source' / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    manifest['status'] = 'receiving'
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+    remote.downloads.clear()
+
+    service.create_backup(resource_types=['characters'], backup_id='backup-new', ingest=False)
+
+    assert remote.downloads == [('characters', 'Ava.png', hashlib.sha256(b'pngdata').hexdigest())]
+
+
+def test_deleting_old_backup_does_not_break_new_reused_backup(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-source', ingest=False)
+    remote.downloads.clear()
+    service.create_backup(resource_types=['characters'], backup_id='backup-reused', ingest=False)
+
+    shutil.rmtree(tmp_path / 'system' / 'remote_backups' / 'backup-source')
+    result = service.restore_backup('backup-reused', overwrite=True)
+
+    assert remote.downloads == []
+    assert result['uploaded'] == 1
+    assert remote.uploads == [('characters', 'Ava.png', b'pngdata', 'overwrite')]
 
 
 def test_authority_bridge_mode_requires_bridge_key(tmp_path):

@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -73,6 +74,14 @@ def _safe_backup_file(root: Path, resource_type: str, relative_path: str) -> Pat
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _entries_from_manifest(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -205,6 +214,66 @@ class RemoteBackupService:
         with logs_path.open('a', encoding='utf-8') as f:
             f.write(json.dumps(payload, ensure_ascii=False) + '\n')
 
+    def _iter_reuse_candidates(self, current_backup_id: str, resource_type: str, relative_path: str):
+        if not self.base_dir.exists():
+            return
+        for child in self.base_dir.iterdir():
+            if not child.is_dir() or child.name == current_backup_id:
+                continue
+            manifest_path = child / 'manifest.json'
+            if not manifest_path.is_file():
+                continue
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+            except Exception:
+                continue
+            if not isinstance(manifest, dict):
+                continue
+            if manifest.get('status') == 'receiving':
+                continue
+            for entry in manifest.get('resources', {}).get(resource_type, []) or []:
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    candidate_path = normalize_remote_relative_path(entry.get('relative_path') or entry.get('path'))
+                except RemoteBackupError:
+                    continue
+                if candidate_path == relative_path:
+                    yield child, entry
+
+    def _find_verified_reuse_source(
+        self,
+        current_backup_id: str,
+        resource_type: str,
+        relative_path: str,
+        expected_size: Optional[int],
+        expected_sha256: Optional[str],
+    ) -> Optional[Path]:
+        if expected_size is None or not expected_sha256:
+            return None
+        for backup_dir, entry in self._iter_reuse_candidates(current_backup_id, resource_type, relative_path):
+            if entry.get('size') != expected_size or entry.get('sha256') != expected_sha256:
+                continue
+            source = _safe_backup_file(backup_dir, resource_type, relative_path)
+            if not source.is_file():
+                continue
+            try:
+                if source.stat().st_size != expected_size:
+                    continue
+                if _sha256_file(source) != expected_sha256:
+                    continue
+            except OSError:
+                continue
+            return source
+        return None
+
+    def _materialize_reused_file(self, source: Path, target: Path):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(source, target)
+        except OSError:
+            shutil.copy2(source, target)
+
     def create_backup(
         self,
         *,
@@ -235,45 +304,76 @@ class RemoteBackupService:
 
         total_files = 0
         total_bytes = 0
+        reused_files = 0
+        downloaded_files = 0
         for resource_type in selected_types:
             remote_manifest = client.manifest(resource_type)
             entries = []
             for entry in _entries_from_manifest(remote_manifest):
                 relative_path = normalize_remote_relative_path(entry.get('relative_path') or entry.get('path'))
                 expected_sha256 = entry.get('sha256')
-                data = client.download_file(resource_type, relative_path, expected_sha256=expected_sha256)
-                actual_sha256 = _sha256(data)
-                if expected_sha256 and actual_sha256 != expected_sha256:
-                    raise RemoteBackupError(
-                        f'sha256 mismatch for {resource_type}/{relative_path}: expected {expected_sha256}, got {actual_sha256}'
-                    )
+                expected_size = entry.get('size') if isinstance(entry.get('size'), int) else None
 
                 target = _safe_backup_file(backup_dir, resource_type, relative_path)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(data)
+                reuse_source = self._find_verified_reuse_source(
+                    backup_id,
+                    resource_type,
+                    relative_path,
+                    expected_size,
+                    expected_sha256,
+                )
+                if reuse_source is not None:
+                    self._materialize_reused_file(reuse_source, target)
+                    actual_size = expected_size
+                    actual_sha256 = expected_sha256
+                    reused_files += 1
+                    self._append_log(
+                        logs_path,
+                        {
+                            'event': 'reused',
+                            'resource_type': resource_type,
+                            'relative_path': relative_path,
+                            'size': actual_size,
+                        },
+                    )
+                else:
+                    data = client.download_file(resource_type, relative_path, expected_sha256=expected_sha256)
+                    actual_sha256 = _sha256(data)
+                    if expected_sha256 and actual_sha256 != expected_sha256:
+                        raise RemoteBackupError(
+                            f'sha256 mismatch for {resource_type}/{relative_path}: expected {expected_sha256}, got {actual_sha256}'
+                        )
+                    actual_size = len(data)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+                    downloaded_files += 1
+                    self._append_log(
+                        logs_path,
+                        {
+                            'event': 'downloaded',
+                            'resource_type': resource_type,
+                            'relative_path': relative_path,
+                            'size': actual_size,
+                        },
+                    )
 
                 saved_entry = dict(entry)
                 saved_entry['relative_path'] = relative_path
-                saved_entry['size'] = len(data)
+                saved_entry['size'] = actual_size
                 saved_entry['sha256'] = actual_sha256
                 entries.append(saved_entry)
                 total_files += 1
-                total_bytes += len(data)
-                self._append_log(
-                    logs_path,
-                    {
-                        'event': 'downloaded',
-                        'resource_type': resource_type,
-                        'relative_path': relative_path,
-                        'size': len(data),
-                    },
-                )
+                total_bytes += actual_size
 
             manifest['resources'][resource_type] = entries
             manifest['counts'][resource_type] = len(entries)
 
         manifest['total_files'] = total_files
         manifest['total_bytes'] = total_bytes
+        manifest['dedup'] = {
+            'reused_files': reused_files,
+            'downloaded_files': downloaded_files,
+        }
         manifest_path = backup_dir / 'manifest.json'
         with manifest_path.open('w', encoding='utf-8') as f:
             json.dump(manifest, f, ensure_ascii=False, indent=2)
