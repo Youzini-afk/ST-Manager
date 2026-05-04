@@ -116,6 +116,38 @@ def test_incoming_push_reuses_verified_existing_backup_file(tmp_path):
     assert (backup_dir / 'resources' / 'characters' / 'Ava.png').read_bytes() == data
 
 
+def test_incoming_write_init_can_skip_upload_by_sha_when_supported(tmp_path):
+    service = RemoteBackupIncomingService(base_dir=tmp_path / 'remote_backups')
+    data = b'card-png-data'
+    digest = hashlib.sha256(data).hexdigest()
+    _push_character(service, 'push-source', data)
+
+    service.start_backup({
+        'backup_id': 'push-skip',
+        'resource_types': ['characters'],
+        'source': 'authority_control',
+    })
+    init = service.write_file_init({
+        'backup_id': 'push-skip',
+        'resource_type': 'characters',
+        'relative_path': 'Ava.png',
+        'size': len(data),
+        'sha256': digest,
+        'allow_skip_by_sha': True,
+        'metadata': {'kind': 'file'},
+    })
+    completed = service.complete_backup('push-skip', ingest=False)
+    backup_dir = tmp_path / 'remote_backups' / 'push-skip'
+    manifest = json.loads((backup_dir / 'manifest.json').read_text(encoding='utf-8'))
+
+    assert init['upload_required'] is False
+    assert init['status'] == 'already_present'
+    assert 'upload_id' not in init
+    assert completed['total_files'] == 1
+    assert manifest['dedup']['skipped_upload_files'] == 1
+    assert (backup_dir / 'resources' / 'characters' / 'Ava.png').read_bytes() == data
+
+
 def test_deleting_old_incoming_backup_does_not_break_reused_backup(tmp_path):
     service = RemoteBackupIncomingService(base_dir=tmp_path / 'remote_backups')
     data = b'card-png-data'

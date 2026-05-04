@@ -44,7 +44,14 @@ def _error_response(error, status=500):
 
 @bp.route('/control', methods=['GET'])
 def control():
-    return jsonify({'success': True, 'control': _control_store().public()})
+    return jsonify({
+        'success': True,
+        'control': _control_store().public(),
+        'protocol_version': 2,
+        'features': {
+            'incoming_skip_by_sha': True,
+        },
+    })
 
 
 @bp.route('/control', methods=['POST'])

@@ -15,7 +15,7 @@ from core.services.remote_backup_service import (
     normalize_remote_relative_path,
     now_iso,
 )
-from core.services.remote_backup_storage import read_backup_entry_bytes
+from core.services.remote_backup_storage import RemoteBackupStorageError, read_backup_entry_bytes
 
 
 UPLOADS_DIRNAME = '_incoming_uploads'
@@ -117,6 +117,25 @@ class RemoteBackupIncomingService:
         digest = _validate_sha256(payload.get('sha256'))
         _safe_backup_file(backup_dir, resource_type, relative_path)
 
+        metadata = payload.get('metadata') if isinstance(payload.get('metadata'), dict) else {}
+        if bool(payload.get('allow_skip_by_sha')):
+            reused = self._materialize_existing_file_reference(
+                backup_dir,
+                backup_id,
+                resource_type,
+                relative_path,
+                size,
+                digest,
+                metadata,
+            )
+            if reused:
+                return {
+                    'upload_required': False,
+                    'status': 'already_present',
+                    'reused': True,
+                    'offset': size,
+                }
+
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
         upload_id = uuid.uuid4().hex
         temp_path = self.uploads_dir / f'{upload_id}.tmp'
@@ -129,10 +148,10 @@ class RemoteBackupIncomingService:
             'size': size,
             'sha256': digest,
             'temp_path': str(temp_path),
-            'metadata': payload.get('metadata') if isinstance(payload.get('metadata'), dict) else {},
+            'metadata': metadata,
         }
         self._write_upload_state(upload_id, state)
-        return {'upload_id': upload_id, 'offset': 0}
+        return {'upload_id': upload_id, 'upload_required': True, 'offset': 0}
 
     def write_file_chunk(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         upload_id = str(payload.get('upload_id') or '')
@@ -240,7 +259,10 @@ class RemoteBackupIncomingService:
             raise RemoteBackupError(f'unknown resource_type: {resource_type}')
         relative_path = normalize_remote_relative_path(str(payload.get('path') or payload.get('relative_path') or ''))
         backup_dir = self._backup_dir(backup_id)
-        data = read_backup_entry_bytes(backup_dir, resource_type, {'relative_path': relative_path})
+        try:
+            data = read_backup_entry_bytes(backup_dir, resource_type, {'relative_path': relative_path})
+        except RemoteBackupStorageError as exc:
+            raise RemoteBackupError(str(exc)) from exc
         offset = max(0, int(payload.get('offset') or 0))
         limit = int(payload.get('limit') or 1024 * 1024)
         limit = max(1, min(limit, MAX_CHUNK_READ_BYTES))
@@ -314,6 +336,50 @@ class RemoteBackupIncomingService:
                 continue
             return source
         return None
+
+    def _materialize_existing_file_reference(
+        self,
+        backup_dir: Path,
+        backup_id: str,
+        resource_type: str,
+        relative_path: str,
+        expected_size: int,
+        expected_sha256: str,
+        metadata: Dict[str, Any],
+    ) -> bool:
+        reuse_source = self._find_verified_reuse_source(
+            backup_id,
+            resource_type,
+            relative_path,
+            expected_size,
+            expected_sha256,
+        )
+        if reuse_source is None:
+            return False
+
+        target = _safe_backup_file(backup_dir, resource_type, relative_path)
+        self._materialize_file(reuse_source, target)
+        manifest = self._load_manifest(backup_dir)
+        entry = {
+            **metadata,
+            'relative_path': relative_path,
+            'size': expected_size,
+            'sha256': expected_sha256,
+        }
+        self._upsert_manifest_entry(manifest, resource_type, entry)
+        dedup = manifest.setdefault('dedup', {})
+        dedup['reused_files'] = int(dedup.get('reused_files') or 0) + 1
+        dedup['uploaded_files'] = int(dedup.get('uploaded_files') or 0)
+        dedup['skipped_upload_files'] = int(dedup.get('skipped_upload_files') or 0) + 1
+        self._write_manifest(backup_dir, manifest)
+        self._append_log(backup_dir, {
+            'event': 'reused',
+            'resource_type': resource_type,
+            'relative_path': relative_path,
+            'size': expected_size,
+            'upload_required': False,
+        })
+        return True
 
     def _materialize_file(self, source: Path, target: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)

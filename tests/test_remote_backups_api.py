@@ -177,6 +177,20 @@ def test_control_key_rotate_returns_plaintext_once_and_masks_afterward(tmp_path,
     assert public['control']['control_key_fingerprint'] == rotated['control']['control_key_fingerprint']
 
 
+def test_control_endpoint_advertises_remote_backup_protocol_features(monkeypatch):
+    class FakeControlStore:
+        def public(self):
+            return {'enabled': True}
+
+    monkeypatch.setattr(remote_backups_api, 'RemoteBackupControlStore', lambda: FakeControlStore())
+
+    payload = _make_test_app().test_client().get('/api/remote_backups/control').get_json()
+
+    assert payload['success'] is True
+    assert payload['protocol_version'] == 2
+    assert payload['features']['incoming_skip_by_sha'] is True
+
+
 def test_schedule_endpoint_persists_normalized_schedule(tmp_path, monkeypatch):
     monkeypatch.setattr(
         remote_backups_api,
