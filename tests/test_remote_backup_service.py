@@ -245,6 +245,25 @@ def test_backup_entry_resolver_reads_legacy_resource_file(tmp_path):
     assert read_backup_entry_bytes(backup_dir, 'characters', entry) == b'pngdata'
 
 
+def test_backup_entry_resolver_validates_sha_when_manifest_provides_it(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-sha-resolver', ingest=False)
+    backup_dir = tmp_path / 'system' / 'remote_backups' / 'backup-sha-resolver'
+    entry = {
+        'relative_path': 'Ava.png',
+        'size': len(b'pngdata'),
+        'sha256': hashlib.sha256(b'other').hexdigest(),
+    }
+
+    with pytest.raises(Exception, match='sha256 mismatch'):
+        read_backup_entry_bytes(backup_dir, 'characters', entry)
+
+
 def test_authority_bridge_mode_requires_bridge_key(tmp_path):
     class FakeProbeClient:
         def probe(self):
@@ -278,3 +297,114 @@ def test_restore_skips_existing_remote_files_by_default_and_overwrites_explicitl
     assert remote.uploads == [
         ('characters', 'Ava.png', b'pngdata', 'overwrite'),
     ]
+
+
+def test_restore_reports_conflict_when_existing_remote_file_sha_differs(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-conflict', ingest=False)
+    remote.manifests['characters']['files'][0]['sha256'] = hashlib.sha256(b'changed').hexdigest()
+
+    result = service.restore_backup('backup-conflict')
+
+    assert result['skipped'] == 1
+    assert result['uploaded'] == 0
+    assert result['items'] == [{
+        'resource_type': 'characters',
+        'relative_path': 'Ava.png',
+        'status': 'conflict_existing',
+    }]
+    assert remote.uploads == []
+
+
+def test_restore_skips_existing_remote_file_only_when_sha_matches(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-same', ingest=False)
+
+    result = service.restore_backup('backup-same')
+
+    assert result['skipped'] == 1
+    assert result['uploaded'] == 0
+    assert result['items'] == [{
+        'resource_type': 'characters',
+        'relative_path': 'Ava.png',
+        'status': 'skipped_same',
+    }]
+    assert remote.uploads == []
+
+
+def test_restore_reports_conflict_when_sha_is_missing_from_legacy_manifests(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-legacy-conflict', ingest=False)
+    manifest_path = tmp_path / 'system' / 'remote_backups' / 'backup-legacy-conflict' / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    manifest['resources']['characters'][0].pop('sha256')
+    manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+    remote.manifests['characters']['files'][0].pop('sha256')
+
+    result = service.restore_backup('backup-legacy-conflict')
+
+    assert result['skipped'] == 1
+    assert result['uploaded'] == 0
+    assert result['items'] == [{
+        'resource_type': 'characters',
+        'relative_path': 'Ava.png',
+        'status': 'conflict_existing',
+    }]
+    assert remote.uploads == []
+
+
+def test_restore_fails_when_backup_file_bytes_do_not_match_manifest(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-corrupt', ingest=False)
+    backup_file = tmp_path / 'system' / 'remote_backups' / 'backup-corrupt' / 'resources' / 'characters' / 'Ava.png'
+    backup_file.write_bytes(b'corrupt')
+
+    result = service.restore_backup('backup-corrupt', overwrite=True)
+
+    assert result['failed'] == 1
+    assert result['uploaded'] == 0
+    assert result['items'][0]['status'] == 'invalid_backup_file'
+    assert 'sha256 mismatch' in result['items'][0]['error']
+    assert remote.uploads == []
+
+
+def test_restore_fails_when_manifest_sha256_is_invalid(tmp_path):
+    remote = FakeRemoteClient()
+    service = RemoteBackupService(
+        base_dir=tmp_path / 'system' / 'remote_backups',
+        config=_config(tmp_path),
+        remote_client_factory=lambda _config, _bridge_key: remote,
+    )
+    service.create_backup(resource_types=['characters'], backup_id='backup-invalid-sha', ingest=False)
+    manifest_path = tmp_path / 'system' / 'remote_backups' / 'backup-invalid-sha' / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    manifest['resources']['characters'][0]['sha256'] = 'not-a-sha'
+    manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+
+    result = service.restore_backup('backup-invalid-sha', overwrite=True)
+
+    assert result['failed'] == 1
+    assert result['uploaded'] == 0
+    assert result['items'][0]['status'] == 'invalid_backup_file'
+    assert 'sha256 missing or invalid' in result['items'][0]['error']
+    assert remote.uploads == []

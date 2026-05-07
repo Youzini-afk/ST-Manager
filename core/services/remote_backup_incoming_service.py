@@ -260,7 +260,9 @@ class RemoteBackupIncomingService:
         relative_path = normalize_remote_relative_path(str(payload.get('path') or payload.get('relative_path') or ''))
         backup_dir = self._backup_dir(backup_id)
         try:
-            data = read_backup_entry_bytes(backup_dir, resource_type, {'relative_path': relative_path})
+            manifest = self._load_manifest(backup_dir)
+            entry = self._find_manifest_entry(manifest, resource_type, relative_path)
+            data = read_backup_entry_bytes(backup_dir, resource_type, entry)
         except RemoteBackupStorageError as exc:
             raise RemoteBackupError(str(exc)) from exc
         offset = max(0, int(payload.get('offset') or 0))
@@ -278,6 +280,18 @@ class RemoteBackupIncomingService:
             'eof': offset + len(chunk) >= len(data),
             'data_base64': base64.b64encode(chunk).decode('ascii'),
         }
+
+    def _find_manifest_entry(self, manifest: Dict[str, Any], resource_type: str, relative_path: str) -> Dict[str, Any]:
+        for entry in manifest.get('resources', {}).get(resource_type, []) or []:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                candidate_path = normalize_remote_relative_path(entry.get('relative_path') or entry.get('path'))
+            except RemoteBackupError:
+                continue
+            if candidate_path == relative_path:
+                return entry
+        raise RemoteBackupStorageError(f'backup entry not found: {resource_type}/{relative_path}')
 
     def _backup_dir(self, backup_id: str) -> Path:
         safe_id = normalize_remote_relative_path(str(backup_id or ''))

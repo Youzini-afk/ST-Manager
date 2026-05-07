@@ -1,3 +1,4 @@
+import hashlib
 import re
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict
@@ -62,4 +63,17 @@ def read_backup_entry_bytes(
     if not path.is_file():
         relative_path = entry.get('relative_path') or entry.get('path') or ''
         raise RemoteBackupStorageError(f'backup file not found: {resource_type}/{relative_path}')
-    return path.read_bytes()
+    data = path.read_bytes()
+    relative_path = entry.get('relative_path') or entry.get('path') or ''
+    expected_size = entry.get('size')
+    if isinstance(expected_size, int) and len(data) != expected_size:
+        raise RemoteBackupStorageError(f'backup file size mismatch: {resource_type}/{relative_path}')
+    expected_sha256 = str(entry.get('sha256') or '').strip().lower()
+    if not expected_sha256:
+        return data
+    if not re.fullmatch(r'[a-f0-9]{64}', expected_sha256):
+        raise RemoteBackupStorageError(f'backup file sha256 missing or invalid: {resource_type}/{relative_path}')
+    actual_sha256 = hashlib.sha256(data).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise RemoteBackupStorageError(f'backup file sha256 mismatch: {resource_type}/{relative_path}')
+    return data

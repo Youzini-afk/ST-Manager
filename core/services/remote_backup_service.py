@@ -60,6 +60,13 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _manifest_sha256(value: Any) -> str:
+    digest = str(value or '').strip().lower()
+    if len(digest) != 64:
+        return ''
+    return digest if all(char in '0123456789abcdef' for char in digest) else ''
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open('rb') as f:
@@ -475,20 +482,33 @@ class RemoteBackupService:
                 relative_path = normalize_remote_relative_path(entry.get('relative_path') or entry.get('path'))
                 try:
                     data = read_backup_entry_bytes(backup_dir, resource_type, entry)
-                except RemoteBackupError:
+                except (RemoteBackupError, RemoteBackupStorageError) as exc:
                     result['failed'] += 1
                     result['items'].append({
                         'resource_type': resource_type,
                         'relative_path': relative_path,
-                        'status': 'missing_backup_file',
+                        'status': 'invalid_backup_file',
+                        'error': str(exc),
                     })
                     continue
-                if relative_path in remote_entries and not overwrite:
+                remote_entry = remote_entries.get(relative_path)
+                backup_sha256 = _manifest_sha256(entry.get('sha256'))
+                remote_sha256 = _manifest_sha256(remote_entry.get('sha256')) if remote_entry else ''
+                same_sha256 = bool(backup_sha256 and remote_sha256 and backup_sha256 == remote_sha256)
+                if remote_entry and not overwrite and same_sha256:
                     result['skipped'] += 1
                     result['items'].append({
                         'resource_type': resource_type,
                         'relative_path': relative_path,
-                        'status': 'skipped_existing',
+                        'status': 'skipped_same',
+                    })
+                    continue
+                if remote_entry and not overwrite:
+                    result['skipped'] += 1
+                    result['items'].append({
+                        'resource_type': resource_type,
+                        'relative_path': relative_path,
+                        'status': 'conflict_existing',
                     })
                     continue
 

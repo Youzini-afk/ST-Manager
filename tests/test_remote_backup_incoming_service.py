@@ -148,6 +148,34 @@ def test_incoming_write_init_can_skip_upload_by_sha_when_supported(tmp_path):
     assert (backup_dir / 'resources' / 'characters' / 'Ava.png').read_bytes() == data
 
 
+def test_incoming_write_init_does_not_skip_when_reuse_source_bytes_do_not_match_manifest(tmp_path):
+    service = RemoteBackupIncomingService(base_dir=tmp_path / 'remote_backups')
+    data = b'card-png-data'
+    digest = hashlib.sha256(data).hexdigest()
+    _push_character(service, 'push-source', data)
+    source_file = tmp_path / 'remote_backups' / 'push-source' / 'resources' / 'characters' / 'Ava.png'
+    source_file.write_bytes(b'corrupt-data!')
+
+    service.start_backup({
+        'backup_id': 'push-skip-corrupt-source',
+        'resource_types': ['characters'],
+        'source': 'authority_control',
+    })
+    init = service.write_file_init({
+        'backup_id': 'push-skip-corrupt-source',
+        'resource_type': 'characters',
+        'relative_path': 'Ava.png',
+        'size': len(data),
+        'sha256': digest,
+        'allow_skip_by_sha': True,
+        'metadata': {'kind': 'file'},
+    })
+
+    assert init['upload_required'] is True
+    assert init['offset'] == 0
+    assert 'upload_id' in init
+
+
 def test_deleting_old_incoming_backup_does_not_break_reused_backup(tmp_path):
     service = RemoteBackupIncomingService(base_dir=tmp_path / 'remote_backups')
     data = b'card-png-data'
