@@ -28,6 +28,8 @@ from core.api import views
 
 logger = logging.getLogger(__name__)
 
+MAX_REQUEST_BODY_BYTES = 100 * 1024 * 1024
+
 def create_app():
     """
     Flask 应用工厂函数。
@@ -42,6 +44,7 @@ def create_app():
     app = Flask(__name__, 
                 static_folder=os.path.join(INTERNAL_DIR, 'static'),
                 template_folder=os.path.join(INTERNAL_DIR, 'templates'))
+    app.config['MAX_CONTENT_LENGTH'] = MAX_REQUEST_BODY_BYTES
 
     @app.route('/healthz')
     def healthz():

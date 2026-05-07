@@ -133,7 +133,7 @@ def _format_st_response_error(response, auth_type):
 def _is_under_base(path: str, base: str) -> bool:
     """检查路径是否在 base 目录内"""
     try:
-        return os.path.commonpath([os.path.abspath(path), os.path.abspath(base)]) == os.path.abspath(base)
+        return os.path.commonpath([os.path.realpath(path), os.path.realpath(base)]) == os.path.realpath(base)
     except Exception:
         return False
 
@@ -231,6 +231,64 @@ def _is_valid_preset_path(path: str) -> bool:
         return '/presets/' in f'/{rel_path}/'
 
     return False
+
+
+def _resolve_system_backup_file(backup_path: str):
+    if not backup_path:
+        return None
+    system_backups_dir = os.path.join(DATA_DIR, 'system', 'backups')
+    requested_path = backup_path if os.path.isabs(backup_path) else os.path.join(BASE_DIR, backup_path)
+    if os.path.islink(requested_path):
+        return None
+    abs_path = os.path.realpath(requested_path)
+    if not _is_under_base(abs_path, system_backups_dir):
+        return None
+    if not os.path.isfile(abs_path) or os.path.islink(abs_path):
+        return None
+    if os.path.splitext(abs_path)[1].lower() not in ('.png', '.json'):
+        return None
+    return abs_path
+
+
+def _resolve_system_backup_sidecar(backup_path: str, extension: str):
+    if extension not in SIDECAR_EXTENSIONS:
+        return None
+    backup_base = os.path.splitext(backup_path)[0]
+    return _resolve_system_backup_file(backup_base + extension)
+
+
+def _payload_string(payload, key: str, default: str = '') -> str:
+    value = payload.get(key, default)
+    return value if isinstance(value, str) else default
+
+
+def _resolve_restore_target_path(type_: str, target_id: str, target_file_path: str):
+    if type_ == 'preset':
+        target_path = os.path.normpath(
+            target_file_path if os.path.isabs(target_file_path or '') else os.path.join(BASE_DIR, target_file_path or '')
+        )
+        return target_path if _is_valid_preset_path(target_path) else None
+
+    if type_ == 'lorebook':
+        if str(target_id or '').startswith('embedded::'):
+            real_card_id = str(target_id or '').replace('embedded::', '', 1)
+            if not _is_safe_card_rel(real_card_id):
+                return None
+            target_path = os.path.realpath(os.path.join(CARDS_FOLDER, real_card_id.replace('/', os.sep)))
+            return target_path if _is_under_base(target_path, str(CARDS_FOLDER)) else None
+
+        target_path = os.path.normpath(
+            target_file_path if os.path.isabs(target_file_path or '') else os.path.join(BASE_DIR, target_file_path or '')
+        )
+        return target_path if _is_valid_lorebook_path(target_path) else None
+
+    if type_ == 'card':
+        if not _is_safe_card_rel(target_id):
+            return None
+        target_path = os.path.realpath(os.path.join(CARDS_FOLDER, target_id.replace('/', os.sep)))
+        return target_path if _is_under_base(target_path, str(CARDS_FOLDER)) else None
+
+    return None
 
 
 def _extract_settings_save_payload(raw_payload):
@@ -1025,30 +1083,21 @@ def api_cleanup_init_backups():
 @bp.route('/api/restore_backup', methods=['POST'])
 def api_restore_backup():
     try:
+        raw_payload = request.get_json(silent=True)
+        payload = raw_payload if isinstance(raw_payload, dict) else {}
+        backup_path = _resolve_system_backup_file(_payload_string(payload, 'backup_path'))
+        target_id = _payload_string(payload, 'target_id')
+        type_ = _payload_string(payload, 'type', 'card')
+        target_file_path_param = _payload_string(payload, 'target_file_path')
+
+        if not backup_path:
+            return jsonify({"success": False, "msg": "备份文件丢失或非法路径"}), 400
+
+        target_path = _resolve_restore_target_path(type_, target_id, target_file_path_param)
+        if not target_path:
+            return jsonify({"success": False, "msg": "目标路径解析失败"}), 400
+
         suppress_fs_events(2.0)
-        backup_path = request.json.get('backup_path')
-        target_id = request.json.get('target_id')
-        type_ = request.json.get('type')
-        target_file_path_param = request.json.get('target_file_path')
-        
-        if not os.path.exists(backup_path):
-            return jsonify({"success": False, "msg": "备份文件丢失"})
-
-        # 确定目标路径
-        target_path = ""
-        if type_ == 'preset':
-            target_path = target_file_path_param
-        elif type_ == 'lorebook':
-            if target_id.startswith('embedded::'):
-                real_card_id = target_id.replace('embedded::', '')
-                target_path = os.path.join(CARDS_FOLDER, real_card_id.replace('/', os.sep))
-            else:
-                target_path = target_file_path_param
-        else:
-            target_path = os.path.join(CARDS_FOLDER, target_id.replace('/', os.sep))
-            
-        if not target_path: return jsonify({"success": False, "msg": "目标路径解析失败"})
-
         # 1. 物理覆盖 (恢复图片像素 或 JSON 内容)
         shutil.copy2(backup_path, target_path)
         
@@ -1071,10 +1120,10 @@ def api_restore_backup():
             backup_dir = os.path.dirname(backup_path)
             target_dir = os.path.dirname(target_path)
             target_base = os.path.splitext(os.path.basename(target_path))[0]
-            
+
             for ext in SIDECAR_EXTENSIONS:
-                side_bk = backup_base + ext
-                if os.path.exists(side_bk):
+                side_bk = _resolve_system_backup_sidecar(backup_path, ext)
+                if side_bk and os.path.exists(side_bk):
                     shutil.copy2(side_bk, os.path.join(target_dir, target_base + ext))
                     break
 

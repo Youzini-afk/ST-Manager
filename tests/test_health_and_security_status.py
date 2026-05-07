@@ -3,7 +3,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from core import create_app
+from flask import request
+
+from core import MAX_REQUEST_BODY_BYTES, create_app
 from core.context import ctx
 
 
@@ -52,3 +54,23 @@ def test_api_status_reports_auth_enabled_without_warning(monkeypatch):
     payload = response.get_json()
     assert payload['security']['auth_enabled'] is True
     assert payload['security']['public_auth_warning'] is False
+
+
+def test_create_app_sets_global_request_body_cap():
+    app = create_app()
+
+    assert app.config['MAX_CONTENT_LENGTH'] == MAX_REQUEST_BODY_BYTES
+
+
+def test_global_request_body_cap_rejects_oversized_request():
+    app = create_app()
+    app.config['MAX_CONTENT_LENGTH'] = 8
+
+    @app.post('/_body-cap-test')
+    def body_cap_test():
+        return {'size': len(request.get_data())}
+
+    client = app.test_client()
+    response = client.post('/_body-cap-test', data=b'0123456789')
+
+    assert response.status_code == 413

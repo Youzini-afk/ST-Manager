@@ -21,6 +21,45 @@ def _make_test_app():
     return app
 
 
+def _configure_restore_paths(monkeypatch, tmp_path):
+    data_dir = tmp_path / 'data'
+    cards_dir = tmp_path / 'cards'
+    presets_dir = tmp_path / 'presets'
+    lorebooks_dir = tmp_path / 'lorebooks'
+    resources_dir = tmp_path / 'resources'
+    for directory in (data_dir, cards_dir, presets_dir, lorebooks_dir, resources_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(system_api, 'BASE_DIR', str(tmp_path))
+    monkeypatch.setattr(system_api, 'DATA_DIR', str(data_dir))
+    monkeypatch.setattr(system_api, 'CARDS_FOLDER', str(cards_dir))
+    monkeypatch.setattr(system_api, 'load_config', lambda: {
+        'resources_dir': str(resources_dir),
+        'presets_dir': str(presets_dir),
+        'world_info_dir': str(lorebooks_dir),
+        'chats_dir': str(tmp_path / 'chats'),
+    })
+    monkeypatch.setattr(system_api, 'suppress_fs_events', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(system_api, 'schedule_reload', lambda **_kwargs: None)
+    monkeypatch.setattr(system_api, 'invalidate_wi_list_cache', lambda: None)
+    monkeypatch.setattr(system_api, 'update_card_cache', lambda *_args, **_kwargs: None)
+
+    return {
+        'data_dir': data_dir,
+        'cards_dir': cards_dir,
+        'presets_dir': presets_dir,
+        'lorebooks_dir': lorebooks_dir,
+        'backup_root': data_dir / 'system' / 'backups',
+    }
+
+
+def _write_restore_backup(paths, relative_path='presets/sample/sample.json', content='{"name":"Before"}'):
+    backup_path = paths['backup_root'] / relative_path
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path.write_text(content, encoding='utf-8')
+    return backup_path
+
+
 class FakeSharedWallpaperService:
     def __init__(self):
         self.calls = []
@@ -622,6 +661,135 @@ def test_select_shared_wallpaper_endpoint_delegates_to_service(monkeypatch):
     assert payload['wallpaper_id'] == 'builtin:space/stars.png'
     assert payload['selection_target'] == 'manager'
     assert fake_service.calls == [('select_wallpaper', 'builtin:space/stars.png', 'manager')]
+
+
+def test_restore_backup_rejects_backup_path_outside_system_backups(monkeypatch, tmp_path):
+    paths = _configure_restore_paths(monkeypatch, tmp_path)
+    outside_backup = tmp_path / 'outside.json'
+    outside_backup.write_text('{"name":"Outside"}', encoding='utf-8')
+    target = paths['presets_dir'] / 'sample.json'
+    target.write_text('{"name":"Target"}', encoding='utf-8')
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/restore_backup', json={
+        'backup_path': str(outside_backup),
+        'target_id': 'global::sample.json',
+        'type': 'preset',
+        'target_file_path': str(target),
+    })
+    payload = res.get_json()
+
+    assert res.status_code == 400
+    assert payload['success'] is False
+    assert target.read_text(encoding='utf-8') == '{"name":"Target"}'
+
+
+def test_restore_backup_rejects_card_target_traversal(monkeypatch, tmp_path):
+    paths = _configure_restore_paths(monkeypatch, tmp_path)
+    backup_path = _write_restore_backup(paths, 'cards/sample/Ava.png', 'png-data')
+    escaped_target = tmp_path / 'escape.png'
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/restore_backup', json={
+        'backup_path': str(backup_path),
+        'target_id': '../escape.png',
+        'type': 'card',
+    })
+    payload = res.get_json()
+
+    assert res.status_code == 400
+    assert payload['success'] is False
+    assert not escaped_target.exists()
+
+
+def test_restore_backup_rejects_preset_target_outside_configured_presets_dir(monkeypatch, tmp_path):
+    paths = _configure_restore_paths(monkeypatch, tmp_path)
+    backup_path = _write_restore_backup(paths)
+    outside_target = tmp_path / 'outside-preset.json'
+    outside_target.write_text('{"name":"Target"}', encoding='utf-8')
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/restore_backup', json={
+        'backup_path': str(backup_path),
+        'target_id': 'global::outside-preset.json',
+        'type': 'preset',
+        'target_file_path': str(outside_target),
+    })
+    payload = res.get_json()
+
+    assert res.status_code == 400
+    assert payload['success'] is False
+    assert outside_target.read_text(encoding='utf-8') == '{"name":"Target"}'
+
+
+def test_restore_backup_rejects_symlinked_backup_path_escape(monkeypatch, tmp_path):
+    paths = _configure_restore_paths(monkeypatch, tmp_path)
+    outside_dir = tmp_path / 'outside-backups'
+    outside_dir.mkdir()
+    outside_backup = outside_dir / 'escape.json'
+    outside_backup.write_text('{"name":"Outside"}', encoding='utf-8')
+    symlink_dir = paths['backup_root'] / 'linked'
+    symlink_dir.parent.mkdir(parents=True, exist_ok=True)
+    symlink_dir.symlink_to(outside_dir, target_is_directory=True)
+    target = paths['presets_dir'] / 'sample.json'
+    target.write_text('{"name":"Target"}', encoding='utf-8')
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/restore_backup', json={
+        'backup_path': str(symlink_dir / 'escape.json'),
+        'target_id': 'global::sample.json',
+        'type': 'preset',
+        'target_file_path': str(target),
+    })
+    payload = res.get_json()
+
+    assert res.status_code == 400
+    assert payload['success'] is False
+    assert target.read_text(encoding='utf-8') == '{"name":"Target"}'
+
+
+def test_restore_backup_rejects_sidecar_path_escape(monkeypatch, tmp_path):
+    paths = _configure_restore_paths(monkeypatch, tmp_path)
+    backup_path = _write_restore_backup(paths, 'cards/sample/Ava.json', '{"name":"Before"}')
+    outside_dir = tmp_path / 'outside-sidecars'
+    outside_dir.mkdir()
+    sidecar_link = backup_path.with_suffix('.png')
+    sidecar_link.symlink_to(outside_dir / 'escape.png')
+    target = paths['cards_dir'] / 'Ava.json'
+    target.write_text('{"name":"After"}', encoding='utf-8')
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/restore_backup', json={
+        'backup_path': str(backup_path),
+        'target_id': 'Ava.json',
+        'type': 'card',
+    })
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload['success'] is True
+    assert 'Before' in target.read_text(encoding='utf-8')
+    assert not (paths['cards_dir'] / 'Ava.png').exists()
+
+
+def test_restore_backup_accepts_system_backup_and_safe_preset_target(monkeypatch, tmp_path):
+    paths = _configure_restore_paths(monkeypatch, tmp_path)
+    backup_path = _write_restore_backup(paths, content='{"name":"Before"}')
+    target = paths['presets_dir'] / 'sample.json'
+    target.write_text('{"name":"After"}', encoding='utf-8')
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/restore_backup', json={
+        'backup_path': str(backup_path),
+        'target_id': 'global::sample.json',
+        'type': 'preset',
+        'target_file_path': str(target),
+    })
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload['success'] is True
+    assert target.read_text(encoding='utf-8') == '{"name":"Before"}'
 
 
 def test_user_db_backup_export_endpoint_delegates_to_service(monkeypatch):
