@@ -211,6 +211,8 @@ Compose 部署使用一个 `st-manager` 服务，容器内通过 Gunicorn 启动
 }
 ```
 
+这里的 `st_url` 是 ST-Manager 容器内部发起请求时看到的 SillyTavern 地址。容器里的 `127.0.0.1` 只代表容器自身，不代表宿主机；如果 SillyTavern 在另一台机器、宿主机或内网穿透后面，请填写容器可访问的实际地址。
+
 公网部署建议在 compose 环境变量中设置：
 
 ```yaml
@@ -234,6 +236,8 @@ STM_SECRET_KEY: replace-with-a-long-random-secret
 - 可选但强烈建议填写的 `STM_AUTH_USER`、`STM_AUTH_PASS`、`STM_SECRET_KEY`
 
 部署后如果要让 ST-Manager 主动拉取酒馆资源，进入远程备份面板配置远程 SillyTavern URL 和 Authority Bridge Key。注意：Zeabur 中的 `127.0.0.1` 指 ST-Manager 容器自身，不是你的本地电脑；如果 SillyTavern 在另一台机器上，`st_url` 必须填写 Zeabur 容器可访问的公网或内网地址。
+
+连接失败时先区分是哪一跳：ST-Manager 访问 `st_url` 失败通常是 URL / 网络 / 拓扑问题；Authority Bridge Key 无效是认证问题；Authority 侧返回 `core_unavailable`、`job_queue_full` 或 `concurrency_limit_exceeded` 则是 Authority 插件或 core 状态问题。
 
 如果只从 Authority 酒馆侧一键推送备份/恢复，则不需要配置这里的远程 SillyTavern URL；在 ST-Manager 生成 Control Key，再回到 Authority 填写 ST-Manager URL 和 Control Key 即可。
 

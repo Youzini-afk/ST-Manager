@@ -140,6 +140,14 @@ Docker / Zeabur 额外注意：
 - 程序会根据 `st_auth_type` 在兼容字段与新字段之间做归一化
 - `st_proxy` 为空时，会显式禁用代理继承
 
+连接拓扑提示：
+
+- `st_url` 是 **ST-Manager 服务端进程** 访问 SillyTavern 的地址，不是浏览器地址栏里的相对路径。
+- 本地同时运行 ST-Manager 和 SillyTavern 时，默认 `http://127.0.0.1:8000` 通常可用。
+- Docker / Zeabur / 远程服务器中，`127.0.0.1` 指容器或服务器自身，不是你的电脑；如果 SillyTavern 在宿主机或另一台机器上，需要填写容器/服务器可访问的地址，例如 `http://host.docker.internal:8000`、局域网 IP、内网穿透或公网反代地址。
+- Authority Bridge 模式使用 SillyTavern 上的 Authority 插件接口和 Bridge Key。若只从 Authority 侧主动推送备份/恢复到 ST-Manager，则不一定需要 ST-Manager 主动访问 SillyTavern。
+- 如果连接测试返回 `connection refused` / `timeout` / `fetch failed`，优先确认 ST-Manager 所在环境能否访问 `st_url`，再检查 Bridge Key 或 SillyTavern 登录配置。
+
 ### 3.4 自动保存、快照与世界书预览
 
 | 配置项 | 默认值 | 说明 |
