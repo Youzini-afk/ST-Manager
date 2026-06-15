@@ -187,6 +187,8 @@ def test_resolve_server_settings_uses_cli_port_zero(monkeypatch):
 
 def test_resolve_server_settings_uses_flask_debug_env(monkeypatch):
     monkeypatch.setenv('FLASK_DEBUG', '1')
+    monkeypatch.delenv('HOST', raising=False)
+    monkeypatch.delenv('PORT', raising=False)
     cfg = {'host': '127.0.0.1', 'port': 5000}
     cli_args = Namespace(debug=False, host=None, port=None)
 
@@ -332,6 +334,8 @@ def test_ensure_runtime_dirs_keeps_absolute_paths_and_resolves_relative_paths(tm
 
 def test_ensure_startup_config_bootstraps_runtime_directories(monkeypatch):
     calls = []
+    monkeypatch.delenv('PORT', raising=False)
+    monkeypatch.delenv('STM_SERVER_PROFILE', raising=False)
 
     monkeypatch.setattr(
         app_module,

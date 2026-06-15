@@ -37,6 +37,7 @@ from core.utils.image import (
 from core.utils.filesystem import save_json_atomic, sanitize_filename
 from core.utils.text import calculate_token_count
 from core.utils.hash import get_file_hash_and_size
+from core.utils.source_revision import build_file_source_revision
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,38 @@ def _apply_card_index_increment_now(card_id, source_path, remove_entity_ids=None
     except RuntimeError as exc:
         if 'cards active generation missing' not in str(exc):
             raise
+
+
+def _resolve_safe_skin_path(res_dir_path, skin_filename):
+    """在资源目录下安全解析皮肤路径，拒绝绝对路径和目录穿越，返回 realpath 或 None。"""
+    if not skin_filename:
+        return None
+    norm = str(skin_filename).replace('\\', '/')
+    if os.path.isabs(norm):
+        return None
+    drive, _ = os.path.splitdrive(norm)
+    if drive:
+        return None
+    if re.match(r'^[A-Za-z]:', norm):
+        return None
+    parts = [p for p in norm.split('/') if p]
+    if not parts:
+        return None
+    if any(p in ('.', '..') for p in parts):
+        return None
+    candidate = os.path.join(res_dir_path, *parts)
+    try:
+        real_res = os.path.realpath(res_dir_path)
+        real_candidate = os.path.realpath(candidate)
+    except (OSError, ValueError):
+        return None
+    try:
+        if os.path.commonpath([real_res, real_candidate]) != real_res:
+            return None
+    except ValueError:
+        return None
+    return real_candidate
+
 
 # 内部辅助函数：获取或创建资源目录
 def _ensure_resource_folder_exists(card_id, hint_name):
@@ -137,7 +170,12 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
     original_full_path = os.path.join(CARDS_FOLDER, original_rel_path)
     keep_ui_data = keep_ui_data if isinstance(keep_ui_data, dict) else {}
     import_time_fallback = None
-    if os.path.exists(original_full_path):
+    cache_entry = ctx.cache.id_map.get(card_id)
+    if cache_entry:
+        _cached_it = cache_entry.get('import_time')
+        if isinstance(_cached_it, (int, float)) and not isinstance(_cached_it, bool) and _cached_it > 0:
+            import_time_fallback = float(_cached_it)
+    if import_time_fallback is None and os.path.exists(original_full_path):
         try:
             import_time_fallback = os.path.getmtime(original_full_path)
         except Exception:
@@ -264,6 +302,8 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
     
     # 标记：是否发生了格式转换 (JSON -> PNG)
     is_format_conversion = (not is_bundle_update) and (old_ext == '.json' and new_upload_ext == '.png')
+    # PNG 卡上传 JSON 时只更新元数据，图片像素继续使用现有 PNG。
+    is_json_metadata_update_on_png = (not is_bundle_update) and (old_ext == '.png' and new_upload_ext == '.json')
     
     # 如果发生了格式转换，必须计算新的路径
     if is_format_conversion:
@@ -316,7 +356,10 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
         source_img_path = temp_path 
         use_old_image = False
 
-        if image_policy == 'keep_image' or image_policy == 'archive_new':
+        if is_json_metadata_update_on_png:
+            source_img_path = original_full_path
+            use_old_image = True
+        elif image_policy == 'keep_image' or image_policy == 'archive_new':
             # 用户想保留原图。
             # 如果原文件是 PNG，可以直接用。
             if old_ext == '.png' and os.path.exists(original_full_path):
@@ -517,6 +560,11 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
         if '?t=' not in new_image_url:
             new_image_url += f"?t={int(new_mtime)}"
 
+    revision_path = os.path.join(CARDS_FOLDER, final_rel_id.replace('/', os.sep))
+    refreshed_source_revision = build_file_source_revision(revision_path)
+    if updated_card_obj is not None:
+        updated_card_obj['source_revision'] = refreshed_source_revision
+
     result = {
         "success": True,
         "file_modified": True,
@@ -524,6 +572,7 @@ def update_card_content(card_id, temp_path, is_bundle_update, keep_ui_data, new_
         "new_filename": new_filename,
         "new_image_url": new_image_url,
         "updated_card": updated_card_obj,
+        "source_revision": refreshed_source_revision,
         "import_time": get_import_time(load_ui_data(), final_rel_id, new_mtime)
     }
 
@@ -560,12 +609,13 @@ def swap_skin_to_cover(card_id, skin_filename, save_old_to_resource=False):
     
     # 支持绝对路径配置
     if os.path.isabs(res_folder_name):
-        skin_path = os.path.join(res_folder_name, skin_filename)
         res_dir_path = res_folder_name
     else:
-        skin_path = os.path.join(res_root, res_folder_name, skin_filename)
         res_dir_path = os.path.join(res_root, res_folder_name)
-        
+
+    skin_path = _resolve_safe_skin_path(res_dir_path, skin_filename)
+    if skin_path is None:
+        return {"success": False, "msg": "非法皮肤路径"}
     if not os.path.exists(skin_path):
         return {"success": False, "msg": "Skin file not found"}
 
@@ -1295,6 +1345,20 @@ def sync_card_names_internal(
         return False, card_id, str(e), details
 
 # 内部移动卡片逻辑
+def _resolve_move_card_source_id(card_id):
+    source_id = str(card_id or '').replace('\\', '/').strip('/')
+    cache = getattr(ctx, 'cache', None)
+    id_map = getattr(cache, 'id_map', {}) if cache else {}
+    cache_item = id_map.get(source_id) if isinstance(id_map, Mapping) else None
+
+    if isinstance(cache_item, Mapping) and cache_item.get('is_bundle'):
+        bundle_dir = str(cache_item.get('bundle_dir') or '').replace('\\', '/').strip('/')
+        if bundle_dir:
+            return bundle_dir
+
+    return source_id
+
+
 def move_card_internal(card_id, target_category):
     """
     将卡片(文件)或聚合包(文件夹)移动到指定分类。
@@ -1308,6 +1372,8 @@ def move_card_internal(card_id, target_category):
     """
     try:
         # 1. 基础检查与路径准备
+        if not card_id: return False, None, "ID missing"
+        card_id = _resolve_move_card_source_id(card_id)
         if not card_id: return False, None, "ID missing"
         if target_category == "根目录": target_category = ""
         

@@ -19,6 +19,7 @@ from core.services import card_index_sync_service
 from core.services import index_build_service
 from core.services import scan_service
 from core.services import index_job_worker
+from core.utils.path_utils import _runtime_relpath
 
 
 def test_worldinfo_watch_filter_accepts_global_and_resource_lorebooks(monkeypatch):
@@ -67,6 +68,34 @@ def test_resolve_resource_worldinfo_owner_card_ids_returns_all_matching_cards(mo
         'cards/alpha.png',
         'cards/zeta.png',
     ]
+
+
+def test_resolve_resource_worldinfo_owner_card_ids_matches_mixed_case_resource_folder(monkeypatch):
+    monkeypatch.setattr(index_build_service, 'load_config', lambda: {'world_info_dir': 'D:/data/lorebooks', 'resources_dir': 'D:/data/resources'})
+    monkeypatch.setattr(
+        index_build_service,
+        'load_ui_data',
+        lambda: {
+            'cards/Alice.png': {'resource_folder': 'HeroPack'},
+            'cards/bob.png': {'resource_folder': 'heropack'},
+            'cards/other.png': {'resource_folder': 'other-pack'},
+        },
+    )
+
+    result = index_build_service.resolve_resource_worldinfo_owner_card_ids('D:/data/resources/HeroPack/lorebooks/book.json')
+    assert sorted(result) == ['cards/Alice.png', 'cards/bob.png']
+
+
+def test_runtime_relpath_preserves_case_for_card_and_resource_ids():
+    cards_root = 'D:/Data/Cards'
+    assert _runtime_relpath('D:/Data/Cards/Alice.png', cards_root) == 'Alice.png'
+    assert _runtime_relpath('D:/data/cards/Alice.png', cards_root) == 'Alice.png'
+    assert _runtime_relpath('D:/Data/Cards/sub/Bob.json', cards_root) == 'sub/Bob.json'
+
+    resources_root = 'D:/data/resources'
+    assert _runtime_relpath(
+        'D:/data/resources/HeroPack/lorebooks/WorldBook.json', resources_root
+    ) == 'HeroPack/lorebooks/WorldBook.json'
 
 
 def test_update_card_cache_returns_embedded_worldinfo_facts(monkeypatch):

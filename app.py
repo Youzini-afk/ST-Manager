@@ -140,7 +140,7 @@ if __name__ == '__main__':
     # 4. 自动打开浏览器
     # 仅在非 Reload 模式下执行，防止开发时每次保存代码都弹窗
     # WERKZEUG_RUN_MAIN 是 Flask debug 模式下的环境变量
-    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true" and should_auto_open_browser(in_docker):
         try:
             # 如果绑定的是 0.0.0.0，浏览器打开 127.0.0.1
             open_host = '127.0.0.1' if server_host == '0.0.0.0' else server_host

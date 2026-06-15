@@ -46,6 +46,7 @@ from core.services.wi_entry_history_service import (
 )
 from core.utils.filesystem import safe_move_to_trash
 from core.utils.filesystem import sanitize_filename
+from core.utils.path_utils import _normalize_storage_path_key
 from core.utils.source_revision import build_file_source_revision
 
 def _safe_mtime(path: str) -> float:
@@ -292,10 +293,7 @@ def _get_parent_category(rel_path: str) -> str:
 def _normalize_resource_item_key(path: str) -> str:
     if not path:
         return ''
-    try:
-        return os.path.normcase(os.path.normpath(str(path))).replace('\\', '/')
-    except Exception:
-        return ''
+    return _normalize_storage_path_key(path)
 
 
 def _build_worldinfo_note_kwargs(source_type: str, file_path: str = '', card_id: str = '') -> dict:
@@ -1355,7 +1353,7 @@ def api_list_world_infos():
                 )
             ]
             
-        items.sort(key=lambda x: x.get('mtime', 0), reverse=True)
+        items.sort(key=lambda x: (-(x.get('mtime', 0) or 0), x.get('display_category') or '', x.get('name', '').lower()))
         folder_meta = _add_physical_folder_nodes(_build_folder_metadata(source_items), current_wi_folder)
 
         # ===== [CACHE WRITE] 只在未命中缓存时写入 =====

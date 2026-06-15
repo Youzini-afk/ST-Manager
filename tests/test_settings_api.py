@@ -2,6 +2,7 @@ import io
 import sys
 from pathlib import Path
 
+import pytest
 from flask import Flask
 
 
@@ -846,3 +847,33 @@ def test_user_db_backup_import_endpoint_delegates_to_service_with_original_filen
     assert fake_service.calls
     assert fake_service.calls[0][0] == 'import_backup'
     assert fake_service.calls[0][2] == 'user-backup.json'
+
+
+@pytest.mark.parametrize('sidecar_ext', ['.webp', '.jfif'])
+def test_restore_backup_restores_json_card_with_non_png_sidecar(monkeypatch, tmp_path, sidecar_ext):
+    paths = _configure_restore_paths(monkeypatch, tmp_path)
+    backup_path = _write_restore_backup(paths, 'cards/sample/Ava.json', '{"name":"Before"}')
+    sidecar_backup = paths['backup_root'] / 'cards' / 'sample' / f'Ava{sidecar_ext}'
+    sidecar_backup.parent.mkdir(parents=True, exist_ok=True)
+    sidecar_backup.write_bytes(f'{sidecar_ext[1:]}-image-data'.encode())
+    target_json = paths['cards_dir'] / 'Ava.json'
+    target_json.write_text('{"name":"After"}', encoding='utf-8')
+    target_sidecar = paths['cards_dir'] / f'Ava{sidecar_ext}'
+    stale_png_sidecar = paths['cards_dir'] / 'Ava.png'
+    stale_png_sidecar.write_bytes(b'stale-png-data')
+
+    client = _make_test_app().test_client()
+    res = client.post('/api/restore_backup', json={
+        'backup_path': str(backup_path),
+        'target_id': 'Ava.json',
+        'type': 'card',
+    })
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload['success'] is True
+    assert 'Before' in target_json.read_text(encoding='utf-8')
+    assert target_sidecar.exists()
+    assert target_sidecar.read_bytes() == f'{sidecar_ext[1:]}-image-data'.encode()
+    if sidecar_ext != '.png':
+        assert not stale_png_sidecar.exists()

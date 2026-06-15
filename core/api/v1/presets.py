@@ -43,6 +43,7 @@ from core.services.scan_service import suppress_fs_events
 from core.services.st_auth import STAuthError, build_st_http_client
 from core.api.v1.system import _format_st_auth_error, _format_st_response_error
 from core.utils.filesystem import sanitize_filename
+from core.utils.path_utils import _normalize_storage_path_key
 from core.utils.regex import extract_regex_from_preset_data
 from core.utils.source_revision import build_file_source_revision
 
@@ -84,10 +85,7 @@ def _get_parent_category(rel_path: str) -> str:
 def _normalize_resource_item_key(path: str) -> str:
     if not path:
         return ''
-    try:
-        return os.path.normcase(os.path.normpath(str(path))).replace('\\', '/')
-    except Exception:
-        return ''
+    return _normalize_storage_path_key(path)
 
 
 def _iter_category_ancestors(category: str):

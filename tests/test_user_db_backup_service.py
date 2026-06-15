@@ -146,6 +146,7 @@ def test_export_backup_includes_only_db_sections_and_counts(tmp_path, monkeypatc
 
     monkeypatch.setattr('core.services.user_db_backup_service.DEFAULT_DB_PATH', str(db_path))
     monkeypatch.setattr('core.services.user_db_backup_service.BASE_DIR', str(tmp_path))
+    monkeypatch.setattr('core.services.user_db_backup_service.SYSTEM_DIR', str(tmp_path / 'data' / 'system'))
 
     service = UserDbBackupService()
     result = service.export_backup()
@@ -198,6 +199,7 @@ def test_export_backup_tolerates_missing_history_table(tmp_path, monkeypatch):
 
     monkeypatch.setattr('core.services.user_db_backup_service.DEFAULT_DB_PATH', str(db_path))
     monkeypatch.setattr('core.services.user_db_backup_service.BASE_DIR', str(tmp_path))
+    monkeypatch.setattr('core.services.user_db_backup_service.SYSTEM_DIR', str(tmp_path / 'data' / 'system'))
 
     result = UserDbBackupService().export_backup()
 
@@ -216,6 +218,44 @@ def test_export_backup_tolerates_missing_history_table(tmp_path, monkeypatch):
         {'content': {'text': 'alpha'}, 'sort_order': 0, 'created_at': 100.0},
     ]
     assert payload['data']['wi_entry_history'] == []
+
+
+def test_export_backup_uses_custom_system_dir_outside_base_dir(tmp_path, monkeypatch):
+    from core.services.user_db_backup_service import UserDbBackupService
+
+    db_path = tmp_path / 'base' / 'app.db'
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with _open_db(db_path) as conn:
+        _create_tables(conn)
+        conn.execute(
+            'INSERT INTO card_metadata (id, is_favorite) VALUES (?, ?), (?, ?)',
+            ('hero.png', 1, 'mage.png', 0),
+        )
+        conn.commit()
+
+    base_dir = tmp_path / 'base'
+    system_dir = tmp_path / 'custom_system'
+
+    monkeypatch.setattr('core.services.user_db_backup_service.DEFAULT_DB_PATH', str(db_path))
+    monkeypatch.setattr('core.services.user_db_backup_service.BASE_DIR', str(base_dir))
+    monkeypatch.setattr('core.services.user_db_backup_service.SYSTEM_DIR', str(system_dir))
+
+    result = UserDbBackupService().export_backup()
+
+    expected_backup_dir = system_dir / 'backups' / 'user_db'
+    backup_files = list(expected_backup_dir.glob('*.json'))
+    assert len(backup_files) == 1
+    assert result['file_name'] == backup_files[0].name
+    assert backup_files[0].name.startswith('user_db_backup_')
+
+    joined_path = (base_dir / result['file_path']).resolve()
+    assert joined_path == backup_files[0].resolve()
+
+    payload = json.loads(backup_files[0].read_text(encoding='utf-8'))
+    assert payload['schema_version'] == 1
+    assert payload['data']['favorites'] == [
+        {'card_id': 'hero.png', 'is_favorite': True},
+    ]
 
 
 def test_import_backup_merges_favorites_skips_missing_cards_and_syncs_side_effects(tmp_path, monkeypatch):

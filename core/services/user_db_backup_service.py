@@ -4,7 +4,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from core.config import BASE_DIR, CARDS_FOLDER, DEFAULT_DB_PATH
+from core.config import BASE_DIR, CARDS_FOLDER, DEFAULT_DB_PATH, SYSTEM_DIR
 from core.context import ctx
 from core.services.card_index_sync_service import sync_card_index_jobs
 from core.services.card_service import _apply_card_index_increment_now as _card_apply_card_index_increment_now
@@ -13,7 +13,15 @@ from core.services.wi_entry_history_service import get_history_limit
 
 logger = logging.getLogger(__name__)
 
-BACKUP_DIR = os.path.join('data', 'system', 'backups', 'user_db')
+BACKUP_SUBDIR = os.path.join('backups', 'user_db')
+
+
+def _backup_dir() -> str:
+    return os.path.join(SYSTEM_DIR, BACKUP_SUBDIR)
+
+
+def _backup_relative_path(full_path: str) -> str:
+    return os.path.relpath(full_path, BASE_DIR).replace('\\', '/')
 
 
 def _utc_now_iso() -> str:
@@ -62,9 +70,10 @@ class UserDbBackupService:
 
     def export_backup(self):
         file_name = f'user_db_backup_{_timestamp_for_file()}.json'
-        relative_path = os.path.join(BACKUP_DIR, file_name).replace('\\', '/')
-        full_path = os.path.join(BASE_DIR, relative_path)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        backup_dir = _backup_dir()
+        full_path = os.path.join(backup_dir, file_name)
+        os.makedirs(backup_dir, exist_ok=True)
+        relative_path = _backup_relative_path(full_path)
 
         with sqlite3.connect(DEFAULT_DB_PATH, timeout=30) as conn:
             conn.row_factory = sqlite3.Row

@@ -5,8 +5,14 @@ import sqlite3
 
 from core.config import BASE_DIR, CARDS_FOLDER, DEFAULT_DB_PATH, load_config
 from core.data.index_runtime_store import get_active_generation
-from core.data.ui_store import load_ui_data
+from core.data.ui_store import get_import_time, load_ui_data
 from core.utils.image import extract_card_info
+from core.utils.path_utils import (
+    _is_under_runtime_dir,
+    _is_windows_abs_path,
+    _resolve_abs_without_cwd,
+    _runtime_relpath,
+)
 from core.utils.source_revision import build_file_source_revision
 
 
@@ -104,8 +110,8 @@ def _resolve_runtime_dir(raw_path: str, default: str) -> str:
     value = str(raw_path or default or '').strip()
     if not value:
         return ''
-    if os.path.isabs(value):
-        return os.path.normpath(value)
+    if os.path.isabs(value) or _is_windows_abs_path(value):
+        return _resolve_abs_without_cwd(value)
     return os.path.normpath(os.path.join(BASE_DIR, value))
 
 
@@ -120,10 +126,10 @@ def _resolve_worldinfo_runtime_dirs(cfg: dict | None = None) -> tuple[str, str]:
 def classify_worldinfo_path(source_path: str) -> dict:
     cfg = load_config()
     raw_path = str(source_path or '').strip()
-    normalized_path = os.path.normpath(raw_path)
+    normalized_path = _resolve_abs_without_cwd(raw_path)
     result = {
         'kind': 'invalid',
-        'source_path': normalized_path.replace('\\', '/'),
+        'source_path': raw_path.replace('\\', '/'),
     }
     if not normalized_path or not normalized_path.lower().endswith('.json'):
         return result
@@ -131,21 +137,14 @@ def classify_worldinfo_path(source_path: str) -> dict:
     global_dir, resource_dir = _resolve_worldinfo_runtime_dirs(cfg)
 
     if global_dir:
-        try:
-            if os.path.commonpath([os.path.normcase(global_dir), os.path.normcase(normalized_path)]) == os.path.normcase(global_dir):
-                result['kind'] = 'global'
-                return result
-        except ValueError:
-            pass
+        if _is_under_runtime_dir(normalized_path, global_dir):
+            result['kind'] = 'global'
+            return result
 
     if resource_dir:
-        try:
-            common = os.path.commonpath([os.path.normcase(resource_dir), os.path.normcase(normalized_path)])
-        except ValueError:
-            common = ''
-        if common == os.path.normcase(resource_dir):
-            rel_path = normalized_path.replace('\\', '/').lower()
-            if '/lorebooks/' in rel_path:
+        if _is_under_runtime_dir(normalized_path, resource_dir):
+            rel_path = _runtime_relpath(normalized_path, resource_dir)
+            if '/lorebooks/' in f'/{rel_path.lower()}/':
                 result['kind'] = 'resource'
 
     return result
@@ -154,16 +153,12 @@ def classify_worldinfo_path(source_path: str) -> dict:
 def resolve_resource_worldinfo_owner_card_ids(source_path: str) -> list[str]:
     cfg = load_config()
     _global_dir, resources_dir = _resolve_worldinfo_runtime_dirs(cfg)
-    normalized_path = os.path.normpath(str(source_path or ''))
+    normalized_path = _resolve_abs_without_cwd(str(source_path or ''))
     if not resources_dir or not normalized_path:
         return []
 
-    try:
-        rel_path = os.path.relpath(normalized_path, resources_dir).replace('\\', '/')
-    except ValueError:
-        return []
-
-    if rel_path.startswith('../') or rel_path == '..':
+    rel_path = _runtime_relpath(normalized_path, resources_dir)
+    if not rel_path or rel_path.startswith('../') or rel_path == '..':
         return []
 
     parts = [part for part in rel_path.split('/') if part]
@@ -177,7 +172,7 @@ def resolve_resource_worldinfo_owner_card_ids(source_path: str) -> list[str]:
 
     owner_card_ids = []
     for card_id, meta in ui_data.items():
-        if not isinstance(meta, dict) or str(meta.get('resource_folder') or '').strip() != resource_folder:
+        if not isinstance(meta, dict) or str(meta.get('resource_folder') or '').strip().lower() != resource_folder.lower():
             continue
         owner_card_ids.append(str(card_id))
 
@@ -552,6 +547,8 @@ def apply_card_increment(conn, card_id: str, source_path: str = '', *, remove_en
     summary = str((ui_data.get(card_id) or {}).get('summary', ''))
     resolved_source_path = str(source_path or os.path.join(CARDS_FOLDER, card_id.replace('/', os.sep)))
     filename = str(card_id).split('/')[-1]
+    last_modified = float(row['last_modified'] or 0)
+    import_time = get_import_time(ui_data, card_id, last_modified)
     conn.execute(
         '''
         INSERT OR REPLACE INTO index_entities_v2(
@@ -573,11 +570,11 @@ def apply_card_increment(conn, card_id: str, source_path: str = '', *, remove_en
             'physical',
             int(row['is_favorite'] or 0),
             summary,
-            float(row['last_modified'] or 0),
-            0,
+            last_modified,
+            import_time,
             int(row['token_count'] or 0),
             str(row['char_name'] or '').lower(),
-            float(row['last_modified'] or 0),
+            last_modified,
             '',
             build_file_source_revision(resolved_source_path),
         ),
@@ -622,6 +619,8 @@ def build_cards_generation(conn, generation: int):
         tags = json.loads(row['tags'] or '[]') if row['tags'] else []
         summary = str((ui_data.get(row['id']) or {}).get('summary', ''))
         source_path = os.path.join(CARDS_FOLDER, row['id'].replace('/', os.sep))
+        last_modified = float(row['last_modified'] or 0)
+        import_time = get_import_time(ui_data, row['id'], last_modified)
         conn.execute(
             '''
             INSERT OR REPLACE INTO index_entities_v2(
@@ -643,11 +642,11 @@ def build_cards_generation(conn, generation: int):
                 'physical',
                 int(row['is_favorite'] or 0),
                 summary,
-                float(row['last_modified'] or 0),
-                0,
+                last_modified,
+                import_time,
                 int(row['token_count'] or 0),
                 str(row['char_name'] or '').lower(),
-                float(row['last_modified'] or 0),
+                last_modified,
                 '',
                 build_file_source_revision(source_path),
             ),

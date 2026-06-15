@@ -60,6 +60,10 @@ def test_browser_auto_open_is_disabled_for_server_and_docker(monkeypatch):
     monkeypatch.setenv('STM_DISABLE_BROWSER_OPEN', '1')
     assert deployment.should_auto_open_browser(False) is False
 
+    import app
+
+    assert app.should_auto_open_browser is deployment.should_auto_open_browser
+
 
 def test_security_status_warns_only_for_server_profile_without_auth():
     status = deployment.build_security_status(server_profile=True, auth_enabled=False)

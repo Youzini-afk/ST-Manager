@@ -17,6 +17,12 @@ from core.services.index_job_worker import enqueue_index_job
 # === 工具函数 ===
 from core.utils.filesystem import is_card_file
 from core.utils.image import extract_card_info
+from core.utils.path_utils import (
+    _is_windows_abs_path,
+    _join_preserve_style,
+    _resolve_abs_without_cwd,
+    _runtime_relpath,
+)
 from core.utils.text import calculate_token_count
 from core.utils.data import get_wi_meta, sanitize_for_utf8
 
@@ -38,8 +44,8 @@ def _resolve_runtime_dir(raw_path, default):
     value = str(raw_path or default or '').strip()
     if not value:
         return ''
-    if os.path.isabs(value):
-        return os.path.normpath(value)
+    if os.path.isabs(value) or _is_windows_abs_path(value):
+        return _resolve_abs_without_cwd(value)
     return os.path.normpath(os.path.join(BASE_DIR, value))
 
 
@@ -60,14 +66,10 @@ def _resolve_card_rel_path(path):
     if not raw_path or not is_card_file(raw_path):
         return ''
 
-    cards_root = os.path.abspath(os.fspath(CARDS_FOLDER))
-    abs_path = os.path.abspath(raw_path)
-    try:
-        rel_path = os.path.relpath(abs_path, cards_root).replace('\\', '/')
-    except ValueError:
-        return ''
-
-    if rel_path.startswith('../') or rel_path == '..':
+    cards_root = _resolve_abs_without_cwd(os.fspath(CARDS_FOLDER))
+    abs_path = _resolve_abs_without_cwd(raw_path)
+    rel_path = _runtime_relpath(abs_path, cards_root)
+    if not rel_path or rel_path.startswith('../') or rel_path == '..':
         return ''
     return rel_path.strip('/')
 
@@ -427,7 +429,7 @@ def background_scanner():
 def _perform_scan_logic():
     """执行具体的数据库同步逻辑"""
     db_path = DEFAULT_DB_PATH
-    cards_root = os.path.abspath(os.fspath(CARDS_FOLDER))
+    cards_root = _resolve_abs_without_cwd(os.fspath(CARDS_FOLDER))
     
     # 使用上下文管理器手动连接，不使用 Flask g.db，因为这是后台线程
     with sqlite3.connect(db_path, timeout=60) as conn:
@@ -574,7 +576,7 @@ def _perform_scan_logic():
                 _enqueue_card_reconcile_jobs(card_id, full_path)
 
             for card_id in sorted(deleted_card_ids):
-                deleted_path = os.path.join(cards_root, card_id.replace('/', os.sep))
+                deleted_path = _join_preserve_style(cards_root, card_id)
                 _enqueue_card_reconcile_jobs(card_id, deleted_path, remove_owner_ids=[card_id])
 
             logger.info("Background scan detected changes. Updating cache...")

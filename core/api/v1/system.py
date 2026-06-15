@@ -233,7 +233,7 @@ def _is_valid_preset_path(path: str) -> bool:
     return False
 
 
-def _resolve_system_backup_file(backup_path: str):
+def _resolve_system_backup_path(backup_path: str, allowed_extensions):
     if not backup_path:
         return None
     system_backups_dir = os.path.join(DATA_DIR, 'system', 'backups')
@@ -245,16 +245,20 @@ def _resolve_system_backup_file(backup_path: str):
         return None
     if not os.path.isfile(abs_path) or os.path.islink(abs_path):
         return None
-    if os.path.splitext(abs_path)[1].lower() not in ('.png', '.json'):
+    if os.path.splitext(abs_path)[1].lower() not in allowed_extensions:
         return None
     return abs_path
+
+
+def _resolve_system_backup_file(backup_path: str):
+    return _resolve_system_backup_path(backup_path, ('.png', '.json'))
 
 
 def _resolve_system_backup_sidecar(backup_path: str, extension: str):
     if extension not in SIDECAR_EXTENSIONS:
         return None
     backup_base = os.path.splitext(backup_path)[0]
-    return _resolve_system_backup_file(backup_base + extension)
+    return _resolve_system_backup_path(backup_base + extension, SIDECAR_EXTENSIONS)
 
 
 def _payload_string(payload, key: str, default: str = '') -> str:
@@ -1064,7 +1068,7 @@ def api_cleanup_init_backups():
 
                 # 清理同名伴生备份
                 base_path = os.path.splitext(f_path)[0]
-                for ext in ['.png', '.json', '.webp', '.jpg', '.jpeg']:
+                for ext in ['.json', *SIDECAR_EXTENSIONS]:
                     sidecar = base_path + ext
                     if os.path.exists(sidecar) and sidecar != f_path:
                         try:
@@ -1116,10 +1120,17 @@ def api_restore_backup():
 
         # 3. 恢复伴生图 (针对 JSON 卡片)
         if target_path.lower().endswith('.json'):
-            backup_base = os.path.splitext(backup_path)[0]
-            backup_dir = os.path.dirname(backup_path)
             target_dir = os.path.dirname(target_path)
             target_base = os.path.splitext(os.path.basename(target_path))[0]
+
+            # 先清理目标同名伴生图，避免恢复 .webp/.jfif 时旧 .png 仍被优先读取
+            for ext in SIDECAR_EXTENSIONS:
+                target_sidecar = os.path.join(target_dir, target_base + ext)
+                if os.path.lexists(target_sidecar):
+                    try:
+                        os.remove(target_sidecar)
+                    except Exception as e:
+                        logger.warning(f"Remove stale sidecar failed: {target_sidecar}, err={e}")
 
             for ext in SIDECAR_EXTENSIONS:
                 side_bk = _resolve_system_backup_sidecar(backup_path, ext)
@@ -1554,7 +1565,7 @@ def api_list_resource_skins():
 
         skins = []
         # 支持的图片扩展名
-        valid_exts = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
+        valid_exts = {'.png', '.jpg', '.jpeg', '.jfif', '.gif', '.webp', '.bmp'}
         
         for f in os.listdir(target_dir):
             ext = os.path.splitext(f)[1].lower()
@@ -1615,7 +1626,7 @@ def api_upload_background():
             
         # 2. 生成安全的文件名 (使用时间戳防止重名)
         ext = os.path.splitext(file.filename)[1].lower()
-        if ext not in ['.jpg', '.jpeg', '.png', '.webp', '.gif']:
+        if ext not in ['.jpg', '.jpeg', '.jfif', '.png', '.webp', '.gif']:
              return jsonify({"success": False, "msg": "不支持的图片格式"})
              
         new_filename = f"bg_{int(time.time())}_{uuid.uuid4().hex[:6]}{ext}"
